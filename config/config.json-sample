@@ -1,0 +1,26 @@
+{
+    "white_list": [
+    {
+        "channelId": number,
+        "channelName": "String",
+        "sub_tittle": "String",
+        "discord_group": [
+            "String"
+        ],
+        "telegram_group": [
+            number
+        ]
+    },
+    {
+        "channelId": number,
+        "channelName": "String",
+        "sub_tittle": "String",
+        "discord_group": [
+            "String"
+        ],
+        "telegram_group": [
+            number
+        ]
+    }
+]
+}
