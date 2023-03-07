@@ -32,11 +32,12 @@ async function launch() {
 
     print("Add Event Handler")
     client.addEventHandler(async (update) => {
+        // console.log(update)
         try {
-            if (update.message && update.message.senderId && white_list.find(element => { return element.channelId == update.message.senderId.value })) {
+            if (update.message && update.message.senderId && update.className !== "UpdateEditChannelMessage" && white_list.find(element => { return element.channelId == update.message.senderId.value })) {
                 print("Update")
                 const options = white_list.find(element => { return element.channelId == update.message.senderId.value })
-
+                if (options) print(JSON.stringify(options))
                 await forward_to_discord(update.message, options)
             }
         } catch (error) {
@@ -53,7 +54,7 @@ async function launch() {
 async function forward_to_discord(message, options) {
     try {
         if (message.media !== null && message.media.className == "MessageMediaPhoto") {
-
+            print("Media forward from " + options.channelName)
             for (let channel of options.discord_group) {
                 try {
                     const downloadedMedia = await client.downloadMedia(message.media, {})
@@ -66,6 +67,7 @@ async function forward_to_discord(message, options) {
             return
         }
         if (message.media == null && message.message !== "") {
+            print("Text forward from " + options.channelName)
             for (let channel of options.discord_group) {
                 try {
                     await Discord.sendMessageToChannel(channel, { message: message.message, ...options })
