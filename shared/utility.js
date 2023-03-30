@@ -1,4 +1,7 @@
 const chalk = require("chalk")
+const axios = require("axios")
+
+const { SECRETARY_TELEGRAM_CHAT_ID, SECRETARY_TELEGRAM_BOT_TOKEN } = require("./../config/telegram-config")
 
 async function sleep(time) {
     return new Promise((resolve, reject) => {
@@ -19,6 +22,22 @@ function _error(text) {
     const current_date = new Date
 
     console.log(chalk.red(current_date.toLocaleString()) + "| ERROR |", chalk.magenta(text))
+}
+
+async function alarm(text) {
+    try {
+        const config = {
+            chat_id: SECRETARY_TELEGRAM_CHAT_ID,
+            text
+        }
+
+        const url = `https://api.telegram.org/bot${SECRETARY_TELEGRAM_BOT_TOKEN}/sendMessage`
+        const response = await axios.post(url, config)
+
+        return response.data
+    } catch (error) {
+        console.log(error)
+    }
 }
 
 function localeDate() {
@@ -45,6 +64,7 @@ function _dateDifference(oldDate, currentDate) {
 module.exports = {
     sleep,
     print,
+    alarm,
     localeDate,
     _dateDifference,
     _error
