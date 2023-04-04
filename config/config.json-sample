@@ -9,7 +9,13 @@
         ],
         "telegram_group": [
             number
-        ]
+        ],
+            "telegram_group": [],
+            "translate": {
+                "status": false,
+                "from": "",
+                "to": ""
+            }
     },
     {
         "channelId": number,
@@ -20,7 +26,13 @@
         ],
         "telegram_group": [
             number
-        ]
+        ],
+            "telegram_group": [],
+            "translate": {
+                "status": true,
+                "from": "",
+                "to": ""
+            }
     }
 ]
 }
