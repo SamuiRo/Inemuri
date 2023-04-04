@@ -4,10 +4,11 @@ const { TelegramClient } = require("telegram")
 const { StringSession } = require("telegram/sessions")
 
 const pkg = require("./../package.json")
-const { white_list } = require("./../config/config.json")
+const { white_list, test_wl } = require("./../config/config.json")
 const { SESSION, API_ID, API_HASH } = require("./../config/telegram-config")
 const Discord = require("./discord")
-const { print, _error } = require("./../shared/utility")
+const Translator = require("./../bot/translator")
+const { print, _error, alarm } = require("./../shared/utility")
 
 const stringSession = new StringSession(SESSION) // fill this later with the value from session.save()
 const client_options = {
@@ -32,16 +33,18 @@ async function launch() {
 
     print("Add Event Handler")
     client.addEventHandler(async (update) => {
-        // console.log(update)
         try {
-            if (update.message && update.message.senderId && update.className !== "UpdateEditChannelMessage" && white_list.find(element => { return element.channelId == update.message.senderId.value })) {
+            if (!update.message) return
+            if (!update.message.senderId) return
+            if (update.className !== "UpdateNewChannelMessage") return
+            const options = white_list.find(element => { return element.channelId == update.message.senderId.value })
+            if (options) {
                 print("Update")
-                const options = white_list.find(element => { return element.channelId == update.message.senderId.value })
-                if (options) print(JSON.stringify(options))
-                await forward_to_discord(update.message, options)
+                options.message = update.message
+                await forward_to_discord(options)
             }
         } catch (error) {
-            print(error.message)
+            _error(error.message)
         }
     })
     print("You should now be connected")
@@ -51,35 +54,32 @@ async function launch() {
     // await client.sendMessage("me", { message: client.session.save() })
 }
 
-async function forward_to_discord(message, options) {
+async function forward_to_discord(options) {
     try {
-        if (message.media !== null && message.media.className == "MessageMediaPhoto") {
-            print("Media forward from " + options.channelName)
-            for (let channel of options.discord_group) {
-                try {
-                    const downloadedMedia = await client.downloadMedia(message.media, {})
-                    await Discord.sendMessageWithPictureToChannel(channel, { message: message.message, ...options }, downloadedMedia)
-                } catch (error) {
-                    _error(error.message)
-                }
-            }
-            print("Message with media forwarded")
-            return
+
+        if (options.message.media && options.message.media.className == "MessageMediaPhoto") {
+            const downloadedMedia = await client.downloadMedia(options.message.media, {})
+            options.picture = downloadedMedia
         }
-        if (message.media == null && message.message !== "") {
-            print("Text forward from " + options.channelName)
-            for (let channel of options.discord_group) {
-                try {
-                    await Discord.sendMessageToChannel(channel, { message: message.message, ...options })
-                } catch (error) {
-                    _error(error.message)
-                }
-            }
-            print("Message forwarded")
-            return
+
+        if (options.translate.status) {
+            const text = await Translator.translate(options.message.message)
+            options.message.message = text
         }
+
+        for (let channel of options.discord_group) {
+            try {
+                await Discord.sendToChannel(channel, { ...options })
+            } catch (error) {
+                _error(error.message)
+                await alarm(error.message)
+            }
+        }
+        delete options.picture
+
     } catch (error) {
-        print(error.message)
+        _error(error.message)
+        await alarm(error.message)
     }
 }
 

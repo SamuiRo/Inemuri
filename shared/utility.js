@@ -28,7 +28,7 @@ async function alarm(text) {
     try {
         const config = {
             chat_id: SECRETARY_TELEGRAM_CHAT_ID,
-            text
+            text: `${text}`
         }
 
         const url = `https://api.telegram.org/bot${SECRETARY_TELEGRAM_BOT_TOKEN}/sendMessage`

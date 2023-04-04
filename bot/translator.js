@@ -33,9 +33,9 @@ async function translate(text) {
     try {
         if (text == "" || typeof text != "string") return
         print("Try to translate")
-        await sleep(1000)
+        // await sleep(1000)
         await page.type("[dl-test=translator-source-input]", `${text}`)
-        await sleep(1000)
+
 
         print("Waiting to translate")
         await page.waitForFunction(() => {
@@ -43,12 +43,12 @@ async function translate(text) {
             if (pElement) return pElement.textContent !== "" // очікуваний новий контент
             return false
         })
+        await sleep(1000)
         const content = await page.$("[dl-test=translator-target-input]")
         const result = await (await content.getProperty("textContent")).jsonValue()
         print("Translated")
 
         await clear_input()
-        console.log(result)
         return result
     } catch (error) {
         _error(error.message)
