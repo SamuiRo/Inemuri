@@ -1,4 +1,7 @@
-const { Client, Events, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js")
+const { Client, Events, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, SlashCommandBuilder, REST, Routes } = require("discord.js")
+
+const { runCompletion } = require("./chat-gpt")
+const { check_starknet_address } = require("./crypto-api")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
 const { DISCORD_BOT_TOKEN } = require("./../config/discord-config")
@@ -104,18 +107,82 @@ async function sendMessageWithPictureToChannel(channelID, options, picture) {
 async function launch() {
     await client.login(DISCORD_BOT_TOKEN)
     await client_ready()
+    await interaction()
 }
 
 async function client_ready() {
     return new Promise((resolve, reject) => {
         try {
-            client.once("ready", () => {
+            client.once("ready", async () => {
+                try {
+                    client.application.commands.set([])
+                    await client.application.commands.create(
+                        new SlashCommandBuilder().setName('gpt').setDescription('Make a GPT request').addStringOption(option =>
+                            option.setName('prompt')
+                                .setDescription('Prompt to ChatGPT'))
+                    );
+                    await client.application.commands.create(
+                        new SlashCommandBuilder().setName('starknet-stats').setDescription('Check your starknet address stats').addStringOption(option =>
+                            option.setName('addresses')
+                                .setDescription('Your addresses separate with space'))
+                    );
+
+                    // await client.application.commands.create(
+                    //     new SlashCommandBuilder().setName('gptda').setDescription('Make a GPT request')
+                    // );
+                    console.log('Slash commands registered.');
+                } catch (error) {
+                    console.error('Error while registering slash command:', error);
+                }
                 print("Inemuri is online!")
                 resolve(client)
             })
         } catch (error) {
             print(error.message)
             reject(error)
+        }
+    })
+}
+
+async function interaction() {
+    return new Promise((resolve, reject) => {
+        try {
+            client.on('interactionCreate', async (interaction) => {
+                if (!interaction.isCommand()) reject;
+
+                const { commandName, options } = interaction;
+                console.log(interaction)
+                if (commandName === 'gpt') {
+                    try {
+                        const resp = await runCompletion()
+                        // const response = await axios.get(`http://localhost:${serverPort}`);
+                        interaction.reply("Dasd");
+                    } catch (error) {
+                        console.error('Error while making the GPT request:', error);
+                        interaction.reply('An error occurred while processing your request.');
+                    }
+                } else if (commandName === 'starknet-stats') {
+                    try {
+                        const addresses = options.getString('addresses')
+                        const response = await check_starknet_address(addresses.split(" "))
+
+                        interaction.reply(response)
+                    } catch (error) {
+                        console.error('Error while making the RESTO request:', error);
+                        interaction.reply('An error occurred while processing your request.');
+                    }
+                } else if (commandName === 'hammer') {
+                    try {
+                        const response = await axios.get(`http://localhost:${serverPort}/hammer`);
+                        interaction.reply(response.data);
+                    } catch (error) {
+                        console.error('Error while making the HAMMER request:', error);
+                        interaction.reply('An error occurred while processing your request.');
+                    }
+                }
+            });
+        } catch (error) {
+
         }
     })
 }
