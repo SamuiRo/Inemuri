@@ -1,7 +1,7 @@
 const { Client, Events, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, SlashCommandBuilder, REST, Routes } = require("discord.js")
 
 const { runCompletion } = require("./chat-gpt")
-const { check_starknet_address } = require("./crypto-api")
+const { check_starknet_address, check_layerzero_address } = require("./crypto-api")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
 const { DISCORD_BOT_TOKEN } = require("./../config/discord-config")
@@ -126,11 +126,16 @@ async function client_ready() {
                             option.setName('addresses')
                                 .setDescription('Your addresses separate with space'))
                     );
+                    await client.application.commands.create(
+                        new SlashCommandBuilder().setName('layerzero-stats').setDescription('Check your layerzero address stats').addStringOption(option =>
+                            option.setName('address')
+                                .setDescription('Only ONE address per request'))
+                    );
 
                     // await client.application.commands.create(
                     //     new SlashCommandBuilder().setName('gptda').setDescription('Make a GPT request')
                     // );
-                    console.log('Slash commands registered.');
+                    print('Slash commands registered.');
                 } catch (error) {
                     console.error('Error while registering slash command:', error);
                 }
@@ -168,15 +173,16 @@ async function interaction() {
 
                         interaction.reply(response)
                     } catch (error) {
-                        console.error('Error while making the RESTO request:', error);
+                        console.error('Error while making the starknet request:', error);
                         interaction.reply('An error occurred while processing your request.');
                     }
-                } else if (commandName === 'hammer') {
+                } else if (commandName === 'layerzero-stats') {
                     try {
-                        const response = await axios.get(`http://localhost:${serverPort}/hammer`);
-                        interaction.reply(response.data);
+                        const address = await options.getString("address")
+                        const response = await check_layerzero_address(address)
+                        interaction.reply(response);
                     } catch (error) {
-                        console.error('Error while making the HAMMER request:', error);
+                        console.error('Error while making the layerzero request:', error);
                         interaction.reply('An error occurred while processing your request.');
                     }
                 }
