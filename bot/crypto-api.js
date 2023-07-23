@@ -2,6 +2,13 @@ const axios = require("axios")
 
 async function check_starknet_address(addresses) {
     try {
+        let options = {
+            content: "Address is empty",
+            ephemeral: true,
+        }
+
+        if (!addresses) return options
+
         const data = JSON.stringify({
             "data": addresses
         });
@@ -30,7 +37,7 @@ async function check_starknet_address(addresses) {
 
         const response = await axios.request(config)
 
-        let message = ""
+        options.content = ""
         response.data.data.forEach(element => {
             message = message +
                 "〓━━━━━━━━━━━━━━━" + "\n" +
@@ -40,8 +47,7 @@ async function check_starknet_address(addresses) {
                 "Active days/weeks/month: " + element.txTimestamps + "\n"
         });
 
-
-        return message
+        return options
     } catch (error) {
         console.log(error)
     }
@@ -49,6 +55,13 @@ async function check_starknet_address(addresses) {
 
 async function check_layerzero_address(address) {
     try {
+        let options = {
+            content: "Address is empty",
+            ephemeral: true,
+        }
+
+        if (!address) return options
+
         let data = JSON.stringify({
             address
         });
@@ -78,8 +91,7 @@ async function check_layerzero_address(address) {
 
         const response = await axios.request(config)
 
-
-        const message = "〓━━━ Rank [ " + response.data.rank + " ] \n" +
+        options.content = "〓━━━ Rank [ " + response.data.rank + " ] \n" +
             "| TxCount:      " + response.data.txsCount + " [Top " + response.data.topInTxs + "%]\n" +
             "| Volume:       " + response.data.volume + " [Top " + response.data.topInVolume + "%]\n" +
             "| Months:       " + response.data.distinctMonths + " [Top " + response.data.topInUsageByMonth + "%]\n" +
@@ -87,7 +99,7 @@ async function check_layerzero_address(address) {
             "| Final Score: " + "Top " + response.data.topFinal + "%\n" +
             "| Total Users: " + response.data.totalUsers
 
-        return message
+        return options
     } catch (error) {
         console.log(error)
     }

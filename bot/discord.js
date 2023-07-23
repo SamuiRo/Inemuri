@@ -156,12 +156,12 @@ async function interaction() {
                 if (!interaction.isCommand()) reject;
 
                 const { commandName, options } = interaction;
-                console.log(interaction)
+                console.log(options)
                 if (commandName === 'gpt') {
                     try {
                         const resp = await runCompletion()
                         // const response = await axios.get(`http://localhost:${serverPort}`);
-                        interaction.reply("Dasd");
+                        interaction.reply("tmprl closed");
                     } catch (error) {
                         console.error('Error while making the GPT request:', error);
                         interaction.reply('An error occurred while processing your request.');
@@ -173,13 +173,14 @@ async function interaction() {
 
                         interaction.reply(response)
                     } catch (error) {
-                        console.error('Error while making the starknet request:', error);
                         interaction.reply('An error occurred while processing your request.');
+                        console.error(error);
                     }
                 } else if (commandName === 'layerzero-stats') {
                     try {
                         const address = await options.getString("address")
-                        const response = await check_layerzero_address(address)
+                        let response = await check_layerzero_address(address)
+
                         interaction.reply(response);
                     } catch (error) {
                         console.error('Error while making the layerzero request:', error);
