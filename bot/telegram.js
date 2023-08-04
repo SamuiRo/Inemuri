@@ -5,6 +5,7 @@ const { StringSession } = require("telegram/sessions")
 
 const pkg = require("./../package.json")
 const { white_list, test_wl } = require("./../config/config.json")
+const { load_sheet, load_rows } = require("./spreadsheet")
 const { SESSION, API_ID, API_HASH } = require("./../config/telegram-config")
 const Discord = require("./discord")
 const Translator = require("./../bot/translator")
@@ -31,13 +32,17 @@ async function launch() {
         onError: (err) => console.log(err),
     })
 
+    const sheet = await load_sheet(1)
+    const rows = await load_rows(sheet)
+
     print("Add Event Handler")
     client.addEventHandler(async (update) => {
         try {
             if (!update.message) return
             if (!update.message.senderId) return
             if (update.className !== "UpdateNewChannelMessage") return
-            const options = white_list.find(element => { return element.channelId == update.message.senderId.value })
+            const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
+
             if (options) {
                 print("Update")
                 options.message = update.message
@@ -62,11 +67,12 @@ async function forward_to_discord(options) {
             options.picture = downloadedMedia
         }
 
-        if (options.translate.status) {
-            const text = await Translator.translate(options.message.message)
-            options.message.message = text
+        if (options.translate == "TRUE") {
+            return
+            // const text = await Translator.translate(options.message.message)
+            // options.message.message = text
         }
-
+        options.discord_group = options.discord_group.split(' ')
         for (let channel of options.discord_group) {
             try {
                 await Discord.sendToChannel(channel, { ...options })

@@ -9,12 +9,11 @@ const openai = new OpenAIApi(configuration)
 // const response = await openai.listEngines()
 
 async function runCompletion() {
-    console.log(OPENAI_TOKEN)
     const completion = await openai.createCompletion({
         model: "text-davinci-003",
         prompt: "How are you today?",
     });
-    console.log(completion.data.choices[0].text);
+
     return completion.data.choices[0].text
 }
 

@@ -1,4 +1,6 @@
 const axios = require("axios")
+const cheerio = require('cheerio');
+
 
 async function check_starknet_address(addresses) {
     try {
@@ -100,6 +102,33 @@ async function check_layerzero_address(address) {
             "| Total Users: " + response.data.totalUsers
 
         return options
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+async function check_zksync_address(addresses) {
+    try {
+        let options = {
+            content: "Address is empty",
+            ephemeral: true,
+        }
+
+        if (!addresses) return options
+        if (addresses.length > 4) {
+            options.content = "Too many addresses at once [Max 4]"
+            return options
+        }
+
+        // let url = `https://www.10kdrop.com/results?walletAddress=${}&walletAddress2=${}&walletAddress3=&walletAddress4=&proCode=`
+
+
+        let url = "https://www.10kdrop.com/results?walletAddress=0x364aBC32aAdDee7E82416BB15d9d764AD373F17D&walletAddress2=0xb40f204B55Bbf35cd2c4c0D2144e480BC7874547&walletAddress3=&walletAddress4=&proCode="
+
+        const response = axios.get(url)
+
+
+
     } catch (error) {
         console.log(error)
     }

@@ -27,7 +27,7 @@ async function sendToChannel(channelID, options) {
 
         const embed = new EmbedBuilder()
             .setColor(0xe98ca1)
-            .setAuthor({ name: `┍━━━━━ Rate ${options.sub_tittle}/5` })
+            .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
             .setTitle(`〓 ${options.channelName}`)
             .setDescription(options.message.message)
             .setFooter({ text: `${localeDate()}` })
@@ -44,8 +44,7 @@ async function sendToChannel(channelID, options) {
     } catch (error) {
         console.log(error)
         await alarm(error.message)
-        console.log(options)
-        console.log(options.message.message)
+    
         // await alarm(JSON.stringify(options))
     }
 }
@@ -57,7 +56,7 @@ async function sendMessageToChannel(channelID, options) {
 
             const embed = new EmbedBuilder()
                 .setColor(0xe98ca1)
-                .setAuthor({ name: `┍━━━━━ Rate ${options.sub_tittle}/5` })
+                .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
                 .setTitle(`〓 ${options.channelName}`)
                 .setDescription(options.message.message)
                 .setFooter({ text: `${localeDate()}` })
@@ -84,7 +83,7 @@ async function sendMessageWithPictureToChannel(channelID, options, picture) {
             const imageAttachment = new AttachmentBuilder(picture, { name: "image.jpg" })
             const embed = new EmbedBuilder()
                 .setColor(0xe98ca1)
-                .setAuthor({ name: `┍━━━━━ Rate ${options.sub_tittle}/5` })
+                .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
                 .setTitle(`〓 ${options.channelName}`)
                 .setDescription(options.message.message)
                 .setImage("attachment://image.jpg")
@@ -150,48 +149,41 @@ async function client_ready() {
 }
 
 async function interaction() {
-    return new Promise((resolve, reject) => {
-        try {
-            client.on('interactionCreate', async (interaction) => {
-                if (!interaction.isCommand()) reject;
+    client.on('interactionCreate', async (interaction) => {
+        if (!interaction.isCommand()) reject;
 
-                const { commandName, options } = interaction;
-                console.log(options)
-                if (commandName === 'gpt') {
-                    try {
-                        const resp = await runCompletion()
-                        // const response = await axios.get(`http://localhost:${serverPort}`);
-                        interaction.reply("tmprl closed");
-                    } catch (error) {
-                        console.error('Error while making the GPT request:', error);
-                        interaction.reply('An error occurred while processing your request.');
-                    }
-                } else if (commandName === 'starknet-stats') {
-                    try {
-                        const addresses = options.getString('addresses')
-                        const response = await check_starknet_address(addresses.split(" "))
+        const { commandName, options } = interaction;
+        if (commandName === 'gpt') {
+            try {
+                const resp = await runCompletion()
+                // const response = await axios.get(`http://localhost:${serverPort}`);
+                interaction.reply("tmprl closed");
+            } catch (error) {
+                console.error('Error while making the GPT request:', error);
+                interaction.reply('An error occurred while processing your request.');
+            }
+        } else if (commandName === 'starknet-stats') {
+            try {
+                const addresses = options.getString('addresses')
+                const response = await check_starknet_address(addresses.split(" "))
 
-                        interaction.reply(response)
-                    } catch (error) {
-                        interaction.reply('An error occurred while processing your request.');
-                        console.error(error);
-                    }
-                } else if (commandName === 'layerzero-stats') {
-                    try {
-                        const address = await options.getString("address")
-                        let response = await check_layerzero_address(address)
+                interaction.reply(response)
+            } catch (error) {
+                interaction.reply('An error occurred while processing your request.');
+                console.error(error);
+            }
+        } else if (commandName === 'layerzero-stats') {
+            try {
+                const address = await options.getString("address")
+                let response = await check_layerzero_address(address)
 
-                        interaction.reply(response);
-                    } catch (error) {
-                        console.error('Error while making the layerzero request:', error);
-                        interaction.reply('An error occurred while processing your request.');
-                    }
-                }
-            });
-        } catch (error) {
-
+                interaction.reply(response);
+            } catch (error) {
+                console.error('Error while making the layerzero request:', error);
+                interaction.reply('An error occurred while processing your request.');
+            }
         }
-    })
+    });
 }
 
 module.exports = {
