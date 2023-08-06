@@ -45,6 +45,10 @@ async function launch() {
 
             if (options) {
                 print("Update")
+                if (typeof options.discord_group == "string") {
+                    options.discord_group.split(" ")
+                }
+
                 options.message = update.message
                 await forward_to_discord(options)
             }
@@ -72,7 +76,11 @@ async function forward_to_discord(options) {
             // const text = await Translator.translate(options.message.message)
             // options.message.message = text
         }
-        options.discord_group = options.discord_group.split(' ')
+
+        if (typeof options.discord_group == "string") {
+            options.discord_group = options.discord_group.split(' ')
+        }
+        
         for (let channel of options.discord_group) {
             try {
                 await Discord.sendToChannel(channel, { ...options })
