@@ -41,7 +41,7 @@ async function launch() {
             if (!update.message) return
             if (!update.message.senderId) return
             if (update.className !== "UpdateNewChannelMessage") return
-            const options = test_wl.find(element => { return +element.channelId == update.message.senderId.value })
+            const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
 
             if (options) {
                 print("Update")
