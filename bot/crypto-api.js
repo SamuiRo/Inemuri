@@ -48,10 +48,10 @@ async function check_starknet_address(addresses) {
                 "Balance: " + element.balance + "\n" +
                 "Active days/weeks/month: " + element.txTimestamps + "\n"
         });
-
-        return options
     } catch (error) {
         console.log(error)
+    } finally {
+        return options
     }
 }
 
@@ -101,9 +101,10 @@ async function check_layerzero_address(address) {
             "| Final Score: " + "Top " + response.data.topFinal + "%\n" +
             "| Total Users: " + response.data.totalUsers
 
-        return options
     } catch (error) {
         console.log(error)
+    } finally {
+        return options
     }
 }
 
