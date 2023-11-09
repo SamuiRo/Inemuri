@@ -1,14 +1,15 @@
 const axios = require("axios")
 const cheerio = require('cheerio');
 
+const { CMC_API_KEY } = require("../config/crypto-api-config")
+
 
 async function check_starknet_address(addresses) {
+    let options = {
+        content: "Address is incorrect",
+        ephemeral: true,
+    }
     try {
-        let options = {
-            content: "Address is empty",
-            ephemeral: true,
-        }
-
         if (!addresses) return options
 
         const data = JSON.stringify({
@@ -56,12 +57,11 @@ async function check_starknet_address(addresses) {
 }
 
 async function check_layerzero_address(address) {
+    let options = {
+        content: "Address is incorrect",
+        ephemeral: true,
+    }
     try {
-        let options = {
-            content: "Address is empty",
-            ephemeral: true,
-        }
-
         if (!address) return options
 
         let data = JSON.stringify({
@@ -109,12 +109,11 @@ async function check_layerzero_address(address) {
 }
 
 async function check_zksync_address(addresses) {
+    let options = {
+        content: "Address is incorrect",
+        ephemeral: true,
+    }
     try {
-        let options = {
-            content: "Address is empty",
-            ephemeral: true,
-        }
-
         if (!addresses) return options
         if (addresses.length > 4) {
             options.content = "Too many addresses at once [Max 4]"
@@ -124,7 +123,7 @@ async function check_zksync_address(addresses) {
         // let url = `https://www.10kdrop.com/results?walletAddress=${}&walletAddress2=${}&walletAddress3=&walletAddress4=&proCode=`
 
 
-        let url = "https://www.10kdrop.com/results?walletAddress=0x364aBC32aAdDee7E82416BB15d9d764AD373F17D&walletAddress2=0xb40f204B55Bbf35cd2c4c0D2144e480BC7874547&walletAddress3=&walletAddress4=&proCode="
+        let url = "https://www.10kdrop.com/results?walletAddress=&walletAddress2=&walletAddress3=&walletAddress4=&proCode="
 
         const response = axios.get(url)
 
@@ -135,7 +134,37 @@ async function check_zksync_address(addresses) {
     }
 }
 
+async function cmc_global_metrics() {
+    try {
+        const response = await axios.get('https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest', {
+            headers: {
+                'X-CMC_PRO_API_KEY': CMC_API_KEY,
+            },
+        });
+
+        return response.data.data
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+async function cmc_find_token(tiker) {
+    try {
+        const response = await axios.get('https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest', {
+            headers: {
+                'X-CMC_PRO_API_KEY': CMC_API_KEY,
+            },
+        });
+        const token_stat = response.data.data.find(crypto => crypto.symbol == tiker)
+        return token_stat
+    } catch (error) {
+        console.log(error)
+    }
+}
+
 module.exports = {
     check_starknet_address,
-    check_layerzero_address
+    check_layerzero_address,
+    cmc_global_metrics,
+    cmc_find_token
 }

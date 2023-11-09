@@ -65,7 +65,6 @@ async function launch() {
 
 async function forward_to_discord(options) {
     try {
-
         if (options.message.media && options.message.media.className == "MessageMediaPhoto") {
             const downloadedMedia = await client.downloadMedia(options.message.media, {})
             options.picture = downloadedMedia
@@ -80,20 +79,22 @@ async function forward_to_discord(options) {
         if (typeof options.discord_group == "string") {
             options.discord_group = options.discord_group.split(' ')
         }
-        
+
         for (let channel of options.discord_group) {
             try {
                 await Discord.sendToChannel(channel, { ...options })
             } catch (error) {
                 _error(error.message)
-                await alarm(error.message)
+                alarm(`ERROR | LOOP_TO_DSCRD | ${error.message}`)
+                alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
             }
         }
         delete options.picture
 
     } catch (error) {
         _error(error.message)
-        await alarm(error.message)
+        alarm(`ERROR | FRWRD_TO_DSCRD | ${error.message}`)
+        alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
     }
 }
 

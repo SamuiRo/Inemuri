@@ -1,10 +1,11 @@
 const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js")
+const { CronJob } = require("cron")
 
 const { runCompletion } = require("./chat-gpt")
-const { check_starknet_address, check_layerzero_address } = require("./crypto-api")
+const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token } = require("./crypto-api")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
-const { DISCORD_BOT_TOKEN } = require("./../config/discord-config")
+const { DISCORD_BOT_TOKEN, EMBED_RED, EMBED_GREEN, EMBED_PRIMARY, INEMURI_CHANNEL, FORUM_LIST, GUILD_ID } = require("./../config/discord-config")
 
 const client = new Client({
     intents: [
@@ -15,7 +16,6 @@ const client = new Client({
 
 async function sendToChannel(channelID, options) {
     try {
-
         const channel = client.channels.cache.get(channelID)
 
         if (!channel) {
@@ -26,7 +26,7 @@ async function sendToChannel(channelID, options) {
         const discord_message = {}
 
         const embed = new EmbedBuilder()
-            .setColor(0xe98ca1)
+            .setColor(EMBED_PRIMARY)
             .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
             .setTitle(`〓 ${options.channelName}`)
             .setDescription(options.message.message)
@@ -43,9 +43,8 @@ async function sendToChannel(channelID, options) {
         print(`Sended ${messageObj}`)
     } catch (error) {
         console.log(error)
-        await alarm(error.message)
-
-        // await alarm(JSON.stringify(options))
+        alarm(`ERROR | sendToChannel | ${error.message}`)
+        alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
     }
 }
 
@@ -53,11 +52,19 @@ async function launch() {
     await client.login(DISCORD_BOT_TOKEN)
     await client_ready()
     await interaction()
+    await check_for_new_discussions()
+    const job = new CronJob(
+        '0 0 * * * *', // cronTime
+        notification, // onTick
+        null, // onComplete
+        true, // start
+        'Europe/Kiev' // timeZone
+    );
 }
 
 async function client_ready() {
     try {
-        client.application.commands.set([]);
+        await client.application.commands.set([]);
 
         const slashCommandBuilders = [
             {
@@ -113,48 +120,9 @@ async function client_ready() {
         return client;
     } catch (error) {
         console.error('Error while setting up the bot:', error);
-        throw error;
+        alarm(`ERROR | CLIENT_READY | ${error.message}`)
     }
 }
-
-// async function client_ready() {
-//     return new Promise((resolve, reject) => {
-//         try {
-//             client.once("ready", async () => {
-//                 try {
-//                     client.application.commands.set([])
-//                     await client.application.commands.create(
-//                         new SlashCommandBuilder().setName('gpt').setDescription('Make a GPT request').addStringOption(option =>
-//                             option.setName('prompt')
-//                                 .setDescription('Prompt to ChatGPT'))
-//                     );
-//                     await client.application.commands.create(
-//                         new SlashCommandBuilder().setName('starknet-stats').setDescription('Check your starknet address stats').addStringOption(option =>
-//                             option.setName('addresses')
-//                                 .setDescription('Your addresses separate with space'))
-//                     );
-//                     await client.application.commands.create(
-//                         new SlashCommandBuilder().setName('layerzero-stats').setDescription('Check your layerzero address stats').addStringOption(option =>
-//                             option.setName('address')
-//                                 .setDescription('Only ONE address per request'))
-//                     );
-
-//                     // await client.application.commands.create(
-//                     //     new SlashCommandBuilder().setName('gptda').setDescription('Make a GPT request')
-//                     // );
-//                     print('Slash commands registered.');
-//                 } catch (error) {
-//                     console.error('Error while registering slash command:', error);
-//                 }
-//                 print("Inemuri is online!")
-//                 resolve(client)
-//             })
-//         } catch (error) {
-//             print(error.message)
-//             reject(error)
-//         }
-//     })
-// }
 
 async function interaction() {
     client.on('interactionCreate', async (interaction) => {
@@ -169,62 +137,91 @@ async function interaction() {
             if (commandName === 'starknet-stats') {
                 const addresses = options.getString('addresses');
                 const response = await check_starknet_address(addresses.split(" "));
-                console.log(response)
                 interaction.reply(response);
             }
             if (commandName === 'layerzero-stats') {
                 const address = await options.getString("address");
                 const response = await check_layerzero_address(address);
-                console.log(response)
                 interaction.reply(response);
             }
         } catch (error) {
             console.error(`Error while processing '${commandName}' command:`, error);
             interaction.reply('An error occurred while processing your request.');
+            alarm(`ERROR | INTERACTION | ${error.message}`)
         }
     });
 }
-// async function interaction() {
-//     client.on('interactionCreate', async (interaction) => {
-//         if (!interaction.isCommand()) reject;
 
-//         const { commandName, options } = interaction;
-//         if (commandName === 'gpt') {
-//             try {
-//                 const resp = await runCompletion()
-//                 // const response = await axios.get(`http://localhost:${serverPort}`);
-//                 interaction.reply("tmprl closed");
-//             } catch (error) {
-//                 console.error('Error while making the GPT request:', error);
-//                 interaction.reply('An error occurred while processing your request.');
-//             }
-//         } else if (commandName === 'starknet-stats') {
-//             try {
-//                 const addresses = options.getString('addresses')
-//                 const response = await check_starknet_address(addresses.split(" "))
+async function check_for_new_discussions() {
+    const guild = client.guilds.cache.get(GUILD_ID); // Замініть на ID свого сервера
+    const today = new Date();
+    today.setDate(today.getDate() - 1);  // Вчора
+    if (!guild) throw new Error("Guild was not found")
+    let new_threads = []
+    try {
+        for (let forum_id of FORUM_LIST) {
+            const channel = guild.channels.resolve(forum_id)
 
-//                 interaction.reply(response)
-//             } catch (error) {
-//                 interaction.reply('An error occurred while processing your request.');
-//                 console.error(error);
-//             }
-//         } else if (commandName === 'layerzero-stats') {
-//             try {
-//                 const address = await options.getString("address")
-//                 let response = await check_layerzero_address(address)
+            const actual_threads = channel.threads.cache
+            const archived_threads = await channel.threads.fetchArchived({ fetchAll: true, limit: 100 });
 
-//                 interaction.reply(response);
-//             } catch (error) {
-//                 console.error('Error while making the layerzero request:', error);
-//                 interaction.reply('An error occurred while processing your request.');
-//             }
-//         }
-//     });
-// }
+            const threads_list = actual_threads.concat(archived_threads.threads)
+            const new_treads_in_single_forum = threads_list.filter((thread) => thread.createdTimestamp > today.getTime());
+
+            new_threads = [...new_threads, ...new_treads_in_single_forum.values()]
+        }
+    } catch (error) {
+        console.log(error)
+        alarm(`ERROR | NEW_DISCUS_CHECK | ${error.message}`)
+    } finally {
+        return new_threads
+    }
+}
+
+async function notification() {
+    const discord_message = {}
+    try {
+        const channel = client.channels.cache.get(INEMURI_CHANNEL)
+        if (!channel) {
+            print(`Could not find channel with ID ${INEMURI_CHANNEL}`)
+            return
+        }
+
+        const embed = new EmbedBuilder()
+            .setAuthor({ name: `┍━━━━━ Daily ` })
+            .setTitle(`〓 Inemuri`)
+            .setFooter({ text: `${localeDate()}` })
+
+        const global_metrics = await cmc_global_metrics()
+        const btc_stat = await cmc_find_token("BTC")
+        const new_discussions = await check_for_new_discussions()
+
+        if (btc_stat.quote.USD.percent_change_24h > 0) { embed.setColor(EMBED_GREEN) }
+        if (btc_stat.quote.USD.percent_change_24h < 0) { embed.setColor(EMBED_RED) }
+
+        let message = "**Метрики**" + "\n" +
+            "```BTC | " + "Price " + btc_stat.quote.USD.price.toFixed(1) + " | 24h change: " + btc_stat.quote.USD.percent_change_24h.toFixed(1) + "%" + "\n" +
+            "BTC.D: " + global_metrics.btc_dominance.toFixed(1) + "%" + " | BTC.D.Y: " + global_metrics.btc_dominance_yesterday.toFixed(1) + "%" + "\n" +
+            "DEFI 24h change: " + global_metrics.defi_24h_percentage_change.toFixed(1) + "%" + "\n" +
+            "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "```\n"
+
+        if (new_discussions.length > 0) {
+            message += "**Нові Активності**" + "\n"
+            new_discussions.forEach(element => {
+                message += `<#${element.id}>` + "\n"
+            })
+        }
+
+        embed.setDescription(message)
+        discord_message.embeds = [embed]
+        await channel.send(discord_message)
+    } catch (error) {
+        console.log(error)
+        alarm(`ERROR | NOTIF | ${error.message}`)
+    }
+}
 
 module.exports = {
-    // sendMessageToChannel,
-    // sendMessageWithPictureToChannel,
     launch,
     sendToChannel
 }
