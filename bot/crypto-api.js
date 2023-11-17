@@ -162,9 +162,24 @@ async function cmc_find_token(tiker) {
     }
 }
 
+async function get_fear_and_greed_index() {
+    try {
+        const response = await axios.get("https://api.alternative.me/fng/")
+
+        const result = {
+            value: response.data.data[0].value,
+            value_classification: response.data.data[0].value_classification
+        }
+        return result
+    } catch (error) {
+        console.log(error)
+    }
+}
+
 module.exports = {
     check_starknet_address,
     check_layerzero_address,
     cmc_global_metrics,
-    cmc_find_token
+    cmc_find_token,
+    get_fear_and_greed_index
 }

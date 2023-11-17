@@ -2,7 +2,7 @@ const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("
 const { CronJob } = require("cron")
 
 const { runCompletion } = require("./chat-gpt")
-const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token } = require("./crypto-api")
+const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token, get_fear_and_greed_index } = require("./crypto-api")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
 const { DISCORD_BOT_TOKEN, EMBED_RED, EMBED_GREEN, EMBED_PRIMARY, INEMURI_CHANNEL, FORUM_LIST, GUILD_ID } = require("./../config/discord-config")
@@ -195,6 +195,7 @@ async function notification() {
         const global_metrics = await cmc_global_metrics()
         const btc_stat = await cmc_find_token("BTC")
         const new_discussions = await check_for_new_discussions()
+        const fear_and_greed = await get_fear_and_greed_index()
 
         if (btc_stat.quote.USD.percent_change_24h > 0) { embed.setColor(EMBED_GREEN) }
         if (btc_stat.quote.USD.percent_change_24h < 0) { embed.setColor(EMBED_RED) }
@@ -203,7 +204,8 @@ async function notification() {
             "```BTC | " + "Price " + btc_stat.quote.USD.price.toFixed(1) + " | 24h change: " + btc_stat.quote.USD.percent_change_24h.toFixed(1) + "%" + "\n" +
             "BTC.D: " + global_metrics.btc_dominance.toFixed(1) + "%" + " | BTC.D.Y: " + global_metrics.btc_dominance_yesterday.toFixed(1) + "%" + "\n" +
             "DEFI 24h change: " + global_metrics.defi_24h_percentage_change.toFixed(1) + "%" + "\n" +
-            "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "```\n"
+            "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "\n" +
+            fear_and_greed.value_classification + ": " + fear_and_greed.value + "\n" + "```\n"
 
         if (new_discussions.length > 0) {
             message += "**Нові Активності**" + "\n"
