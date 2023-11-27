@@ -25,9 +25,13 @@
     "discord.js": "^14.7.1",
     "dotenv": "^16.0.3",
     "google-spreadsheet": "^3.3.0",
+    "googleapis": "^128.0.0",
     "input": "^1.0.1",
+    "mailparser": "^3.6.5",
     "openai": "^3.3.0",
     "puppeteer": "^19.7.5",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.6",
     "telegram": "^2.15.10"
   }
 }
