@@ -125,7 +125,6 @@ async function launch() {
         alarm(`ERROR | GMAIL | ${error.message}`)
     }
 }
-launch()
 
 module.exports = {
     launch
