@@ -201,7 +201,7 @@ async function notification() {
         if (btc_stat.quote.USD.percent_change_24h < 0) { embed.setColor(EMBED_RED) }
 
         let message = "**Метрики**" + "\n" +
-            "```BTC | " + "Price " + btc_stat.quote.USD.price.toFixed(1) + " | 24h change: " + btc_stat.quote.USD.percent_change_24h.toFixed(1) + "%" + "\n" +
+            "```java\nBTC | " + "Price " + btc_stat.quote.USD.price.toFixed(1) + " | 24h change: " + btc_stat.quote.USD.percent_change_24h.toFixed(1) + "%" + "\n" +
             "BTC.D: " + global_metrics.btc_dominance.toFixed(1) + "%" + " | BTC.D.Y: " + global_metrics.btc_dominance_yesterday.toFixed(1) + "%" + "\n" +
             "DEFI 24h change: " + global_metrics.defi_24h_percentage_change.toFixed(1) + "%" + "\n" +
             "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "\n" +
@@ -225,5 +225,5 @@ async function notification() {
 
 module.exports = {
     launch,
-    sendToChannel
+    sendToChannel,
 }

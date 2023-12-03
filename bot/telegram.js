@@ -4,7 +4,6 @@ const { TelegramClient } = require("telegram")
 const { StringSession } = require("telegram/sessions")
 
 const pkg = require("./../package.json")
-const { white_list, test_wl } = require("./../config/config.json")
 const { load_sheet, load_rows } = require("./spreadsheet")
 const { SESSION, API_ID, API_HASH } = require("./../config/telegram-config")
 const Discord = require("./discord")
@@ -37,12 +36,14 @@ async function launch() {
 
     print("Add Event Handler")
     client.addEventHandler(async (update) => {
+        // Якщо є медіа то media !== null
         try {
             if (!update.message) return
             if (!update.message.senderId) return
             if (update.className !== "UpdateNewChannelMessage") return
+            // change to new Set
             const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
-
+            
             if (options) {
                 print("Update")
                 if (typeof options.discord_group == "string") {
