@@ -76,8 +76,7 @@ async function handle_update(update) {
         }
 
         options.messages = [update.message]
-        // await forward_to_discord(options)
-
+        await forward_to_discord(options)
     } catch (error) {
         _error(error.message)
     }

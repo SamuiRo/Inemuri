@@ -35,7 +35,6 @@ async function sendToChannel(channelID, options) {
         if (options.pictures.length > 0) {
             discord_message.files = []
             for (let i = 0; i < options.pictures.length; i++) {
-                console.log("image" + i + ".jpg")
                 discord_message.files.push(new AttachmentBuilder(options.pictures[i], { name: "image" + i + ".jpg" }))
             }
             embed.setImage("attachment://image0.jpg")
