@@ -25,7 +25,7 @@ async function sendToChannel(channelID, options) {
         if (typeof options.message !== "string" || options.message === "") options.message = "Attachment"
         const discord_message = {}
 
-        const embed = new MessageEmbed()
+        const embed = new EmbedBuilder()
             .setColor(EMBED_PRIMARY)
             .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
             .setTitle(`〓 ${options.channelName}`)
@@ -36,7 +36,7 @@ async function sendToChannel(channelID, options) {
             discord_message.files = []
             for (let i = 0; i < options.pictures.length; i++) {
                 console.log("image" + i + ".jpg")
-                discord_message.files.push(new MessageAttachment(options.pictures[i], { name: "image" + i + ".jpg" }))
+                discord_message.files.push(new AttachmentBuilder(options.pictures[i], { name: "image" + i + ".jpg" }))
             }
             embed.setImage("attachment://image0.jpg")
         }
