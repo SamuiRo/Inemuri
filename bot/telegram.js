@@ -19,56 +19,80 @@ const client_options = {
     testServers: false,// this one should be the default for node env, but who knows for sure :)
     connectionRetries: 5
 }
-let client
+const client = new TelegramClient(stringSession, API_ID, API_HASH, client_options)
+const message_groups = {}
+let rows
 
 async function launch() {
-    print("Launch Telegram client")
-    client = new TelegramClient(stringSession, API_ID, API_HASH, client_options)
-    await client.start({
-        phoneNumber: async () => await input.text("number ?"),
-        password: async () => await input.text("password ?"),
-        phoneCode: async () => await input.text("code ?"),
-        onError: (err) => console.log(err),
-    })
+    try {
+        print("Launch Telegram client")
+        await client.start({
+            phoneNumber: async () => await input.text("number ?"),
+            password: async () => await input.text("password ?"),
+            phoneCode: async () => await input.text("code ?"),
+            onError: (err) => console.log(err),
+        })
 
-    const sheet = await load_sheet(1)
-    const rows = await load_rows(sheet)
+        const sheet = await load_sheet(1)
+        rows = await load_rows(sheet)
 
-    print("Add Event Handler")
-    client.addEventHandler(async (update) => {
-        // Якщо є медіа то media !== null
-        try {
-            if (!update.message) return
-            if (!update.message.senderId) return
-            if (update.className !== "UpdateNewChannelMessage") return
-            // change to new Set
-            const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
-            
-            if (options) {
-                print("Update")
-                if (typeof options.discord_group == "string") {
-                    options.discord_group.split(" ")
-                }
+        print("Add Event Handler")
+        client.addEventHandler(handle_update)
+        print("You should now be connected")
+        // console.log("------------------")
+        // console.log(client.session.save()) // Save this string to avoid logging in again
+        // console.log("------------------")
+        // await client.sendMessage("me", { message: client.session.save() })
+    } catch (error) {
+        console.log(error)
+    }
+}
 
-                options.message = update.message
-                await forward_to_discord(options)
-            }
-        } catch (error) {
-            _error(error.message)
+async function handle_update(update) {
+    try {
+        if (!update.message) return
+        if (!update.message.senderId) return
+        if (update.className !== "UpdateNewChannelMessage") return
+        const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
+        if (!options) return
+        print("Update")
+
+        if (typeof options.discord_group == "string") {
+            options.discord_group.split(" ")
         }
-    })
-    print("You should now be connected")
-    // console.log("------------------")
-    // console.log(client.session.save()) // Save this string to avoid logging in again
-    // console.log("------------------")
-    // await client.sendMessage("me", { message: client.session.save() })
+
+        if (update.message.groupedId) {
+            if (!message_groups[update.message.groupedId]) {
+                message_groups[update.message.groupedId] = [];
+            }
+            message_groups[update.message.groupedId].push(update.message);
+
+            // Встановіть таймер для опрацювання групи повідомлень після 5 секунд
+            clearTimeout(message_groups[update.message.groupedId].timer);
+            message_groups[update.message.groupedId].timer = setTimeout(() => {
+                process_message_group(options, update.message.groupedId);
+            }, 5000);
+            return
+        }
+
+        options.messages = [update.message]
+        // await forward_to_discord(options)
+
+    } catch (error) {
+        _error(error.message)
+    }
 }
 
 async function forward_to_discord(options) {
+    let discord_message = {
+        pictures: []
+    }
     try {
-        if (options.message.media && options.message.media.className == "MessageMediaPhoto") {
-            const downloadedMedia = await client.downloadMedia(options.message.media, {})
-            options.picture = downloadedMedia
+        for (let message of options.messages) {
+            if (message?.media.className === "MessageMediaPhoto") {
+                const downloaded_media = await client.downloadMedia(message.media, {})
+                discord_message.pictures.push(downloaded_media)
+            }
         }
 
         if (options.translate == "TRUE") {
@@ -77,25 +101,31 @@ async function forward_to_discord(options) {
             // options.message.message = text
         }
 
-        if (typeof options.discord_group == "string") {
-            options.discord_group = options.discord_group.split(' ')
+        if (typeof options.discord_group === "string") {
+            discord_message.discord_group = options.discord_group.split(" ")
         }
 
-        for (let channel of options.discord_group) {
-            try {
-                await Discord.sendToChannel(channel, { ...options })
-            } catch (error) {
-                _error(error.message)
-                alarm(`ERROR | LOOP_TO_DSCRD | ${error.message}`)
-                alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
-            }
-        }
-        delete options.picture
+        discord_message.message = options.messages[0].message
+        discord_message.channelName = options.channelName
+        discord_message.sub_tittle = options.sub_tittle
 
+        for (let channel of discord_message.discord_group) {
+            await Discord.sendToChannel(channel, discord_message)
+        }
     } catch (error) {
         _error(error.message)
         alarm(`ERROR | FRWRD_TO_DSCRD | ${error.message}`)
-        alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
+        // alarm(`message: \nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
+    }
+}
+
+async function process_message_group(options, group_id) {
+    try {
+        options.messages = message_groups[group_id];
+        await forward_to_discord(options);
+        delete message_groups[group_id];
+    } catch (error) {
+        console.log(error)
     }
 }
 

@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js")
+const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, MessageAttachment, MessageEmbed } = require("discord.js")
 const { CronJob } = require("cron")
 
 const { runCompletion } = require("./chat-gpt")
@@ -22,20 +22,23 @@ async function sendToChannel(channelID, options) {
             print(`Could not find channel with ID ${channelID}`)
             return
         }
-        if (options.message.message === "" || options.message.message === undefined) options.message.message = "Picture"
+        if (typeof options.message !== "string" || options.message === "") options.message = "Attachment"
         const discord_message = {}
 
-        const embed = new EmbedBuilder()
+        const embed = new MessageEmbed()
             .setColor(EMBED_PRIMARY)
             .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
             .setTitle(`〓 ${options.channelName}`)
-            .setDescription(options.message.message)
+            .setDescription(options.message)
             .setFooter({ text: `${localeDate()}` })
 
-        if (options.picture) {
-            const imageAttachment = new AttachmentBuilder(options.picture, { name: "image.jpg" })
-            embed.setImage("attachment://image.jpg")
-            discord_message.files = [imageAttachment]
+        if (options.pictures.length > 0) {
+            discord_message.files = []
+            for (let i = 0; i < options.pictures.length; i++) {
+                console.log("image" + i + ".jpg")
+                discord_message.files.push(new MessageAttachment(options.pictures[i], { name: "image" + i + ".jpg" }))
+            }
+            embed.setImage("attachment://image0.jpg")
         }
         discord_message.embeds = [embed]
 
@@ -44,7 +47,7 @@ async function sendToChannel(channelID, options) {
     } catch (error) {
         console.log(error)
         alarm(`ERROR | sendToChannel | ${error.message}`)
-        alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
+        // alarm(`message: ${options.message.className}\nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
     }
 }
 
