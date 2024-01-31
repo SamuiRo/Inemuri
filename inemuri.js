@@ -13,7 +13,7 @@ async function START() {
         // await Translator.launch()
         await Discord.launch()
         await Telegram.launch()
-        await Gmail.launch()
+        // await Gmail.launch()
     } catch (error) {
         _error(error.message)
         alarm(`ERROR | MAIN_LAUNCH | ${error.message}`)

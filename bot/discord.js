@@ -56,7 +56,7 @@ async function launch() {
     await interaction()
     await check_for_new_discussions()
     const job = new CronJob(
-        '5 0 * * *', // cronTime
+        '* * * * *', // cronTime
         notification, // onTick
         null, // onComplete
         true, // start
@@ -215,6 +215,15 @@ async function notification() {
                 message += `<#${element.id}>` + "\n"
             })
         }
+
+        message += "\n" + "**Провірити Дропи**" + "\n" +
+            "https://cointool.app/" + "\n" +
+            "https://cosmos.leapwallet.io/airdrops" +  "\n" +
+
+            "\n" + "**Управління**" + "\n" +
+            "https://wallet.keplr.app/" + "\n" +
+            "https://app.realms.today/dao/PYTH" + "\n" +
+            "https://snapshot.org/#/" + "\n"
 
         embed.setDescription(message)
         discord_message.embeds = [embed]

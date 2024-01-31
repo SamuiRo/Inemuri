@@ -88,7 +88,7 @@ async function forward_to_discord(options) {
     }
     try {
         for (let message of options.messages) {
-            if (message?.media.className === "MessageMediaPhoto") {
+            if (message?.media?.className === "MessageMediaPhoto") {
                 const downloaded_media = await client.downloadMedia(message.media, {})
                 discord_message.pictures.push(downloaded_media)
             }
