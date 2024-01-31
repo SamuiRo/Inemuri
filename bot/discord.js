@@ -56,7 +56,7 @@ async function launch() {
     await interaction()
     await check_for_new_discussions()
     const job = new CronJob(
-        '* * * * *', // cronTime
+        '5 0 * * *', // cronTime
         notification, // onTick
         null, // onComplete
         true, // start
