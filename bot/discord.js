@@ -207,10 +207,10 @@ async function notification() {
             "BTC.D: " + global_metrics.btc_dominance.toFixed(1) + "%" + " | BTC.D.Y: " + global_metrics.btc_dominance_yesterday.toFixed(1) + "%" + "\n" +
             "DEFI 24h change: " + global_metrics.defi_24h_percentage_change.toFixed(1) + "%" + "\n" +
             "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "\n" +
-            fear_and_greed.value_classification + ": " + fear_and_greed.value + "```\n"
+            fear_and_greed.value_classification + ": " + fear_and_greed.value + "```"
 
         if (new_discussions.length > 0) {
-            message += "**Нові Активності**" + "\n"
+            message += "\n" + "**Нові Активності**" + "\n"
             new_discussions.forEach(element => {
                 message += `<#${element.id}>` + "\n"
             })
@@ -218,7 +218,8 @@ async function notification() {
 
         message += "\n" + "**Провірити Дропи**" + "\n" +
             "https://cointool.app/" + "\n" +
-            "https://cosmos.leapwallet.io/airdrops" +  "\n" +
+            "https://cosmos.leapwallet.io/airdrops" + "\n" +
+            "https://solana-airdrop-checker.solworks.dev" + "\n" +
 
             "\n" + "**Управління**" + "\n" +
             "https://wallet.keplr.app/" + "\n" +
