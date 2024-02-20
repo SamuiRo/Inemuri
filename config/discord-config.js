@@ -9,4 +9,6 @@ module.exports = {
     INEMURI_CHANNEL: process.env.INEMURI_CHANNEL,
     FORUM_LIST: process.env.FORUM_LIST.split(","),
     GUILD_ID: process.env.GUILD_ID,
+    GOVERMENT_INFO_CHANNEL: process.env.GOVERMENT_INFO_CHANNEL,
+    AIRDROP_INFO_CHANNEL: process.env.AIRDROP_INFO_CHANNEL,
 }

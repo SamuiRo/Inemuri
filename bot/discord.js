@@ -5,7 +5,7 @@ const { runCompletion } = require("./chat-gpt")
 const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token, get_fear_and_greed_index } = require("./crypto-api")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
-const { DISCORD_BOT_TOKEN, EMBED_RED, EMBED_GREEN, EMBED_PRIMARY, INEMURI_CHANNEL, FORUM_LIST, GUILD_ID } = require("./../config/discord-config")
+const { DISCORD_BOT_TOKEN, EMBED_RED, EMBED_GREEN, EMBED_PRIMARY, INEMURI_CHANNEL, FORUM_LIST, GUILD_ID, AIRDROP_INFO_CHANNEL, GOVERMENT_INFO_CHANNEL } = require("./../config/discord-config")
 
 const client = new Client({
     intents: [
@@ -216,15 +216,8 @@ async function notification() {
             })
         }
 
-        message += "\n" + "**Провірити Дропи**" + "\n" +
-            "https://cointool.app/" + "\n" +
-            "https://cosmos.leapwallet.io/airdrops" + "\n" +
-            "https://solana-airdrop-checker.solworks.dev" + "\n" +
-
-            "\n" + "**Управління**" + "\n" +
-            "https://wallet.keplr.app/" + "\n" +
-            "https://app.realms.today/dao/PYTH" + "\n" +
-            "https://snapshot.org/#/" + "\n"
+        message += `\n<#${AIRDROP_INFO_CHANNEL}>` +
+            `\n<#${GOVERMENT_INFO_CHANNEL}>`
 
         embed.setDescription(message)
         discord_message.embeds = [embed]
