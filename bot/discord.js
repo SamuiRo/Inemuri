@@ -33,7 +33,7 @@ async function sendToChannel(channelID, options) {
         const embed = new EmbedBuilder()
             .setColor(EMBED_PRIMARY)
             .setAuthor({ name: `┍━━━━━ ${options.sub_tittle}` })
-            .setTitle(`〓 ${options.channelName}`)
+            .setTitle(`〓 ${options.channel_name}`)
             .setDescription(options.message)
             .setFooter({ text: `${localeDate()}` })
 

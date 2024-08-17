@@ -1,6 +1,6 @@
 {
   "name": "inemuri",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Telegram to Discord forward bot",
   "main": "inemuri.js",
   "scripts": {
