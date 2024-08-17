@@ -109,7 +109,7 @@ async function forward_to_discord(options) {
         }
 
         discord_message.message = options.messages[0].message
-        discord_message.channelName = options.channelName
+        discord_message.channel_name = options.channel_name
         discord_message.sub_tittle = options.sub_tittle
 
         for (let channel of options.discord_group) {
