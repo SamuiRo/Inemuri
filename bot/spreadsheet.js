@@ -2,34 +2,50 @@ const { GoogleSpreadsheet } = require("google-spreadsheet");
 
 const creds = require('../credentials/google-spreadsheet.creds.json'); // Шлях до файлу сертифікату облікового запису
 const { GOOGLE_SPREADSHEET_TABLE_ID } = require("../config/app-config")
-const { print } = require("../shared/utility")
+const { print, success, _error } = require("../shared/utility")
 
-let doc
+const spreadsheet_id = GOOGLE_SPREADSHEET_TABLE_ID
 
-async function ss_connect() {
+
+let sheets = {}
+
+async function ss_connect(spreadsheet_id) {
     try {
-        print("Spreadsheets Launch...")
+        print("SpreadSheets Connect...")
 
-        doc = new GoogleSpreadsheet(GOOGLE_SPREADSHEET_TABLE_ID); // Замініть на власний ідентифікатор таблиці
-        await doc.useServiceAccountAuth(creds)
-        await doc.loadInfo()
+        sheets[spreadsheet_id] = new GoogleSpreadsheet(spreadsheet_id);
 
-        print("Spreadsheets Ready")
+        await sheets[spreadsheet_id].useServiceAccountAuth(creds);
+
+        await sheets[spreadsheet_id].loadInfo()
+
+        success("SS Connect Ready")
     } catch (error) {
+        _error("SS Connect " + error)
         console.log(error)
     }
 }
 
-async function load_sheet(sheet_id) {
+async function load_sheet_by_id(sheet_id) {
     try {
-        const sheet = doc.sheetsByIndex[sheet_id]
+        const sheet = sheets[spreadsheet_id].sheetsByIndex[sheet_id]
 
         return sheet
     } catch (error) {
-        console.log(error)
+        _error(error)
     }
 }
-// Завантажте файл Google Sheets за його ідентифікатором
+
+async function load_sheet_by_title(title) {
+    try {
+        const sheet = sheets[spreadsheet_id].sheetsByTitle[title]
+
+        return sheet
+    } catch (error) {
+        _error(error)
+    }
+}
+
 async function load_rows(sheet) {
     try {
         const rows = await sheet.getRows()
@@ -37,7 +53,7 @@ async function load_rows(sheet) {
         return rows
 
     } catch (error) {
-        console.log(error)
+        _error(error)
     }
 }
 
@@ -47,9 +63,23 @@ async function update_row(row, key, value) {
     await row.save()
 }
 
+async function ss_init() {
+    try {
+        print("Init Spreadsheet ...")
+        
+        await ss_connect(spreadsheet_id)
+
+        success("SS Init Ready")
+    } catch (error) {
+        _error("SS Init" + error)
+    }
+}
+
 module.exports = {
     ss_connect,
-    load_sheet,
+    load_sheet_by_id,
+    load_sheet_by_title,
+    ss_init,
     load_rows,
     update_row
 }

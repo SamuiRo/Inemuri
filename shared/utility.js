@@ -1,7 +1,7 @@
 const chalk = require("chalk")
 const axios = require("axios")
 
-const { SECRETARY_TELEGRAM_CHAT_ID, SECRETARY_TELEGRAM_BOT_TOKEN } = require("./../config/telegram-config")
+const { SECRETARY_TELEGRAM_CHAT_ID, SECRETARY_TELEGRAM_BOT_TOKEN, TELEGRAM_LOG_CHAT_ID, TELEGRAM_LOG_BOT_TOKEN } = require("./../config/telegram-config")
 
 const chars = "𒆜 𓇻 𓆩⟡𓆪 ☒ ⌧ ⊠ ⌦ ⌫ ﹝ ﹞✖ ╳ ⁜ ╳ ✕ ※ ❖ 〣 〢Ⅶ Ⅷ Ⅹ Ⅲ ⛛ ⛚ ⎔ ☖ ⌬ ⧖ ⋈ ϟ"
 
@@ -17,13 +17,19 @@ async function sleep(time) {
 function print(text) {
     const current_date = new Date
 
-    console.log(chalk.red(current_date.toLocaleString()) + " | " + chalk.magenta(text))
+    console.log(chalk.red("▱ |") + ` ${current_date.toLocaleString()} ` + chalk.red("|") + chalk.blue(" [INFO]") + ` ${text}`);
+}
+
+function success(text) {
+    const current_date = new Date
+
+    console.log(chalk.red("▰ |") + ` ${current_date.toLocaleString()} ` + chalk.red("|") + chalk.green(" [SUCCESS]") + ` ${text}`);
 }
 
 function _error(text) {
     const current_date = new Date
 
-    console.log(chalk.red(current_date.toLocaleString()) + "| ERROR |", chalk.magenta(text))
+    console.log(chalk.red("▰ |") + ` ${current_date.toLocaleString()} ` + chalk.red("|") + chalk.red(" [ERROR]") + ` ${text}`);
 }
 
 async function alarm(text) {
@@ -34,6 +40,22 @@ async function alarm(text) {
         }
 
         const url = `https://api.telegram.org/bot${SECRETARY_TELEGRAM_BOT_TOKEN}/sendMessage`
+        const response = await axios.post(url, config)
+
+        return response.data
+    } catch (error) {
+        console.log(error)
+    }
+}
+
+async function telegram_log(text) {
+    try {
+        const config = {
+            chat_id: TELEGRAM_LOG_CHAT_ID,
+            text: `${text}`
+        }
+
+        const url = `https://api.telegram.org/bot${TELEGRAM_LOG_BOT_TOKEN}/sendMessage`
         const response = await axios.post(url, config)
 
         return response.data
@@ -81,8 +103,10 @@ module.exports = {
     sleep,
     print,
     alarm,
+    telegram_log,
     localeDate,
     _dateDifference,
     _error,
+    success,
     send_long_message_via_telegram_bot
 }

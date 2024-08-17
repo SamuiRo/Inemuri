@@ -176,10 +176,28 @@ async function get_fear_and_greed_index() {
     }
 }
 
+async function get_altseason_index() {
+    try {
+        const alteason_index_selector = `#season > div > div > div:nth-child(3) > div:nth-child(1)`
+        const altseason_status_selector = `#season > div > div > div.text-center.m-3 > span`
+        const response = await axios.get("https://www.blockchaincenter.net/en/altcoin-season-index/")
+
+        const $ = cheerio.load(response.data);
+
+        const alteason_index = $(alteason_index_selector).text();
+        const altseason_status = $(altseason_status_selector).text();
+
+        return { index: alteason_index, status: altseason_status }
+    } catch (error) {
+        console.log(error)
+    }
+}
+
 module.exports = {
     check_starknet_address,
     check_layerzero_address,
     cmc_global_metrics,
     cmc_find_token,
-    get_fear_and_greed_index
+    get_fear_and_greed_index,
+    get_altseason_index,
 }

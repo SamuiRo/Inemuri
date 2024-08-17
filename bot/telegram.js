@@ -8,7 +8,8 @@ const { load_sheet, load_rows } = require("./spreadsheet")
 const { SESSION, API_ID, API_HASH } = require("./../config/telegram-config")
 const Discord = require("./discord")
 const Translator = require("./../bot/translator")
-const { print, _error, alarm } = require("./../shared/utility")
+const { print, _error, alarm, telegram_log } = require("./../shared/utility")
+const Telegram_Channel = require("../module/sqlite/models/Telegram_Channel")
 
 const stringSession = new StringSession(SESSION) // fill this later with the value from session.save()
 const client_options = {
@@ -33,8 +34,8 @@ async function launch() {
             onError: (err) => console.log(err),
         })
 
-        const sheet = await load_sheet(1)
-        rows = await load_rows(sheet)
+        // const sheet = await load_sheet(1)
+        // rows = await load_rows(sheet)
 
         print("Add Event Handler")
         client.addEventHandler(handle_update)
@@ -53,8 +54,11 @@ async function handle_update(update) {
         if (!update.message) return
         if (!update.message.senderId) return
         if (update.className !== "UpdateNewChannelMessage") return
-        const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
+        // const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
+        const options = await Telegram_Channel.findOne({ where: { channel_id: update.message.senderId.value } })
+        console.log(options)
         if (!options) return
+        await telegram_log(`${update.message.senderId} ${options.channel_name}`)
         print("Update")
 
         if (typeof options.discord_group == "string") {
@@ -108,11 +112,11 @@ async function forward_to_discord(options) {
         discord_message.channelName = options.channelName
         discord_message.sub_tittle = options.sub_tittle
 
-        for (let channel of discord_message.discord_group) {
+        for (let channel of options.discord_group) {
             await Discord.sendToChannel(channel, discord_message)
         }
     } catch (error) {
-        _error(error.message)
+        _error(error)
         alarm(`ERROR | FRWRD_TO_DSCRD | ${error.message}`)
         // alarm(`message: \nchannelName: ${options.channelName}\nmessageLength: ${options.message.message.length}`)
     }

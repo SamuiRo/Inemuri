@@ -2,10 +2,15 @@ const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, MessageAttac
 const { CronJob } = require("cron")
 
 const { runCompletion } = require("./chat-gpt")
-const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token, get_fear_and_greed_index } = require("./crypto-api")
+const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token, get_fear_and_greed_index, get_altseason_index } = require("./crypto-api")
+const { load_routine_from_spreadsheets, load_telegram_channels_from_spreadsheets } = require("../module/synchro/spreadsheet.synchro")
 
 const { print, localeDate, alarm } = require("./../shared/utility")
+
 const { DISCORD_BOT_TOKEN, EMBED_RED, EMBED_GREEN, EMBED_PRIMARY, INEMURI_CHANNEL, FORUM_LIST, GUILD_ID, AIRDROP_INFO_CHANNEL, GOVERMENT_INFO_CHANNEL } = require("./../config/discord-config")
+const { ALLOWED_SPECIAL_USERS } = require("../config/app-config")
+
+const allowed_users = ALLOWED_SPECIAL_USERS
 
 const client = new Client({
     intents: [
@@ -50,6 +55,51 @@ async function sendToChannel(channelID, options) {
     }
 }
 
+async function batch_send_to_channel(channelID, message_list) {
+    try {
+        const channel = client.channels.cache.get(channelID)
+
+        if (!channel) {
+            print(`Could not find channel with ID ${channelID}`)
+            return
+        }
+
+        for (message of message_list) {
+            const discord_message = {}
+
+            if (message.embed) {
+                // console.log()
+                const embed = new EmbedBuilder()
+                    .setColor(message.embed.color)
+
+                if (message.embed.author) embed.setAuthor({ name: message.embed.author });
+                if (message.embed.title) embed.setTitle(message.embed.title);
+                if (message.embed.description) embed.setDescription(message.embed.description);
+                // if (message.embed.description) embed.setFooter({ text: `${localeDate()}` });
+                // .setAuthor({ name: message.embed.author })
+                // .setTitle(message.embed.title)
+                // .setDescription(message.embed.description)
+                // .setFooter({ text: `${localeDate()}` })
+
+                discord_message.embeds = [embed]
+            }
+            if (message.text) {
+                discord_message.content = message.text;
+            }
+            console.log(discord_message)
+            const response = await channel.send(discord_message)
+
+            console.log(`Sended ${response}`)
+        }
+
+        console.log("All Sendet")
+
+    } catch (error) {
+        console.log(error)
+    }
+
+}
+
 async function launch() {
     await client.login(DISCORD_BOT_TOKEN)
     await client_ready()
@@ -69,6 +119,21 @@ async function client_ready() {
         await client.application.commands.set([]);
 
         const slashCommandBuilders = [
+            {
+                name: 'repeat-daily-notification',
+                description: 'Generate new daily notification',
+                type: 1,
+            },
+            {
+                name: 'update-routine-list',
+                description: 'Update routine list from spreadsheets',
+                type: 1,
+            },
+            {
+                name: 'update-telegram-whitelist',
+                description: 'Update telegram channels whitelist and config from spreadsheets',
+                type: 1,
+            },
             {
                 name: 'gpt',
                 description: 'Make a GPT request',
@@ -132,19 +197,46 @@ async function interaction() {
 
         const { commandName, options } = interaction;
         try {
+
+            if (commandName === 'repeat-daily-notification') {
+                if (!allowed_users.includes(interaction.user.id)) {
+                    await interaction.reply({ content: 'У вас немає доступу до цієї команди.', ephemeral: true });
+                    return;
+                }
+                await interaction.deferReply({ ephemeral: true });
+                await notification()
+                await interaction.editReply({ content: 'Згенеровано новий пост', ephemeral: true });
+            }
+            if (commandName === 'update-routine-list') {
+                if (!allowed_users.includes(interaction.user.id)) {
+                    await interaction.reply({ content: 'У вас немає доступу до цієї команди.', ephemeral: true });
+                    return;
+                }
+                await interaction.deferReply({ ephemeral: true });
+                await load_routine_from_spreadsheets()
+                await interaction.editReply({ content: 'Routine Updated', ephemeral: true });
+            }
+            if (commandName === 'update-telegram-whitelist') {
+                if (!allowed_users.includes(interaction.user.id)) {
+                    await interaction.reply({ content: 'У вас немає доступу до цієї команди.', ephemeral: true });
+                    return;
+                }
+                await interaction.deferReply({ ephemeral: true });
+                await load_telegram_channels_from_spreadsheets()
+                await interaction.editReply({ content: 'Telegram Whitelist updated', ephemeral: true });
+            }
             if (commandName === 'gpt') {
-                const resp = await runCompletion();
-                interaction.reply("tmprl closed");
+                interaction.reply({ content: "closed", ephemeral: true });
             }
             if (commandName === 'starknet-stats') {
                 const addresses = options.getString('addresses');
                 const response = await check_starknet_address(addresses.split(" "));
-                interaction.reply(response);
+                interaction.reply({ content: response, ephemeral: true });
             }
             if (commandName === 'layerzero-stats') {
                 const address = await options.getString("address");
                 const response = await check_layerzero_address(address);
-                interaction.reply(response);
+                interaction.reply({ content: response, ephemeral: true });
             }
         } catch (error) {
             console.error(`Error while processing '${commandName}' command:`, error);
@@ -198,15 +290,18 @@ async function notification() {
         const btc_stat = await cmc_find_token("BTC")
         const new_discussions = await check_for_new_discussions()
         const fear_and_greed = await get_fear_and_greed_index()
+        const altcoin_season = await get_altseason_index()
 
         if (btc_stat.quote.USD.percent_change_24h > 0) { embed.setColor(EMBED_GREEN) }
         if (btc_stat.quote.USD.percent_change_24h < 0) { embed.setColor(EMBED_RED) }
 
-        let message = "**Метрики**" + "\n" +
+        let message = "**Crypto Метрики**" + "\n" +
             "```java\nBTC | " + "Price " + btc_stat.quote.USD.price.toFixed(1) + " | 24h change: " + btc_stat.quote.USD.percent_change_24h.toFixed(1) + "%" + "\n" +
             "BTC.D: " + global_metrics.btc_dominance.toFixed(1) + "%" + " | BTC.D.Y: " + global_metrics.btc_dominance_yesterday.toFixed(1) + "%" + "\n" +
             "DEFI 24h change: " + global_metrics.defi_24h_percentage_change.toFixed(1) + "%" + "\n" +
             "Derivatives 24h change: " + global_metrics.derivatives_24h_percentage_change.toFixed(1) + "%" + "\n" +
+            "Alt Index: " + altcoin_season.index + "/100" + "\n" +
+            "Alt Status: " + altcoin_season.status + "\n" +
             fear_and_greed.value_classification + ": " + fear_and_greed.value + "```"
 
         if (new_discussions.length > 0) {
@@ -228,7 +323,24 @@ async function notification() {
     }
 }
 
+async function clear_channel(channelID) {
+    try {
+        const channel = await client.channels.fetch(channelID)
+
+        const messages = await channel.messages.fetch({ limit: 100 });
+        const deletePromises = messages.map(message => message.delete());
+        await Promise.all(deletePromises);
+
+        console.log('Channel cleared!');
+
+    } catch (error) {
+        console.log(error)
+    }
+}
+
 module.exports = {
     launch,
     sendToChannel,
+    clear_channel,
+    batch_send_to_channel
 }
