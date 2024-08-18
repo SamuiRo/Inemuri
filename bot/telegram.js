@@ -2,6 +2,7 @@ const os = require("os")
 const input = require("input") // npm i input
 const { TelegramClient } = require("telegram")
 const { StringSession } = require("telegram/sessions")
+const { NewMessage } = require("telegram/events")
 
 const pkg = require("./../package.json")
 const { load_sheet, load_rows } = require("./spreadsheet")
@@ -33,12 +34,22 @@ async function launch() {
             phoneCode: async () => await input.text("code ?"),
             onError: (err) => console.log(err),
         })
+        // await client.connect()
+        // await client.getMe();
+        // setInterval(async () => {
+        //     client._sender?.reconnect();
+        // }, 1000 * 60);
+        // setInterval(async () => {
+        //     client.getMe();
+        // }, 1000 * 60);
+        // setInterval(client.getMe, 5000)
 
         // const sheet = await load_sheet(1)
         // rows = await load_rows(sheet)
 
         print("Add Event Handler")
-        client.addEventHandler(handle_update)
+        const filtred_ids = await getAllChannelIds()
+        client.addEventHandler(handle_update, new NewMessage({ chats: filtred_ids }))
         print("You should now be connected")
         // console.log("------------------")
         // console.log(client.session.save()) // Save this string to avoid logging in again
@@ -51,15 +62,17 @@ async function launch() {
 
 async function handle_update(update) {
     try {
-        if (!update.message) return
-        if (!update.message.senderId) return
-        if (update.className !== "UpdateNewChannelMessage") return
-        // const options = rows.find(element => { return +element.channelId == update.message.senderId.value })
+        // console.log(update)
+        try {
+            await telegram_log(`${update.message.senderId} ${update.originalUpdate.className}`)
+        } catch (error) {
+            console.log(error)
+        }
+
         const options = await Telegram_Channel.findOne({ where: { channel_id: update.message.senderId.value } })
-        console.log(options)
+
         if (!options) return
-        await telegram_log(`${update.message.senderId} ${options.channel_name}`)
-        print("Update")
+        print("Update from " + options.channel_name)
 
         if (typeof options.discord_group == "string") {
             options.discord_group.split(" ")
@@ -129,6 +142,22 @@ async function process_message_group(options, group_id) {
         delete message_groups[group_id];
     } catch (error) {
         console.log(error)
+    }
+}
+
+async function getAllChannelIds() {
+    try {
+        const channels = await Telegram_Channel.findAll({
+            where: { translate: false },
+            attributes: ['channel_id'] // Вибираємо тільки поле channel_id
+        });
+
+        // Отримуємо масив тільки з channel_id
+        const channelIds = channels.map(channel => channel.channel_id);
+        return channelIds;
+    } catch (error) {
+        console.error('Помилка при отриманні channel_id:', error.message);
+        return [];
     }
 }
 

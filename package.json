@@ -1,6 +1,6 @@
 {
   "name": "inemuri",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Telegram to Discord forward bot",
   "main": "inemuri.js",
   "scripts": {
@@ -37,6 +37,6 @@
     "sequelize-cli": "^6.6.2",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
-    "telegram": "^2.15.10"
+    "telegram": "^2.23.10"
   }
 }
