@@ -3,7 +3,6 @@ const cheerio = require('cheerio');
 
 const { CMC_API_KEY } = require("../config/crypto-api-config")
 
-
 async function check_starknet_address(addresses) {
     let options = {
         content: "Address is incorrect",

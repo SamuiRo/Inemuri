@@ -64,7 +64,7 @@ async function batch_send_to_channel(channelID, message_list) {
             return
         }
 
-        for (message of message_list) {
+        for (let message of message_list) {
             const discord_message = {}
 
             if (message.embed) {

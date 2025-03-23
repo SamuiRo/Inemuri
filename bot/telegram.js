@@ -34,18 +34,6 @@ async function launch() {
             phoneCode: async () => await input.text("code ?"),
             onError: (err) => console.log(err),
         })
-        // await client.connect()
-        // await client.getMe();
-        // setInterval(async () => {
-        //     client._sender?.reconnect();
-        // }, 1000 * 60);
-        // setInterval(async () => {
-        //     client.getMe();
-        // }, 1000 * 60);
-        // setInterval(client.getMe, 5000)
-
-        // const sheet = await load_sheet(1)
-        // rows = await load_rows(sheet)
 
         print("Add Event Handler")
         const filtred_ids = await getAllChannelIds()
@@ -62,13 +50,15 @@ async function launch() {
 
 async function handle_update(update) {
     try {
-        // console.log(update)
-        try {
-            await telegram_log(`${update.message.senderId} ${update.originalUpdate.className}`)
-        } catch (error) {
-            console.log(error)
-        }
-
+        console.log(update)
+        console.log("======================")
+        console.log("======================")
+        console.log("======================")
+        console.log(update.message.media)
+        console.log("!!!!!!!!!!!!!!!!!!!!")
+        console.log("!!!!!!!!!!!!!!!!!!!!")
+        console.log("!!!!!!!!!!!!!!!!!!!!")
+        console.log(update.message.media.document)
         const options = await Telegram_Channel.findOne({ where: { channel_id: update.message.senderId.value } })
 
         if (!options) return
