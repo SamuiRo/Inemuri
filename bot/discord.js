@@ -1,7 +1,6 @@
-const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder, MessageAttachment, MessageEmbed } = require("discord.js")
+const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js")
 const { CronJob } = require("cron")
 
-const { runCompletion } = require("./chat-gpt")
 const { check_starknet_address, check_layerzero_address, cmc_global_metrics, cmc_find_token, get_fear_and_greed_index, get_altseason_index } = require("./crypto-api")
 const { load_routine_from_spreadsheets, load_telegram_channels_from_spreadsheets } = require("../module/synchro/spreadsheet.synchro")
 

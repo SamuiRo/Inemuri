@@ -15,7 +15,7 @@ const Telegram_Channel = require("../module/sqlite/models/Telegram_Channel")
 const stringSession = new StringSession(SESSION) // fill this later with the value from session.save()
 const client_options = {
     deviceModel: `${pkg.name}@${os.hostname()}`,
-    systemVersion: os.version() || "Unknown node",
+    systemVersion: os.version() || "Inemuri Unknown Node",
     appVersion: pkg.version,
     useWSS: true, // not sure if it works in node at all
     testServers: false,// this one should be the default for node env, but who knows for sure :)
@@ -50,14 +50,7 @@ async function launch() {
 
 async function handle_update(update) {
     try {
-        console.log(update)
-        console.log("======================")
-        console.log("======================")
-        console.log("======================")
-        console.log(update.message.media)
-        console.log("!!!!!!!!!!!!!!!!!!!!")
-        console.log("!!!!!!!!!!!!!!!!!!!!")
-        console.log("!!!!!!!!!!!!!!!!!!!!")
+        
         console.log(update.message.media.document)
         const options = await Telegram_Channel.findOne({ where: { channel_id: update.message.senderId.value } })
 
