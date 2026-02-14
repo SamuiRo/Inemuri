@@ -1,0 +1,8 @@
+{
+    "colors":{
+        "RED": "0xff4c4c",
+        "GREEN": "0x2cff8f",
+        "PRIMARY": "0xe98ca1",
+        "SECONDARY": "0x8258ff"
+    }
+}

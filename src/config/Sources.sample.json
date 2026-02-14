@@ -1,0 +1,79 @@
+{
+  "sources": [
+    {
+      "platform": "telegram",
+      "channel_id": "-123123123123",
+      "channel_name": "Test",
+      "is_active": true,
+      "text_replacements": {
+        "enabled": true,
+        "patterns": [
+          {
+            "pattern": "🎮 FOOTER:.*?END FOOTER",
+            "replacement": "",
+            "is_regex": true,
+            "flags": "gis",
+            "comment": "Видаляє футер з емодзі та текстом між FOOTER та END FOOTER"
+          },
+          {
+            "pattern": "━━━━━━━━━━━━━━━",
+            "replacement": "",
+            "is_regex": false,
+            "comment": "Видаляє декоративні лінії"
+          },
+          {
+            "pattern": "",
+            "replacement": "",
+            "is_regex": true,
+            "flags": "gi",
+            "comment": ""
+          }
+        ]
+      },
+      "filters": {
+        "enabled": true,
+        "keywords": [],
+        "blacklist": [],
+        "case_sensitive": false
+      },
+      "destinations": {
+        "telegram": [],
+        "discord": ["123123123123"]
+      }
+    },
+    {
+      "platform": "telegram",
+      "channel_id": "-123123123",
+      "channel_name": "Test 2 ",
+      "is_active": true,
+      "text_replacements": {
+        "enabled": true,
+        "patterns": [
+          {
+            "pattern": "\\[Sponsored\\].*?\\[/Sponsored\\]",
+            "replacement": "",
+            "is_regex": true,
+            "flags": "gis",
+            "comment": "Видаляє рекламні блоки"
+          },
+          {
+            "pattern": "@techchannel",
+            "replacement": "",
+            "is_regex": false,
+            "comment": "Видаляє згадки каналу"
+          }
+        ]
+      },
+      "filters": {
+        "enabled": false,
+        "keywords": [],
+        "blacklist": [],
+        "case_sensitive": false
+      },
+      "destinations": {
+        "telegram": [],
+        "discord": ["123123123123"]
+      }
+    }
+  ]
+}

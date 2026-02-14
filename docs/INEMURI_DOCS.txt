@@ -1,0 +1,142 @@
+📋 Документація проєкту - Inemuri
+🎯 Призначення проєкту
+Inemuri - це автоматизована система для збору, обробки та маршрутизації контенту між різними платформами (Telegram, Discord та ін.). Система прослуховує вказані джерела, обробляє отримані дані за налаштованими правилами та доставляє їх до потрібних отримувачів.
+
+🏗️ Архітектурний підхід
+Модульний монолітний додаток з event-driven архітектурою:
+
+Один Node.js процес (ESM)
+Внутрішня шина подій (Event Bus) для зв'язку між компонентами
+SQLite для зберігання даних
+Google Sheets для керування конфігурацією
+
+
+📐 Основні архітектурні концепти
+1. Event Bus Pattern
+Центральна шина подій для комунікації між модулями:
+
+message.received - нове повідомлення від джерела
+message.routed - визначено маршрут доставки
+message.processed - повідомлення оброблено
+message.sent - успішно відправлено
+error.occurred - помилка в системі
+
+2. Adapter Pattern
+Всі джерела (sources) і отримувачі (destinations) реалізують єдиний інтерфейс:
+
+SourceAdapter - базовий клас для джерел (Telegram, Discord)
+DestinationAdapter - базовий клас для отримувачів
+
+3. Rule Engine
+Система правил для маршрутизації контенту:
+
+Фільтрація за джерелом, ключовими словами, типом медіа
+Застосування процесорів (форматування, фільтри)
+Визначення пунктів призначення
+
+4. Config Provider
+Керування конфігурацією через Google Sheets:
+
+Динамічне оновлення правил без перезапуску
+Fallback на SQLite при недоступності Sheets
+Кешування для продуктивності
+
+
+🗂️ Структура проєкту
+src/
+├── core/                      # Ядро системи
+│   ├── event-bus/            # Шина подій
+│   ├── database/             # SQLite wrapper
+│   ├── config/               # Конфігурація
+│   └── logger/               # Логування
+│
+├── sources/                   # Джерела контенту
+│   ├── base/                 # Базовий SourceAdapter
+│   ├── telegram/             # Telegram source
+│   ├── discord/              # Discord source
+│   └── index.js              # Реєстр джерел
+│
+├── destinations/              # Отримувачі контенту
+│   ├── base/                 # Базовий DestinationAdapter
+│   ├── telegram/             # Telegram destination
+│   ├── discord/              # Discord destination
+│   ├── webhook/              # Generic webhook
+│   └── index.js              # Реєстр отримувачів
+│
+├── processors/                # Обробка контенту
+│   ├── base/                 # Базовий Processor
+│   ├── text-formatter/       # Форматування тексту
+│   ├── media-handler/        # Обробка медіа
+│   └── filter/               # Фільтрація
+│
+├── routing/                   # Логіка маршрутизації
+│   ├── router.js             # Головний роутер
+│   ├── rule-engine.js        # Правила маршрутизації
+│   └── config-provider.js    # Інтеграція з Google Sheets
+│
+├── services/                  # Допоміжні сервіси
+│   ├── scheduler/            # Планувальник задач
+│   ├── cache/                # Кешування
+│   └── health-check/         # Моніторинг здоров'я
+│
+├── api/                       # Інтерфейси керування
+│   ├── telegram-bot/         # Telegram команди
+│   ├── discord-bot/          # Discord команди
+│   └── rest/                 # REST API (опціонально)
+│
+└── index.js                   # Точка входу
+
+🔄 Потік даних
+Source (Telegram/Discord)
+    ↓ emit('message.received')
+Event Bus
+    ↓
+Router → Rule Engine → Config Provider (Google Sheets)
+    ↓ emit('message.routed')
+Processors (filters, formatters)
+    ↓ emit('message.processed')
+Destination (Telegram/Discord/Webhook)
+    ↓ emit('message.sent')
+Database (logging)
+
+💾 База даних (SQLite)
+Таблиці:
+
+messages - всі отримані повідомлення
+deliveries - історія доставок
+sources_config - конфігурація джерел (fallback)
+routing_rules - правила маршрутизації (кеш з Sheets)
+
+
+🔧 Технологічний стек
+
+Runtime: Node.js (ESM modules)
+Database: SQLite
+Config: Google Sheets API
+Event System: Custom in-memory Event Bus
+Platforms: Telegram Bot API, Discord.js
+
+
+🚀 Переваги архітектури
+✅ Розширюваність - нові джерела/отримувачі додаються як плагіни
+✅ Тестовність - модулі ізольовані та легко тестуються
+✅ Гнучка конфігурація - керування через Google Sheets
+✅ Event-driven - слабка зв'язаність між компонентами
+✅ Простота розгортання - один процес, легкий деплой
+✅ Готовність до масштабування - Event Bus легко замінити на Kafka
+
+📝 Приклад використання для ШІ
+Промпт для ШІ:
+
+Я працюю над проєктом Content Router Bot - системою маршрутизації контенту між платформами (Telegram, Discord).
+Архітектура:
+
+Модульний монолітний Node.js додаток (ESM)
+Event-driven архітектура з внутрішнім Event Bus
+Adapter Pattern для джерел (sources) і отримувачів (destinations)
+Rule Engine для маршрутизації контенту
+Config Provider з Google Sheets для керування правилами
+SQLite для зберігання та логування
+
+Структура: core/ (event-bus, database, config) → sources/ (telegram, discord) → routing/ (router, rule-engine) → processors/ → destinations/ → api/ (telegram-bot, discord-bot)
+Потік: Source отримує повідомлення → emit в Event Bus → Router застосовує правила → Processors обробляють → Destination відправляє → Database логує
