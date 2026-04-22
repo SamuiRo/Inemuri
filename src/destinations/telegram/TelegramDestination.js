@@ -83,7 +83,7 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
       let sentMessage;
 
-      let text = messageData.source.name + ":\n" + messageData.text;
+      let text = messageData.source.name + "\n" + messageData.text;
       // Якщо є медіа - відправляємо з медіа
       if (
         messageData.downloadedMedia &&

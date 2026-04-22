@@ -2,6 +2,7 @@ import chalk from "chalk";
 import gradient from "gradient-string";
 import fs from "fs/promises";
 import path from "path";
+import sharp from 'sharp';
 import { fileURLToPath } from "url";
 
 // Для роботи з __dirname в ESM
@@ -155,7 +156,7 @@ export function _error(text) {
 /**
  * Завантажує картинку з файлової системи
  * @param {string} filename - Назва файлу в папці assets/images/
- * @returns {Promise<Object|null>} - {data: Buffer, filename: string, mimeType: string}
+ * @returns {Promise<Object|null>} - {data: Buffer, filename: string, mimeType: string, fileSize: number, width: number, height: number}
  */
 export async function loadImage(filename) {
   try {
@@ -172,11 +173,18 @@ export async function loadImage(filename) {
       ".webp": "image/webp",
     };
 
+    // Отримуємо метадані зображення (розміри)
+    const metadata = await sharp(data).metadata();
+
     return {
+      type: "photo",
       data,
-      filename,
+      filename: undefined, // згідно з твоїм прикладом
       mimeType: mimeTypes[ext] || "image/png",
-      type: "photo", // для Discord adapter
+      fileSize: data.length,
+      duration: undefined,
+      width: metadata.width,
+      height: metadata.height,
     };
   } catch (error) {
     print(`Failed to load image ${filename}: ${error.message}`, "error");
@@ -190,5 +198,23 @@ export async function saveToJson(filePath, data) {
     // console.log('✅ Дані збережено у', filePath);
   } catch (error) {
     console.error("Saving error:", error);
+  }
+}
+
+// Перезаписує txt (як writeFile)
+export async function saveToTxt(filePath, text) {
+  try {
+    await fs.writeFile(filePath, text, "utf-8");
+  } catch (error) {
+    console.error("TXT saving error:", error);
+  }
+}
+
+// Дописує в кінець з нового рядка (створить файл, якщо нема)
+export async function appendToTxt(filePath, text) {
+  try {
+    await fs.appendFile(filePath, text + "\n", "utf-8");
+  } catch (error) {
+    console.error("TXT append error:", error);
   }
 }

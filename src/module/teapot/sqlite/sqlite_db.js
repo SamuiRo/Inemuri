@@ -50,10 +50,17 @@ export class Database {
 
     try {
       // Налаштування для різних середовищ
-      const syncOptions =
+      // const syncOptions =
+      //   NODE_ENV === "development"
+      //     ? { force: true, ...options }
+      //     : { alter: true, ...options };
+
+          const syncOptions =
         NODE_ENV === "development"
           ? { force: true, ...options }
-          : { alter: true, ...options };
+          : {  ...options };
+
+          
 
       await this.sequelize.sync(syncOptions);
       print("Database synchronized successfully", "success");

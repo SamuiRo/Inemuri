@@ -9,8 +9,23 @@ class MessageRouter {
   }
 
   setupEventHandlers() {
+    // CRITICAL FIX: Обгортаємо async handler в try-catch
+    // щоб помилки не ламали event listener
     this.eventBus.on("message.received", async (messageData) => {
-      await this.routeMessage(messageData);
+      try {
+        await this.routeMessage(messageData);
+      } catch (error) {
+        print(`[ROUTER] Critical error in message.received handler: ${error.message}`, "error");
+        console.error(error);
+        
+        // Емітуємо помилку але продовжуємо роботу
+        this.eventBus.emitError({
+          source: "router",
+          error: error.message,
+          messageData,
+          stack: error.stack,
+        });
+      }
     });
   }
 
@@ -72,11 +87,21 @@ class MessageRouter {
         );
 
         for (const destinationId of destinationList) {
-          await this.sendToDestination(
-            platform,
-            destinationId,
-            messageData,
-          );
+          // CRITICAL FIX: Обгортаємо кожну відправку в try-catch
+          // щоб помилка в одному destination не ламала інші
+          try {
+            await this.sendToDestination(
+              platform,
+              destinationId,
+              messageData,
+            );
+          } catch (error) {
+            print(
+              `[ROUTER] Failed to send to ${platform}:${destinationId}, but continuing with other destinations`,
+              "warning",
+            );
+            // Помилка вже залогована, продовжуємо з іншими destinations
+          }
         }
       }
 
@@ -96,6 +121,9 @@ class MessageRouter {
         messageId: messageData.messageId,
         stack: error.stack,
       });
+      
+      // Кидаємо помилку далі щоб її спіймав handler в setupEventHandlers
+      throw error;
     }
   }
 

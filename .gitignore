@@ -3,6 +3,7 @@
 /database
 /src/config/Sources.json
 /src/config/cronjob.config.json
+/test
 
 # Logs
 logs

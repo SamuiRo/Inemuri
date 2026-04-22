@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sources Config Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --bg2: #111115;
+    --bg3: #18181e;
+    --bg4: #1f1f27;
+    --border: #2a2a35;
+    --border2: #3a3a48;
+    --text: #e8e8f0;
+    --text2: #9090a8;
+    --text3: #5a5a70;
+    --accent: #6c63ff;
+    --accent2: #8b84ff;
+    --accent-dim: rgba(108,99,255,0.12);
+    --green: #3dd68c;
+    --green-dim: rgba(61,214,140,0.1);
+    --red: #ff5e7a;
+    --red-dim: rgba(255,94,122,0.1);
+    --yellow: #f5c842;
+    --yellow-dim: rgba(245,200,66,0.1);
+    --radius: 8px;
+    --radius2: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* HEADER */
+  header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg2);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; color: var(--text); letter-spacing: -0.02em; }
+  .logo span { color: var(--accent2); }
+  .header-actions { display: flex; gap: 10px; align-items: center; }
+
+  /* LAYOUT */
+  .app { display: grid; grid-template-columns: 1fr 420px; flex: 1; gap: 0; height: calc(100vh - 61px); overflow: hidden; }
+  .left-panel { overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .right-panel { border-left: 1px solid var(--border); overflow-y: auto; background: var(--bg2); display: flex; flex-direction: column; }
+
+  /* BUTTONS */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: var(--radius);
+    border: 1px solid transparent; cursor: pointer;
+    font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; font-weight: 500;
+    transition: all 0.15s; white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .btn-primary:hover { background: var(--accent2); border-color: var(--accent2); }
+  .btn-ghost { background: transparent; color: var(--text2); border-color: var(--border); }
+  .btn-ghost:hover { background: var(--bg4); color: var(--text); border-color: var(--border2); }
+  .btn-danger { background: var(--red-dim); color: var(--red); border-color: rgba(255,94,122,0.2); }
+  .btn-danger:hover { background: rgba(255,94,122,0.18); }
+  .btn-success { background: var(--green-dim); color: var(--green); border-color: rgba(61,214,140,0.2); }
+  .btn-success:hover { background: rgba(61,214,140,0.18); }
+  .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+  .btn-icon { padding: 6px 8px; }
+  .btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  /* SOURCE CARD */
+  .source-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: var(--radius2); overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .source-card:hover { border-color: var(--border2); }
+  .source-card.inactive { opacity: 0.5; }
+  .source-card.expanded { border-color: var(--accent); border-color: rgba(108,99,255,0.4); }
+
+  .card-header {
+    padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+    cursor: pointer; user-select: none;
+    background: var(--bg3);
+  }
+  .card-header:hover { background: var(--bg4); }
+
+  .platform-badge {
+    font-size: 0.65rem; font-weight: 600; padding: 2px 8px;
+    border-radius: 20px; text-transform: uppercase; letter-spacing: 0.06em;
+    flex-shrink: 0;
+  }
+  .platform-telegram { background: rgba(36,161,222,0.15); color: #24a1de; }
+  .platform-discord { background: rgba(88,101,242,0.15); color: #5865f2; }
+  .platform-unknown { background: var(--bg4); color: var(--text3); }
+
+  .card-title { flex: 1; font-size: 0.9rem; font-weight: 500; }
+  .card-subtitle { font-size: 0.75rem; color: var(--text3); font-family: 'JetBrains Mono', monospace; }
+
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--green); box-shadow: 0 0 6px var(--green);
+  }
+  .status-dot.off { background: var(--text3); box-shadow: none; }
+
+  .chevron { color: var(--text3); transition: transform 0.2s; flex-shrink: 0; }
+  .chevron.open { transform: rotate(180deg); }
+
+  .card-body { padding: 16px; display: flex; flex-direction: column; gap: 16px; border-top: 1px solid var(--border); }
+  .card-body.hidden { display: none; }
+
+  /* FORM ELEMENTS */
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  label { font-size: 0.72rem; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 500; }
+
+  input[type=text], select, textarea {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: var(--radius);
+    padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+    width: 100%; outline: none; transition: border-color 0.15s;
+  }
+  input[type=text]:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input[type=text]::placeholder, textarea::placeholder { color: var(--text3); }
+  select { cursor: pointer; }
+  select option { background: var(--bg3); }
+  textarea { resize: vertical; min-height: 60px; }
+
+  .toggle-row { display: flex; align-items: center; gap: 10px; }
+  .toggle {
+    width: 36px; height: 20px; background: var(--bg4); border-radius: 10px;
+    border: 1px solid var(--border); cursor: pointer; position: relative;
+    transition: background 0.2s, border-color 0.2s; flex-shrink: 0;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px;
+    width: 14px; height: 14px; border-radius: 50%; background: var(--text3);
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle.on { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle.on::after { transform: translateX(16px); background: var(--accent2); }
+  .toggle-label { font-size: 0.8rem; color: var(--text2); }
+
+  /* SECTIONS */
+  .section-title {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--text3); font-weight: 600; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  .section-block { display: flex; flex-direction: column; gap: 10px; }
+
+  /* TAGS / CHIPS */
+  .tags-area { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--bg4); border: 1px solid var(--border);
+    border-radius: 20px; padding: 3px 10px 3px 12px; font-size: 0.75rem; color: var(--text2);
+  }
+  .tag.blacklist { background: var(--red-dim); border-color: rgba(255,94,122,0.2); color: var(--red); }
+  .tag.keyword { background: var(--green-dim); border-color: rgba(61,214,140,0.2); color: var(--green); }
+  .tag .remove { cursor: pointer; color: inherit; opacity: 0.5; line-height: 1; font-size: 1rem; }
+  .tag .remove:hover { opacity: 1; }
+
+  .tag-input-row { display: flex; gap: 6px; }
+  .tag-input-row input { flex: 1; }
+
+  /* PATTERNS */
+  .pattern-item {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 12px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .pattern-header { display: flex; align-items: center; gap: 8px; }
+  .pattern-pill {
+    font-size: 0.65rem; padding: 2px 8px; border-radius: 20px;
+    border: 1px solid var(--border); color: var(--text3); cursor: pointer;
+  }
+  .pattern-pill.active { background: var(--yellow-dim); border-color: rgba(245,200,66,0.25); color: var(--yellow); }
+
+  /* DESTINATIONS */
+  .dest-list { display: flex; flex-direction: column; gap: 6px; }
+  .dest-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 7px 10px;
+  }
+  .dest-item input { flex: 1; border: none; background: transparent; padding: 0; }
+
+  /* ADD SOURCE BUTTON */
+  .add-source-btn {
+    border: 1px dashed var(--border2); border-radius: var(--radius2);
+    padding: 16px; text-align: center; cursor: pointer;
+    color: var(--text3); font-size: 0.8rem;
+    transition: all 0.15s; background: transparent;
+    font-family: 'JetBrains Mono', monospace; width: 100%;
+  }
+  .add-source-btn:hover { border-color: var(--accent); color: var(--accent2); background: var(--accent-dim); }
+
+  /* OUTPUT PANEL */
+  .output-header {
+    padding: 16px 20px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg3); flex-shrink: 0;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem;
+  }
+  .output-body { flex: 1; overflow-y: auto; padding: 16px; }
+  .output-body pre {
+    font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
+    color: var(--text2); line-height: 1.7; white-space: pre-wrap; word-break: break-all;
+  }
+
+  /* JSON SYNTAX */
+  .json-key { color: #9d7eff; }
+  .json-str { color: #7eddbd; }
+  .json-bool { color: #f5c842; }
+  .json-num { color: #ff9770; }
+  .json-null { color: #ff9770; }
+  .json-punc { color: var(--text3); }
+
+  /* COPY TOAST */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--green); color: #000;
+    padding: 10px 18px; border-radius: var(--radius);
+    font-size: 0.8rem; font-weight: 600;
+    opacity: 0; transform: translateY(8px);
+    transition: all 0.2s; pointer-events: none; z-index: 999;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+
+  /* EMPTY STATE */
+  .empty { padding: 40px; text-align: center; color: var(--text3); font-size: 0.8rem; line-height: 2; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  /* CARD DRAG INDICATOR */
+  .drag-handle { cursor: grab; color: var(--text3); padding: 0 2px; }
+  .drag-handle:active { cursor: grabbing; }
+
+  /* COUNT BADGE */
+  .count-badge {
+    font-size: 0.65rem; background: var(--bg4); border: 1px solid var(--border);
+    border-radius: 20px; padding: 1px 7px; color: var(--text3);
+  }
+
+  @media (max-width: 900px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    .right-panel { height: 50vh; border-left: none; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">sources<span>.json</span> builder</div>
+  <div class="header-actions">
+    <span id="sourceCount" class="count-badge">0 sources</span>
+    <button class="btn btn-ghost btn-sm" onclick="importJSON()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Import
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="copyJSON()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      Copy JSON
+    </button>
+  </div>
+</header>
+
+<div class="app">
+  <div class="left-panel" id="sourceList">
+    <div class="empty" id="emptyState">
+      No sources yet.<br>Add one to get started.
+    </div>
+    <button class="add-source-btn" onclick="addSource()">＋ Add Source</button>
+  </div>
+
+  <div class="right-panel">
+    <div class="output-header">
+      <span>Preview</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="toggleWrap()" title="Toggle wrap">⇔</button>
+        <button class="btn btn-success btn-sm" onclick="copyJSON()">Copy</button>
+      </div>
+    </div>
+    <div class="output-body">
+      <pre id="jsonOutput"><span class="json-punc">{}</span></pre>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copied!</div>
+<input type="file" id="fileImport" accept=".json" style="display:none" onchange="handleImport(event)">
+
+<script>
+let sources = [];
+let uid = 0;
+
+const PLATFORMS = ['telegram', 'discord', 'twitter', 'slack', 'reddit'];
+
+function genId() { return ++uid; }
+
+function addSource(data = null) {
+  const id = genId();
+  const src = data ? { ...data, _id: id, _expanded: true } : {
+    _id: id, _expanded: true,
+    platform: 'telegram',
+    channel_id: '',
+    channel_name: '',
+    is_active: true,
+    text_replacements: { enabled: true, patterns: [] },
+    filters: { enabled: true, keywords: [], blacklist: [], case_sensitive: false },
+    destinations: { telegram: [], discord: [] }
+  };
+  sources.push(src);
+  renderAll();
+}
+
+function removeSource(id) {
+  sources = sources.filter(s => s._id !== id);
+  renderAll();
+}
+
+function toggleExpand(id) {
+  const s = sources.find(s => s._id === id);
+  if (s) s._expanded = !s._expanded;
+  renderAll();
+}
+
+function renderAll() {
+  const list = document.getElementById('sourceList');
+  const btn = list.querySelector('.add-source-btn');
+  const empty = document.getElementById('emptyState');
+
+  // Remove old cards
+  list.querySelectorAll('.source-card').forEach(el => el.remove());
+  if (empty) empty.remove();
+
+  if (sources.length === 0) {
+    const e = document.createElement('div');
+    e.id = 'emptyState'; e.className = 'empty';
+    e.innerHTML = 'No sources yet.<br>Add one to get started.';
+    list.insertBefore(e, btn);
+  }
+
+  sources.forEach(src => {
+    const card = buildCard(src);
+    list.insertBefore(card, btn);
+  });
+
+  document.getElementById('sourceCount').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
+  updateOutput();
+}
+
+function buildCard(src) {
+  const card = document.createElement('div');
+  card.className = 'source-card' + (src._expanded ? ' expanded' : '') + (!src.is_active ? ' inactive' : '');
+  card.id = 'card-' + src._id;
+
+  const plat = (src.platform || 'unknown').toLowerCase();
+  const platClass = PLATFORMS.includes(plat) ? 'platform-' + plat : 'platform-unknown';
+
+  card.innerHTML = `
+    <div class="card-header" onclick="toggleExpand(${src._id})">
+      <span class="platform-badge ${platClass}">${src.platform || '?'}</span>
+      <div style="flex:1;min-width:0">
+        <div class="card-title">${escH(src.channel_name || 'Untitled')}</div>
+        <div class="card-subtitle">${escH(src.channel_id || 'no id')}</div>
+      </div>
+      <span class="status-dot ${src.is_active ? '' : 'off'}"></span>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();removeSource(${src._id})" title="Remove">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+      <svg class="chevron ${src._expanded ? 'open' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="card-body ${src._expanded ? '' : 'hidden'}" id="body-${src._id}">
+      ${buildCardBody(src)}
+    </div>
+  `;
+  return card;
+}
+
+function buildCardBody(src) {
+  const id = src._id;
+  // Destinations as editable lists
+  const destTelegram = (src.destinations?.telegram || []);
+  const destDiscord = (src.destinations?.discord || []);
+
+  return `
+    <div class="field-row">
+      <div class="field-group">
+        <label>Platform</label>
+        <select onchange="setField(${id},'platform',this.value)">
+          ${PLATFORMS.map(p => `<option value="${p}" ${src.platform===p?'selected':''}>${p}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Channel ID</label>
+        <input type="text" placeholder="-100123456789" value="${escH(src.channel_id||'')}" oninput="setField(${id},'channel_id',this.value)">
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label>Channel Name</label>
+        <input type="text" placeholder="My Channel" value="${escH(src.channel_name||'')}" oninput="setField(${id},'channel_name',this.value)">
+      </div>
+      <div class="field-group">
+        <label>Status</label>
+        <div class="toggle-row" style="height:100%;align-items:flex-end;padding-bottom:2px">
+          <div class="toggle ${src.is_active?'on':''}" onclick="toggleActive(${id})" id="toggle-active-${id}"></div>
+          <span class="toggle-label" id="toggle-active-label-${id}">${src.is_active?'Active':'Inactive'}</span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Filters</div>
+      <div class="section-block">
+        <div class="toggle-row">
+          <div class="toggle ${src.filters?.enabled?'on':''}" onclick="toggleFilters(${id})" id="toggle-filters-${id}"></div>
+          <span class="toggle-label">Enabled</span>
+          <div class="toggle ${src.filters?.case_sensitive?'on':''}" onclick="toggleCaseSensitive(${id})" id="toggle-cs-${id}" style="margin-left:12px"></div>
+          <span class="toggle-label">Case sensitive</span>
+        </div>
+        <div>
+          <label style="margin-bottom:6px;display:block">Keywords (whitelist)</label>
+          <div class="tags-area" id="kw-${id}">
+            ${(src.filters?.keywords||[]).map((k,i)=>`<span class="tag keyword">${escH(k)}<span class="remove" onclick="removeKeyword(${id},${i})">×</span></span>`).join('')}
+          </div>
+          <div class="tag-input-row" style="margin-top:6px">
+            <input type="text" placeholder="Add keyword..." id="kw-input-${id}" onkeydown="if(event.key==='Enter')addKeyword(${id})">
+            <button class="btn btn-ghost btn-sm" onclick="addKeyword(${id})">Add</button>
+          </div>
+        </div>
+        <div>
+          <label style="margin-bottom:6px;display:block">Blacklist</label>
+          <div class="tags-area" id="bl-${id}">
+            ${(src.filters?.blacklist||[]).map((k,i)=>`<span class="tag blacklist">${escH(k)}<span class="remove" onclick="removeBlacklist(${id},${i})">×</span></span>`).join('')}
+          </div>
+          <div class="tag-input-row" style="margin-top:6px">
+            <input type="text" placeholder="Add blacklist entry..." id="bl-input-${id}" onkeydown="if(event.key==='Enter')addBlacklist(${id})">
+            <button class="btn btn-ghost btn-sm" onclick="addBlacklist(${id})">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Text Replacements</div>
+      <div class="section-block">
+        <div class="toggle-row">
+          <div class="toggle ${src.text_replacements?.enabled?'on':''}" onclick="toggleReplacements(${id})" id="toggle-repl-${id}"></div>
+          <span class="toggle-label">Enabled</span>
+          <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="addPattern(${id})">＋ Pattern</button>
+        </div>
+        <div id="patterns-${id}">
+          ${buildPatterns(src)}
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Destinations</div>
+      <div class="section-block">
+        <div>
+          <label style="margin-bottom:6px;display:block">Telegram</label>
+          <div class="dest-list" id="dest-tg-${id}">
+            ${destTelegram.map((d,i) => `
+              <div class="dest-item">
+                <span class="platform-badge platform-telegram" style="font-size:0.6rem">tg</span>
+                <input type="text" value="${escH(d)}" oninput="setDestination(${id},'telegram',${i},this.value)">
+                <button class="btn btn-danger btn-sm btn-icon" onclick="removeDestination(${id},'telegram',${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              </div>`).join('')}
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%" onclick="addDestination(${id},'telegram')">＋ Telegram destination</button>
+        </div>
+        <div>
+          <label style="margin-bottom:6px;display:block">Discord</label>
+          <div class="dest-list" id="dest-dc-${id}">
+            ${destDiscord.map((d,i) => `
+              <div class="dest-item">
+                <span class="platform-badge platform-discord" style="font-size:0.6rem">dc</span>
+                <input type="text" value="${escH(d)}" oninput="setDestination(${id},'discord',${i},this.value)">
+                <button class="btn btn-danger btn-sm btn-icon" onclick="removeDestination(${id},'discord',${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              </div>`).join('')}
+          </div>
+          <button class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%" onclick="addDestination(${id},'discord')">＋ Discord destination</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function buildPatterns(src) {
+  const patterns = src.text_replacements?.patterns || [];
+  if (patterns.length === 0) return '<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:8px">No patterns</div>';
+  return patterns.map((p, i) => `
+    <div class="pattern-item">
+      <div class="pattern-header">
+        <span class="pattern-pill ${p.is_regex ? 'active' : ''}" onclick="togglePatternRegex(${src._id},${i})">regex</span>
+        <span style="font-size:0.72rem;color:var(--text3);flex:1">${escH(p.comment||'')}</span>
+        <button class="btn btn-danger btn-sm btn-icon" onclick="removePattern(${src._id},${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+      <div class="field-group">
+        <label>Pattern</label>
+        <input type="text" value="${escH(p.pattern||'')}" placeholder="Pattern or regex..." oninput="setPattern(${src._id},${i},'pattern',this.value)">
+      </div>
+      <div class="field-group">
+        <label>Replacement</label>
+        <input type="text" value="${escH(p.replacement||'')}" placeholder="(empty = remove)" oninput="setPattern(${src._id},${i},'replacement',this.value)">
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label>Flags</label>
+          <input type="text" value="${escH(p.flags||'')}" placeholder="gis" oninput="setPattern(${src._id},${i},'flags',this.value)">
+        </div>
+        <div class="field-group">
+          <label>Comment</label>
+          <input type="text" value="${escH(p.comment||'')}" placeholder="Description..." oninput="setPattern(${src._id},${i},'comment',this.value)">
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// MUTATIONS
+function getSrc(id) { return sources.find(s => s._id === id); }
+
+function setField(id, field, value) {
+  const src = getSrc(id);
+  if (!src) return;
+  src[field] = value;
+  // Re-render card header only
+  const card = document.getElementById('card-' + id);
+  if (card) {
+    const old = card.outerHTML;
+    const newCard = buildCard(src);
+    card.replaceWith(newCard);
+  }
+  updateOutput();
+}
+
+function toggleActive(id) {
+  const src = getSrc(id);
+  src.is_active = !src.is_active;
+  refreshCard(id);
+}
+
+function toggleFilters(id) {
+  const src = getSrc(id);
+  if (!src.filters) src.filters = {};
+  src.filters.enabled = !src.filters.enabled;
+  updateToggle('toggle-filters-' + id, src.filters.enabled);
+  updateOutput();
+}
+
+function toggleCaseSensitive(id) {
+  const src = getSrc(id);
+  if (!src.filters) src.filters = {};
+  src.filters.case_sensitive = !src.filters.case_sensitive;
+  updateToggle('toggle-cs-' + id, src.filters.case_sensitive);
+  updateOutput();
+}
+
+function toggleReplacements(id) {
+  const src = getSrc(id);
+  if (!src.text_replacements) src.text_replacements = {};
+  src.text_replacements.enabled = !src.text_replacements.enabled;
+  updateToggle('toggle-repl-' + id, src.text_replacements.enabled);
+  updateOutput();
+}
+
+function updateToggle(toggleId, state) {
+  const t = document.getElementById(toggleId);
+  if (t) t.className = 'toggle' + (state ? ' on' : '');
+}
+
+function addKeyword(id) {
+  const inp = document.getElementById('kw-input-' + id);
+  const val = inp.value.trim();
+  if (!val) return;
+  const src = getSrc(id);
+  if (!src.filters) src.filters = { keywords: [], blacklist: [], enabled: true, case_sensitive: false };
+  src.filters.keywords.push(val);
+  inp.value = '';
+  refreshTagArea(id, 'kw', src.filters.keywords, 'keyword', 'removeKeyword');
+  updateOutput();
+}
+
+function removeKeyword(id, i) {
+  const src = getSrc(id);
+  src.filters.keywords.splice(i, 1);
+  refreshTagArea(id, 'kw', src.filters.keywords, 'keyword', 'removeKeyword');
+  updateOutput();
+}
+
+function addBlacklist(id) {
+  const inp = document.getElementById('bl-input-' + id);
+  const val = inp.value.trim();
+  if (!val) return;
+  const src = getSrc(id);
+  if (!src.filters) src.filters = { keywords: [], blacklist: [], enabled: true, case_sensitive: false };
+  src.filters.blacklist.push(val);
+  inp.value = '';
+  refreshTagArea(id, 'bl', src.filters.blacklist, 'blacklist', 'removeBlacklist');
+  updateOutput();
+}
+
+function removeBlacklist(id, i) {
+  const src = getSrc(id);
+  src.filters.blacklist.splice(i, 1);
+  refreshTagArea(id, 'bl', src.filters.blacklist, 'blacklist', 'removeBlacklist');
+  updateOutput();
+}
+
+function refreshTagArea(id, prefix, items, cls, removeFn) {
+  const area = document.getElementById(prefix + '-' + id);
+  if (!area) return;
+  area.innerHTML = items.map((k,i) =>
+    `<span class="tag ${cls}">${escH(k)}<span class="remove" onclick="${removeFn}(${id},${i})">×</span></span>`
+  ).join('');
+}
+
+function addPattern(id) {
+  const src = getSrc(id);
+  if (!src.text_replacements) src.text_replacements = { enabled: true, patterns: [] };
+  src.text_replacements.patterns.push({ pattern: '', replacement: '', is_regex: false, flags: '', comment: '' });
+  refreshPatterns(id);
+  updateOutput();
+}
+
+function removePattern(id, i) {
+  const src = getSrc(id);
+  src.text_replacements.patterns.splice(i, 1);
+  refreshPatterns(id);
+  updateOutput();
+}
+
+function setPattern(id, i, field, value) {
+  const src = getSrc(id);
+  src.text_replacements.patterns[i][field] = value;
+  updateOutput();
+}
+
+function togglePatternRegex(id, i) {
+  const src = getSrc(id);
+  src.text_replacements.patterns[i].is_regex = !src.text_replacements.patterns[i].is_regex;
+  refreshPatterns(id);
+  updateOutput();
+}
+
+function refreshPatterns(id) {
+  const src = getSrc(id);
+  const el = document.getElementById('patterns-' + id);
+  if (el) el.innerHTML = buildPatterns(src);
+}
+
+function addDestination(id, platform) {
+  const src = getSrc(id);
+  if (!src.destinations) src.destinations = {};
+  if (!src.destinations[platform]) src.destinations[platform] = [];
+  src.destinations[platform].push('');
+  refreshDestinations(id, platform);
+  updateOutput();
+}
+
+function removeDestination(id, platform, i) {
+  const src = getSrc(id);
+  src.destinations[platform].splice(i, 1);
+  refreshDestinations(id, platform);
+  updateOutput();
+}
+
+function setDestination(id, platform, i, value) {
+  const src = getSrc(id);
+  src.destinations[platform][i] = value;
+  updateOutput();
+}
+
+function refreshDestinations(id, platform) {
+  const prefix = platform === 'telegram' ? 'dest-tg-' : 'dest-dc-';
+  const el = document.getElementById(prefix + id);
+  if (!el) return;
+  const src = getSrc(id);
+  const items = src.destinations?.[platform] || [];
+  const platCls = platform === 'telegram' ? 'platform-telegram' : 'platform-discord';
+  const platLabel = platform === 'telegram' ? 'tg' : 'dc';
+  el.innerHTML = items.map((d,i) => `
+    <div class="dest-item">
+      <span class="platform-badge ${platCls}" style="font-size:0.6rem">${platLabel}</span>
+      <input type="text" value="${escH(d)}" oninput="setDestination(${id},'${platform}',${i},this.value)">
+      <button class="btn btn-danger btn-sm btn-icon" onclick="removeDestination(${id},'${platform}',${i})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  `).join('');
+}
+
+function refreshCard(id) {
+  const src = getSrc(id);
+  const old = document.getElementById('card-' + id);
+  if (!old || !src) return;
+  old.replaceWith(buildCard(src));
+  updateOutput();
+}
+
+// JSON GENERATION
+function buildJSON() {
+  const out = { sources: sources.map(s => {
+    const { _id, _expanded, ...clean } = s;
+    // clean up destinations - remove empty
+    if (clean.destinations) {
+      Object.keys(clean.destinations).forEach(k => {
+        clean.destinations[k] = clean.destinations[k].filter(v => v.trim() !== '');
+        if (clean.destinations[k].length === 0) delete clean.destinations[k];
+      });
+      if (Object.keys(clean.destinations).length === 0) clean.destinations = {};
+    }
+    // clean patterns
+    if (clean.text_replacements?.patterns) {
+      clean.text_replacements.patterns = clean.text_replacements.patterns.map(p => {
+        const out = { pattern: p.pattern, replacement: p.replacement, is_regex: p.is_regex };
+        if (p.is_regex && p.flags) out.flags = p.flags;
+        if (p.comment) out.comment = p.comment;
+        return out;
+      });
+    }
+    return clean;
+  })};
+  return out;
+}
+
+function syntaxHighlight(json) {
+  return json
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+      let cls = 'json-num';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) cls = 'json-key';
+        else cls = 'json-str';
+      } else if (/true|false/.test(match)) cls = 'json-bool';
+      else if (/null/.test(match)) cls = 'json-null';
+      return `<span class="${cls}">${match}</span>`;
+    });
+}
+
+function updateOutput() {
+  const json = JSON.stringify(buildJSON(), null, 2);
+  document.getElementById('jsonOutput').innerHTML = syntaxHighlight(json);
+}
+
+function copyJSON() {
+  const json = JSON.stringify(buildJSON(), null, 2);
+  navigator.clipboard.writeText(json).then(() => showToast('Copied!'));
+}
+
+let wrapEnabled = true;
+function toggleWrap() {
+  wrapEnabled = !wrapEnabled;
+  document.getElementById('jsonOutput').style.whiteSpace = wrapEnabled ? 'pre-wrap' : 'pre';
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function escH(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// IMPORT
+function importJSON() {
+  document.getElementById('fileImport').click();
+}
+
+function handleImport(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const arr = data.sources || (Array.isArray(data) ? data : [data]);
+      sources = [];
+      arr.forEach(s => addSource(s));
+      showToast('Imported ' + arr.length + ' sources');
+    } catch {
+      showToast('Invalid JSON');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// Init
+updateOutput();
+</script>
+</body>
+</html>

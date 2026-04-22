@@ -9,7 +9,8 @@ import TelegramSourceListener from "./sources/telegram/TelegramSourceListener.js
 import DiscordDestinationAdapter from "./destinations/discord/DiscordDestination.js";
 import TelegramDestinationAdapter from "./destinations/telegram/TelegramDestination.js";
 import CronScheduler from "./module/cron/CronScheduler.js";
-import { CRON_JOBS } from "./config/cronjobs.js";
+import DiscordCommandHandler from "./module/discord/DiscordCommandHandler.js";
+import { CRON_JOBS, COMMANDS } from "./config/cronjobs.js";
 
 class Inemuri {
   constructor() {
@@ -28,6 +29,9 @@ class Inemuri {
 
     // Cron Scheduler
     this.cronScheduler = null;
+
+    // Discord Command Handler
+    this.commandHandler = null;
 
     this.setupEventHandlers();
   }
@@ -90,6 +94,15 @@ class Inemuri {
       this.cronScheduler = new CronScheduler(this.eventBus);
       await this.cronScheduler.initialize(CRON_JOBS);
 
+      // 9. Ініціалізація Discord Command Handler
+      print("Initializing Discord Command Handler...");
+      this.commandHandler = new DiscordCommandHandler(
+        this.eventBus,
+        discordClient,
+        COMMANDS
+      );
+      await this.commandHandler.initialize();
+
       print("Inemuri started successfully", "success");
       print("System is now routing messages...", "success");
     } catch (error) {
@@ -110,6 +123,12 @@ class Inemuri {
       if (this.cronScheduler) {
         print("Stopping Cron Scheduler...");
         await this.cronScheduler.stop();
+      }
+
+      // Очищаємо Discord команди
+      if (this.commandHandler) {
+        print("Cleaning up Discord commands...");
+        await this.commandHandler.cleanup();
       }
 
       // Зупиняємо listeners

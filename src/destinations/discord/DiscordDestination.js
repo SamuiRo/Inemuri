@@ -8,10 +8,12 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     super("discord", eventBus);
     this.client = null;
 
-    // Discord ліміти розміру файлів (в байтах)
+    // Discord ліміти
     this.limits = {
       freeServer: 25 * 1024 * 1024, // 25 MB для звичайних серверів
       nitroServer: 100 * 1024 * 1024, // 100 MB для серверів з Nitro boost
+      messageLength: 2000, // максимальна довжина повідомлення
+      embedDescriptionLength: 4096, // максимальна довжина опису в embed
     };
 
     // Поточний ліміт (можна налаштувати)
@@ -80,6 +82,28 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
   }
 
   /**
+   * CRITICAL FIX: Обрізання довгого тексту під ліміт Discord
+   * @param {string} text - Текст для обрізання
+   * @param {number} maxLength - Максимальна довжина (за замовчуванням 2000)
+   * @returns {string} - Обрізаний текст
+   */
+  truncateText(text, maxLength = this.limits.messageLength) {
+    if (!text || text.length <= maxLength) {
+      return text;
+    }
+
+    const suffix = "\n\n... (message truncated)";
+    const truncateAt = maxLength - suffix.length;
+    
+    print(
+      `Truncating message from ${text.length} to ${maxLength} characters`,
+      "warning",
+    );
+
+    return text.substring(0, truncateAt) + suffix;
+  }
+
+  /**
    * Відправка одного повідомлення
    * @param {string} channelId - Discord channel ID
    * @param {Object} messageData - Дані повідомлення з завантаженими медіа
@@ -93,9 +117,12 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       }
 
       // messageData.text = messageData.source.name + ":\n" + messageData.text;
-      let text = messageData.source.name + ":\n" + messageData.text;
+      let text = messageData.source.name + "\n" + messageData.text;
 
-      const discordMessage = await this.formatMessage({ ...messageData, text });
+      // CRITICAL FIX: Обрізаємо текст якщо він задовгий
+      text = this.truncateText(text);
+
+      const discordMessage = await this.formatMessage({ ...messageData, text , useEmbed: true});
       const sentMessage = await channel.send(discordMessage);
 
       print(`✓ Message sent to Discord channel ${channelId}`);
@@ -175,7 +202,7 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
   async formatMessage(messageData) {
     const discordMessage = {};
 
-    // Текст повідомлення
+    // Текст повідомлення (вже обрізаний в sendMessage)
     if (messageData.text && !messageData.useEmbed) {
       discordMessage.content = messageData.text;
     }
@@ -203,7 +230,15 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
           if (firstImage) {
             const embedData = messageData.embed || {};
             embedData.image = `attachment://${this.getMediaFilename(firstImage.media, firstImage.index)}`;
-            embedData.description = messageData.text;
+            
+            // CRITICAL FIX: Обрізаємо опис embed якщо він задовгий
+            if (messageData.text) {
+              embedData.description = this.truncateText(
+                messageData.text,
+                this.limits.embedDescriptionLength
+              );
+            }
+            
             messageData.embed = embedData;
           }
         }
@@ -214,7 +249,9 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
         const warningText = `\n⚠️ ${mediaResult.oversizedFiles.length} файл(ів) пропущено через обмеження розміру (>${this.fileSizeLimit / (1024 * 1024)}MB)`;
 
         if (discordMessage.content) {
-          discordMessage.content += warningText;
+          // CRITICAL FIX: Перевіряємо чи не перевищимо ліміт після додавання warning
+          const newContent = discordMessage.content + warningText;
+          discordMessage.content = this.truncateText(newContent);
         } else {
           discordMessage.content = warningText.trim();
         }
@@ -363,7 +400,16 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
     if (embedData.author) embed.setAuthor({ name: embedData.author });
     if (embedData.title) embed.setTitle(embedData.title);
-    if (embedData.description) embed.setDescription(embedData.description);
+    
+    // CRITICAL FIX: Обрізаємо description якщо задовгий
+    if (embedData.description) {
+      const truncatedDescription = this.truncateText(
+        embedData.description,
+        this.limits.embedDescriptionLength
+      );
+      embed.setDescription(truncatedDescription);
+    }
+    
     if (embedData.footer) embed.setFooter({ text: embedData.footer });
     if (embedData.timestamp) embed.setTimestamp(embedData.timestamp);
     if (embedData.image) embed.setImage(embedData.image);

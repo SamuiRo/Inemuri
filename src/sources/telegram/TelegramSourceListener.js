@@ -1,6 +1,6 @@
 import { NewMessage } from "telegram/events/index.js";
 
-import { print } from "../../shared/utils.js";
+import { appendToTxt, print, saveToJson } from "../../shared/utils.js";
 import { Source } from "../../module/teapot/models/index.js";
 import telegramClient from "../../module/telegram/TelegramClient.js";
 import BaseSourceAdapter from "../base/BaseSourceAdapter.js";
@@ -93,14 +93,235 @@ class TelegramSourceListener extends BaseSourceAdapter {
         `Starting ${this.platform} listener for ${chatIds.length} channel(s)`,
       );
 
-      // Створюємо bound версію handleMessage один раз
-      this.boundHandleMessage = (event) => this.handleMessage(event);
+      const LOG_FILE = "./logs/listener_debug.txt";
+      const log = async (msg) => {
+        console.log(msg);
+        await appendToTxt(LOG_FILE, msg);
+      };
 
+      //       {
+      //   CONSTRUCTOR_ID: 1299050149,
+      //   SUBCLASS_OF_ID: 2331323052,
+      //   className: 'UpdateShortChatMessage',
+      //   classType: 'constructor',
+      //   flags: 2,
+      //   out: true,
+      //   mentioned: false,
+      //   mediaUnread: false,
+      //   silent: false,
+      //   id: 467762,
+      //   fromId: Integer { value: 525331942n },
+      //   chatId: Integer { value: 638290424n },
+      //   message: 'Я скоро буду',
+      //   pts: 1009475,
+      //   ptsCount: 1,
+      //   date: 1771760882,
+      //   fwdFrom: null,
+      //   viaBotId: null,
+      //   replyTo: null,
+      //   entities: null,
+      //   ttlPeriod: null
+      // }
+
+      // Створюємо bound версію handleMessage один раз
+      // this.boundHandleMessage = (event) => this.handleMessage(event);
+      this.boundHandleMessage = async (event) => {
+        console.log()
+        console.log("======================");
+        console.log("======================");
+        console.log({
+          classname: event.className,
+          from: event.message?.fromId,
+          peerid: event.message?.peerId,
+          sender: event.message?.senderId,
+          message: event.message?.message,
+        });
+        await log(
+          `from ${event.message?.fromId?.userId}, peerId: ${event.message?.peerId?.channelId}, sender: ${event.message.senderId}, message: ${event.message.message}`,
+        );
+        // ─────────────────────────────────────────────
+        // КРОК 1: Тип події
+        // ─────────────────────────────────────────────
+        // const type = event.constructor.name;
+        // const className = event.className;
+
+        // // Службові апдейти — мовчки ігноруємо
+        // const IGNORED_TYPES = [
+        //   "UpdateConnectionState",
+        //   "UpdateUserStatus",
+        //   "UpdateReadHistoryInbox",
+        //   "UpdateReadChannelInbox",
+        //   "UpdateChannelMessageViews",
+        //   "UpdateChannelUserTyping",
+        //   "UpdateEditChannelMessage",
+        // ];
+        // if (IGNORED_TYPES.includes(type) || IGNORED_TYPES.includes(className))
+        //   return;
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 2: Перевірка що це нове повідомлення каналу
+        // // ─────────────────────────────────────────────
+        // if (className !== "UpdateNewChannelMessage") {
+        //   await log(
+        //     `[LISTENER] ⏭ Пропускаємо тип події: constructor="${type}" className="${className}"`,
+        //   );
+        //   return;
+        // }
+
+        // const ts = new Date().toISOString();
+        // await log(`\n${"=".repeat(60)}`);
+        // await log(`[LISTENER] 📩 [${ts}] Нова подія: className="${className}"`);
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 3: Перевірка структури повідомлення
+        // // ─────────────────────────────────────────────
+        // const msg = event.message;
+
+        // if (!msg) {
+        //   await log(`[LISTENER] ❌ КРОК 3 FAIL: event.message відсутній`);
+        //   await log(
+        //     `[LISTENER]    event keys: ${Object.keys(event).join(", ")}`,
+        //   );
+        //   return;
+        // }
+
+        // if (!msg.peerId) {
+        //   await log(`[LISTENER] ❌ КРОК 3 FAIL: msg.peerId відсутній`);
+        //   await log(`[LISTENER]    msg keys: ${Object.keys(msg).join(", ")}`);
+        //   return;
+        // }
+
+        // if (!msg.peerId.channelId) {
+        //   await log(
+        //     `[LISTENER] ❌ КРОК 3 FAIL: msg.peerId.channelId відсутній`,
+        //   );
+        //   await log(
+        //     `[LISTENER]    msg.peerId className: ${msg.peerId.className}`,
+        //   );
+        //   await log(
+        //     `[LISTENER]    msg.peerId: ${JSON.stringify(msg.peerId, (_, v) => (typeof v === "bigint" ? v.toString() + "n" : v), 2)}`,
+        //   );
+        //   return;
+        // }
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 4: Діагностика типів channelId
+        // // ─────────────────────────────────────────────
+        // const rawChannelId = msg.peerId.channelId;
+
+        // await log(`[LISTENER] 🔍 КРОК 4: Діагностика channelId`);
+        // await log(
+        //   `[LISTENER]    rawChannelId:             ${String(rawChannelId)}`,
+        // );
+        // await log(
+        //   `[LISTENER]    typeof rawChannelId:      ${typeof rawChannelId}`,
+        // );
+        // await log(
+        //   `[LISTENER]    constructor name:         ${rawChannelId?.constructor?.name}`,
+        // );
+        // await log(
+        //   `[LISTENER]    rawChannelId.value:       ${String(rawChannelId?.value)}`,
+        // );
+        // await log(
+        //   `[LISTENER]    typeof .value:            ${typeof rawChannelId?.value}`,
+        // );
+
+        // // Визначаємо реальний BigInt значення channelId
+        // // gram.js може повертати або BigInt напряму, або об'єкт { value: BigInt }
+        // let channelIdBigInt;
+        // if (typeof rawChannelId === "bigint") {
+        //   channelIdBigInt = rawChannelId;
+        //   await log(`[LISTENER]    ✅ channelId — це чистий BigInt`);
+        // } else if (
+        //   rawChannelId?.value !== undefined &&
+        //   typeof rawChannelId.value === "bigint"
+        // ) {
+        //   channelIdBigInt = rawChannelId.value;
+        //   await log(`[LISTENER]    ✅ channelId — це об'єкт з .value BigInt`);
+        // } else {
+        //   try {
+        //     channelIdBigInt = BigInt(rawChannelId.toString());
+        //     await log(
+        //       `[LISTENER]    ⚠️ channelId конвертовано через toString() → BigInt`,
+        //     );
+        //   } catch (e) {
+        //     await log(
+        //       `[LISTENER]    ❌ КРОК 4 FAIL: не вдалось отримати BigInt з channelId`,
+        //     );
+        //     await log(`[LISTENER]    Помилка: ${e.message}`);
+        //     return;
+        //   }
+        // }
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 5: Конвертація в формат -100XXXXXXXXXX
+        // // ─────────────────────────────────────────────
+        // const peerId = -1000000000000n - channelIdBigInt;
+
+        // await log(`[LISTENER] 🔍 КРОК 5: Конвертація peerId`);
+        // await log(
+        //   `[LISTENER]    channelIdBigInt (raw):   ${channelIdBigInt.toString()}`,
+        // );
+        // await log(
+        //   `[LISTENER]    peerId (конвертований):  ${peerId.toString()}`,
+        // );
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 6: Порівняння з whitelist
+        // // ─────────────────────────────────────────────
+        // const peerIdStr = peerId.toString();
+        // const chatIdStrings = chatIds.map((id) => id.toString());
+        // const isWhitelisted = chatIdStrings.includes(peerIdStr);
+
+        // await log(`[LISTENER] 🔍 КРОК 6: Порівняння з whitelist`);
+        // await log(
+        //   `[LISTENER]    chatIds (${chatIds.length} шт): ${chatIdStrings.join(", ")}`,
+        // );
+        // await log(`[LISTENER]    Шукаємо peerId:  ${peerIdStr}`);
+        // await log(
+        //   `[LISTENER]    Результат:       ${isWhitelisted ? "✅ ЗНАЙДЕНО" : "🚫 НЕ ЗНАЙДЕНО"}`,
+        // );
+
+        // if (!isWhitelisted) {
+        //   await log(
+        //     `[LISTENER] 🚫 КРОК 6: Канал ${peerIdStr} НЕ в whitelist — пропускаємо`,
+        //   );
+        //   await log(
+        //     `[LISTENER]    Текст: "${(msg.message ?? "").slice(0, 80)}"`,
+        //   );
+        //   return;
+        // }
+
+        // await log(
+        //   `[LISTENER] ✅ КРОК 6: Канал ${peerIdStr} в whitelist — передаємо далі`,
+        // );
+
+        // // ─────────────────────────────────────────────
+        // // КРОК 7: Передача в handleMessage
+        // // ─────────────────────────────────────────────
+        // await log(`[LISTENER] ▶️  КРОК 7: Викликаємо handleMessage`);
+        // await log(`[LISTENER]    messageId:  ${msg.id}`);
+        // await log(
+        //   `[LISTENER]    groupedId:  ${msg.groupedId ? msg.groupedId.toString() : "відсутній"}`,
+        // );
+        // await log(
+        //   `[LISTENER]    текст:      "${(msg.message ?? "").slice(0, 100)}"`,
+        // );
+        // await log(`${"=".repeat(60)}\n`);
+      };
+      console.log("=====================");
+      console.log("=====================");
+      console.log("chatIds", chatIds);
       // Додаємо обробник з фільтрацією на рівні API
       this.client.addEventHandler(
         this.boundHandleMessage,
-        new NewMessage({ chats: chatIds }), // ✅ Фільтрація на рівні Telegram API
+        // new NewMessage({ chats: chatIds }), // ✅ Фільтрація на рівні Telegram API
       );
+
+      //  this.client.addEventHandler(
+      //   this.boundHandleMessage,
+      //   new NewMessage({ chats: chatIds }), // ✅ Фільтрація на рівні Telegram API
+      // );
 
       this.isListening = true;
       print(`${this.platform} listener started successfully`, "success");
@@ -327,7 +548,10 @@ class TelegramSourceListener extends BaseSourceAdapter {
 
       // Одиночне медіа
       if (this.downloadableMediaTypes.includes(messageData.media.type)) {
-        const buffer = await this.client.downloadMedia(messageData.media.raw, {});
+        const buffer = await this.client.downloadMedia(
+          messageData.media.raw,
+          {},
+        );
 
         if (buffer) {
           return [
@@ -469,6 +693,8 @@ class TelegramSourceListener extends BaseSourceAdapter {
     try {
       // Парсимо повідомлення в уніфікований формат
       const messageData = this.parseMessage(rawMessage);
+
+      console.log("messageData", messageData);
 
       if (!messageData || !messageData.channelId) {
         print(`Invalid message from ${this.platform}, skipping`, "warning");
