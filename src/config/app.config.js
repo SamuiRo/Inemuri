@@ -15,3 +15,6 @@ export const CMC_API_KEY = process.env.CMC_API_KEY;
 export const DISCORD_COMMAND_WHITELIST = process.env.DISCORD_COMMAND_WHITELIST
   ? process.env.DISCORD_COMMAND_WHITELIST.split(",").map((id) => id.trim())
   : [];
+export const POLLING_INTERVAL_MS =
+  Number(process.env.POLLING_INTERVAL_MIN) * 60 * 1000;
+export const POLLING_FETCH_LIMIT = Number(process.env.POLLING_FETCH_LIMIT);

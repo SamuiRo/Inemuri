@@ -2,6 +2,8 @@ import { print } from "../../shared/utils.js";
 import { Source } from "../teapot/models/index.js";
 import { SOURCE_CONFIG } from "../../config/app.config.js";
 
+const VALID_MODES = ["listener", "polling", "both"];
+
 class SourceSeeder {
   /**
    * Валідація одного джерела
@@ -17,6 +19,12 @@ class SourceSeeder {
 
     if (!["telegram", "discord"].includes(source.platform)) {
       throw new Error(`Invalid platform: ${source.platform}`);
+    }
+
+    if (source.mode && !VALID_MODES.includes(source.mode)) {
+      throw new Error(
+        `Invalid mode: "${source.mode}". Must be one of: ${VALID_MODES.join(", ")}`,
+      );
     }
 
     return true;
@@ -42,6 +50,12 @@ class SourceSeeder {
         channel_id: String(sourceData.channel_id),
         channel_name: sourceData.channel_name,
         is_active: sourceData.is_active ?? true,
+        // Якщо mode не вказано — залишаємо дефолт 'listener'
+        mode: sourceData.mode ?? "listener",
+        text_replacements: sourceData.text_replacements || {
+          enabled: false,
+          patterns: [],
+        },
         filters: sourceData.filters || {
           enabled: false,
           keywords: [],
@@ -55,14 +69,12 @@ class SourceSeeder {
       };
 
       if (existing) {
-        // Оновлюємо існуюче
         await existing.update(data);
-        print(`✓ Updated: ${data.channel_name} (${data.platform})`);
+        print(`✓ Updated: ${data.channel_name} (${data.platform}) [mode: ${data.mode}]`);
         return { action: "updated", source: existing };
       } else {
-        // Створюємо нове
         const newSource = await Source.create(data);
-        print(`✓ Created: ${data.channel_name} (${data.platform})`, "success");
+        print(`✓ Created: ${data.channel_name} (${data.platform}) [mode: ${data.mode}]`, "success");
         return { action: "created", source: newSource };
       }
     } catch (error) {
@@ -82,17 +94,12 @@ class SourceSeeder {
       print("Starting sources seeding...");
 
       const sources = SOURCE_CONFIG.sources;
-      print(`Found ${sources.length} sources in JSON file`);
+      print(`Found ${sources.length} sources in config`);
 
-      const results = {
-        created: 0,
-        updated: 0,
-        failed: 0,
-      };
+      const results = { created: 0, updated: 0, failed: 0 };
 
       for (const sourceData of sources) {
         const result = await this.importSource(sourceData);
-
         if (result.action === "created") results.created++;
         else if (result.action === "updated") results.updated++;
         else if (result.action === "failed") results.failed++;
@@ -101,7 +108,7 @@ class SourceSeeder {
       print("=== Seeding Results ===", "success");
       print(`Created: ${results.created}`);
       print(`Updated: ${results.updated}`);
-      print(`Failed: ${results.failed}`);
+      print(`Failed:  ${results.failed}`);
       print("=====================");
 
       return results;
@@ -111,27 +118,19 @@ class SourceSeeder {
     }
   }
 
-  /**
-   * Очистити всі джерела (ОБЕРЕЖНО!)
-   */
   async clear() {
     print("Clearing all sources...", "warning");
     await Source.destroy({ where: {} });
     print("All sources cleared", "success");
   }
 
-  /**
-   * Seed з очищенням (fresh seed)
-   */
   async freshSeed() {
     await this.clear();
     return await this.seed();
   }
 }
 
-// Експортуємо клас і готовий інстанс
 export default SourceSeeder;
 
-// Для швидкого використання
 export const seedSources = () => new SourceSeeder().seed();
 export const freshSeedSources = () => new SourceSeeder().freshSeed();

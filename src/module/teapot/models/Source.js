@@ -29,6 +29,16 @@ export const Source = database.sequelize.define("Source", {
     defaultValue: true,
     comment: 'Чи активне пересилання з цього джерела'
   },
+  // Режим прослуховування:
+  //   listener — тільки MTProto UpdateNewChannelMessage (дефолт, легкий)
+  //   polling  — тільки активний polling через getMessages (для великих каналів)
+  //   both     — listener + polling (дедуплікація через SourceState)
+  mode: {
+    type: DataTypes.ENUM('listener', 'polling', 'both'),
+    allowNull: false,
+    defaultValue: 'listener',
+    comment: 'Режим отримання повідомлень'
+  },
   // Препроцесинг тексту перед фільтрацією
   text_replacements: {
     type: DataTypes.JSON,
@@ -70,6 +80,9 @@ export const Source = database.sequelize.define("Source", {
     },
     {
       fields: ['is_active']
+    },
+    {
+      fields: ['mode']
     }
   ]
 });
