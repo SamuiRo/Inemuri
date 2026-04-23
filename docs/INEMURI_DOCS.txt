@@ -42,50 +42,6 @@ Fallback на SQLite при недоступності Sheets
 Кешування для продуктивності
 
 
-🗂️ Структура проєкту
-src/
-├── core/                      # Ядро системи
-│   ├── event-bus/            # Шина подій
-│   ├── database/             # SQLite wrapper
-│   ├── config/               # Конфігурація
-│   └── logger/               # Логування
-│
-├── sources/                   # Джерела контенту
-│   ├── base/                 # Базовий SourceAdapter
-│   ├── telegram/             # Telegram source
-│   ├── discord/              # Discord source
-│   └── index.js              # Реєстр джерел
-│
-├── destinations/              # Отримувачі контенту
-│   ├── base/                 # Базовий DestinationAdapter
-│   ├── telegram/             # Telegram destination
-│   ├── discord/              # Discord destination
-│   ├── webhook/              # Generic webhook
-│   └── index.js              # Реєстр отримувачів
-│
-├── processors/                # Обробка контенту
-│   ├── base/                 # Базовий Processor
-│   ├── text-formatter/       # Форматування тексту
-│   ├── media-handler/        # Обробка медіа
-│   └── filter/               # Фільтрація
-│
-├── routing/                   # Логіка маршрутизації
-│   ├── router.js             # Головний роутер
-│   ├── rule-engine.js        # Правила маршрутизації
-│   └── config-provider.js    # Інтеграція з Google Sheets
-│
-├── services/                  # Допоміжні сервіси
-│   ├── scheduler/            # Планувальник задач
-│   ├── cache/                # Кешування
-│   └── health-check/         # Моніторинг здоров'я
-│
-├── api/                       # Інтерфейси керування
-│   ├── telegram-bot/         # Telegram команди
-│   ├── discord-bot/          # Discord команди
-│   └── rest/                 # REST API (опціонально)
-│
-└── index.js                   # Точка входу
-
 🔄 Потік даних
 Source (Telegram/Discord)
     ↓ emit('message.received')
