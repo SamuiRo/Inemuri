@@ -84,6 +84,14 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
       let sentMessage;
 
       let text = messageData.source.name + "\n" + messageData.text;
+
+      // Якщо немає ні тексту ні медіа — пропускаємо
+      const hasMedia = messageData.downloadedMedia && messageData.downloadedMedia.length > 0;
+      if (!text.trim() && !hasMedia) {
+        print(`Skipping empty message to Telegram chat ${destinationId}`, "warning");
+        return null;
+      }
+
       // Якщо є медіа - відправляємо з медіа
       if (
         messageData.downloadedMedia &&
@@ -206,6 +214,11 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
     if (validMedia.length === 0) {
       print("No valid media to send, sending text only", "warning");
+      // Якщо і текст пустий — нічого не відправляємо, не кидаємо помилку
+      if (!text || text.trim().length === 0) {
+        print("No text and no valid media — skipping message", "warning");
+        return null;
+      }
       return await this.sendTextMessage(entity, text, options);
     }
 
@@ -340,7 +353,17 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     for (let i = 0; i < downloadedMedia.length; i++) {
       const media = downloadedMedia[i];
 
-      if (!media.data || !Buffer.isBuffer(media.data)) {
+      // gram.js іноді повертає Uint8Array замість Buffer — нормалізуємо
+      if (media.data && !Buffer.isBuffer(media.data)) {
+        if (media.data instanceof Uint8Array) {
+          media.data = Buffer.from(media.data);
+        } else {
+          print(`Skipping media ${i}: unsupported data type ${typeof media.data}`, "warning");
+          continue;
+        }
+      }
+
+      if (!media.data || !Buffer.isBuffer(media.data) || media.data.length === 0) {
         print(`Skipping media ${i}: no valid data buffer`, "warning");
         continue;
       }

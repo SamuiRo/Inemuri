@@ -202,8 +202,10 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
   async formatMessage(messageData) {
     const discordMessage = {};
 
-    // Текст повідомлення (вже обрізаний в sendMessage)
-    if (messageData.text && !messageData.useEmbed) {
+    // Текст повідомлення (вже обрізаний в sendMessage).
+    // useEmbed не забороняє content — embed і content можуть співіснувати.
+    // Content завжди встановлюємо якщо є текст, щоб уникнути empty message.
+    if (messageData.text) {
       discordMessage.content = messageData.text;
     }
 

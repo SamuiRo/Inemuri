@@ -264,46 +264,39 @@ class TelegramSourceListener extends BaseSourceAdapter {
    * Тягне повідомлення починаючи з last_message_id + 1
    * і обробляє їх від старіших до новіших.
    */
-  async _pollChannel(source, state) {
-    const lastId = state.last_message_id ?? 0;
+async _pollChannel(source, state) {
+  const lastId = state.last_message_id ?? 0;
 
-    // getMessages з min_id повертає повідомлення з ID > min_id
-    // у зворотньому порядку (новіші першими), тому реверсуємо
-    const messages = await this.client.getMessages(source.channel_id, {
-      limit: POLLING_FETCH_LIMIT,
-      min_id: lastId,
-    });
+  // offsetId + reverse: true — єдиний надійний спосіб отримати
+  // повідомлення ПІСЛЯ конкретного ID в правильному порядку (від старих до нових)
+  const messages = await this.client.getMessages(source.channel_id, {
+    limit: POLLING_FETCH_LIMIT,
+    offsetId: lastId,
+    reverse: true,   // ← повертає повідомлення з ID > offsetId, від старих до нових
+  });
 
-    if (!messages || messages.length === 0) {
-      print(`[POLLING] No new messages in "${source.channel_name}"`, "debug");
-      return;
-    }
-
-    // Від старіших до новіших для правильного порядку обробки
-    const sorted = [...messages].sort((a, b) => a.id - b.id);
-
-    print(
-      `[POLLING] "${source.channel_name}": ${sorted.length} new message(s) since id=${lastId}`,
-    );
-
-    let maxProcessedId = lastId;
-
-    for (const msg of sorted) {
-      // Режим 'both': пропускаємо якщо listener вже обробив це повідомлення.
-      // Listener виставляє processed_ids через markAsProcessedByListener.
-      if (source.mode === "both" && this._isProcessedByListener(source.channel_id, msg.id)) {
-        print(`[POLLING] Skipping duplicate msg_id=${msg.id} (handled by listener)`, "debug");
-        maxProcessedId = Math.max(maxProcessedId, msg.id);
-        continue;
-      }
-
-      await this._handleRawTelegramMessage(msg, source.channel_id);
-      maxProcessedId = Math.max(maxProcessedId, msg.id);
-    }
-
-    // Зберігаємо прогрес
-    await state.advance(maxProcessedId);
+  if (!messages || messages.length === 0) {
+    print(`[POLLING] No new messages in "${source.channel_name}"`, "debug");
+    return;
   }
+
+  // Сортування більше не потрібне — reverse: true вже дає правильний порядок,
+  // але залишимо як страховку
+  const sorted = [...messages].sort((a, b) => a.id - b.id);
+
+  print(`[POLLING] "${source.channel_name}": ${sorted.length} new message(s) since id=${lastId}`);
+
+  for (const msg of sorted) {
+    if (source.mode === "both" && this._isProcessedByListener(source.channel_id, msg.id)) {
+      print(`[POLLING] Skipping duplicate msg_id=${msg.id} (handled by listener)`, "debug");
+      await state.advance(msg.id);
+      continue;
+    }
+
+    await this._handleRawTelegramMessage(msg, source.channel_id);
+    await state.advance(msg.id); // ← зберігаємо після кожного
+  }
+}
 
   // ================================================================
   //  ДЕДУПЛІКАЦІЯ ДЛЯ РЕЖИМУ 'both'
