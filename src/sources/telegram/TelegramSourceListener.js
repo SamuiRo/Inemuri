@@ -277,15 +277,36 @@ class TelegramSourceListener extends BaseSourceAdapter {
 
   /**
    * Фільтрація і подальша обробка.
+   *
+   * Порядок операцій:
+   *  1. Text replacements застосовуються до rawText (plain text, без Markdown).
+   *  2. Фільтрація (keyword / blacklist) перевіряє оброблений rawText.
+   *  3. Якщо повідомлення проходить — оновлюємо messageData.rawText і
+   *     перегенеровуємо messageData.text через parser.entitiesToMarkdown,
+   *     щоб посилання та форматування залишались консистентними з оновленим текстом.
+   *
+   * Таким чином фільтри і replacements завжди працюють з plain text,
+   * а destinations завжди отримують коректний Markdown.
    */
   async _filterAndProcess(messageData) {
+console.log("DEBUG entities:", JSON.stringify(messageData.entities, null, 2));
+console.log("DEBUG text:", JSON.stringify(messageData.text));
+console.log("DEBUG rawText:", JSON.stringify(messageData.rawText));
+
     const compiledReplacements = this.replacementsCache.get(messageData.channelId);
     const compiledFilter       = this.filtersCache.get(messageData.channelId);
 
-    const passed = messageFilter.checkMessageFast(
+    // Крок 1: застосовуємо replacements до rawText (plain text)
+    const processedRawText = messageFilter.preprocessText(
       compiledReplacements,
+      messageData.rawText ?? messageData.text,
+    );
+
+    // Крок 2: фільтрація по обробленому plain text
+    const passed = messageFilter.checkMessageFast(
+      null,             // replacements вже застосовані вище
       compiledFilter,
-      messageData.text,
+      processedRawText,
     );
 
     if (!passed) {
@@ -294,6 +315,30 @@ class TelegramSourceListener extends BaseSourceAdapter {
         "debug",
       );
       return;
+    }
+
+    // Крок 3: оновлюємо rawText і перегенеровуємо Markdown text
+    // Якщо replacements змінили plain text — перераховуємо Markdown з entities.
+    // Entities залишаються оригінальними (вони про позиції в original text),
+    // тому якщо replacement видалив / змінив текст — entities, що стосуються
+    // видаленої ділянки, будуть ігноровані парсером (offset out of range).
+    if (processedRawText !== messageData.rawText) {
+      messageData.rawText = processedRawText;
+      // Перегенеровуємо Markdown: entities прив'язані до оригінального тексту,
+      // тому якщо raw text змінився через replacements — безпечніше передати
+      // processedRawText без entities, щоб не зіпсувати offsets.
+      // Entities, які стосуються видаленого тексту, вже не актуальні.
+      const hasActiveEntities = (messageData.entities ?? []).length > 0;
+      if (hasActiveEntities) {
+        // Залишаємо entities — parser entitiesToMarkdown безпечно обробляє
+        // out-of-range slice (String.prototype.slice повертає '' для oor offsets)
+        messageData.text = this._parser.entitiesToMarkdown(
+          processedRawText,
+          messageData.entities,
+        );
+      } else {
+        messageData.text = processedRawText;
+      }
     }
 
     await this._processFiltered(messageData);

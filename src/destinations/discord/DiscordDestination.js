@@ -3,6 +3,17 @@ import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
 import discordClient from "../../module/discord/DiscordClient.js";
 import { print } from "../../shared/utils.js";
 
+/**
+ * DiscordDestinationAdapter
+ *
+ * Відправляє повідомлення у Discord виключно через Embed:
+ *  - source name → embed.author
+ *  - text (Markdown з посиланнями) → embed.description
+ *  - фото/анімація → embed.image (перший файл, який підтримує embed)
+ *  - решта медіа → files (вкладення поряд з embed)
+ *
+ * content (поле поза embed) НЕ використовується, щоб виключити дублювання.
+ */
 class DiscordDestinationAdapter extends BaseDestinationAdapter {
   constructor(eventBus) {
     super("discord", eventBus);
@@ -10,55 +21,55 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
     // Discord ліміти
     this.limits = {
-      freeServer: 25 * 1024 * 1024, // 25 MB для звичайних серверів
-      nitroServer: 100 * 1024 * 1024, // 100 MB для серверів з Nitro boost
-      messageLength: 2000, // максимальна довжина повідомлення
-      embedDescriptionLength: 4096, // максимальна довжина опису в embed
+      freeServer:            25 * 1024 * 1024,  // 25 MB
+      nitroServer:           100 * 1024 * 1024, // 100 MB
+      messageLength:         2000,
+      embedDescriptionLength: 4096,
+      embedAuthorLength:     256,
+      embedFooterLength:     2048,
     };
 
-    // Поточний ліміт (можна налаштувати)
     this.fileSizeLimit = this.limits.freeServer;
 
-    // Типи медіа які підтримуються
+    // Медіатипи, які підтримуються Discord
     this.supportedMediaTypes = {
       photo: {
-        extensions: ["jpg", "jpeg", "png", "gif", "webp"],
-        defaultExtension: "png", // PNG краще для якості
-        canEmbed: true,
+        extensions:       ["jpg", "jpeg", "png", "gif", "webp"],
+        defaultExtension: "png",
+        canEmbed:         true,   // можна вставити в embed.image
       },
       video: {
-        extensions: ["mp4", "mov", "webm", "mkv"],
+        extensions:       ["mp4", "mov", "webm", "mkv"],
         defaultExtension: "mp4",
-        canEmbed: false,
+        canEmbed:         false,
       },
       document: {
-        extensions: ["pdf", "doc", "docx", "txt", "zip"],
+        extensions:       ["pdf", "doc", "docx", "txt", "zip"],
         defaultExtension: "file",
-        canEmbed: false,
+        canEmbed:         false,
       },
       audio: {
-        extensions: ["mp3", "wav", "ogg", "m4a"],
+        extensions:       ["mp3", "wav", "ogg", "m4a"],
         defaultExtension: "mp3",
-        canEmbed: false,
+        canEmbed:         false,
       },
       animation: {
-        extensions: ["gif"],
+        extensions:       ["gif"],
         defaultExtension: "gif",
-        canEmbed: true,
+        canEmbed:         true,
       },
     };
   }
 
+  // ── Підключення ──────────────────────────────────────────────────────────
+
   async connect() {
     try {
-      this.client = await discordClient.getClient();
+      this.client      = await discordClient.getClient();
       this.isConnected = true;
       print("Discord destination adapter connected", "success");
     } catch (error) {
-      print(
-        `Failed to connect Discord destination adapter: ${error.message}`,
-        "error",
-      );
+      print(`Failed to connect Discord destination adapter: ${error.message}`, "error");
       throw error;
     }
   }
@@ -69,44 +80,29 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
   }
 
   /**
-   * Налаштування ліміту розміру файлів
-   * @param {boolean} hasNitroBoost - Чи має сервер Nitro boost
+   * Налаштування ліміту файлів залежно від Nitro boost сервера.
+   * @param {boolean} hasNitroBoost
    */
   setFileSizeLimit(hasNitroBoost = false) {
     this.fileSizeLimit = hasNitroBoost
       ? this.limits.nitroServer
       : this.limits.freeServer;
-    print(
-      `Discord file size limit set to ${this.fileSizeLimit / (1024 * 1024)}MB`,
-    );
+    print(`Discord file size limit set to ${this.fileSizeLimit / (1024 * 1024)}MB`);
   }
 
-  /**
-   * CRITICAL FIX: Обрізання довгого тексту під ліміт Discord
-   * @param {string} text - Текст для обрізання
-   * @param {number} maxLength - Максимальна довжина (за замовчуванням 2000)
-   * @returns {string} - Обрізаний текст
-   */
-  truncateText(text, maxLength = this.limits.messageLength) {
-    if (!text || text.length <= maxLength) {
-      return text;
-    }
-
-    const suffix = "\n\n... (message truncated)";
-    const truncateAt = maxLength - suffix.length;
-    
-    print(
-      `Truncating message from ${text.length} to ${maxLength} characters`,
-      "warning",
-    );
-
-    return text.substring(0, truncateAt) + suffix;
-  }
+  // ── Відправка ────────────────────────────────────────────────────────────
 
   /**
-   * Відправка одного повідомлення
-   * @param {string} channelId - Discord channel ID
-   * @param {Object} messageData - Дані повідомлення з завантаженими медіа
+   * Відправка одного повідомлення у вигляді Discord Embed.
+   *
+   * Структура embed:
+   *  author  → source name
+   *  description → Markdown text (з посиланнями, bold, italic тощо)
+   *  image   → перший embeddable медіафайл (photo / animation)
+   *  files   → всі медіафайли як вкладення (image теж іде файлом для attachment://)
+   *
+   * @param {string} channelId   - Discord channel ID
+   * @param {object} messageData - Нормалізовані дані повідомлення
    */
   async sendMessage(channelId, messageData) {
     try {
@@ -116,28 +112,19 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
         throw new Error(`Could not find channel with ID ${channelId}`);
       }
 
-      // messageData.text = messageData.source.name + ":\n" + messageData.text;
-      let text = messageData.source.name + "\n" + messageData.text;
-
-      // CRITICAL FIX: Обрізаємо текст якщо він задовгий
-      text = this.truncateText(text);
-
-      const discordMessage = await this.formatMessage({ ...messageData, text , useEmbed: true});
-      const sentMessage = await channel.send(discordMessage);
+      const discordPayload = await this._buildPayload(messageData);
+      const sentMessage    = await channel.send(discordPayload);
 
       print(`✓ Message sent to Discord channel ${channelId}`);
       return sentMessage;
     } catch (error) {
-      print(
-        `✗ Failed to send message to Discord channel ${channelId}: ${error.message}`,
-        "error",
-      );
+      print(`✗ Failed to send message to Discord channel ${channelId}: ${error.message}`, "error");
 
       this.eventBus.emit("error.occurred", {
-        source: "discord-destination",
-        error: error.message,
+        source:    "discord-destination",
+        error:     error.message,
         channelId,
-        stack: error.stack,
+        stack:     error.stack,
       });
 
       throw error;
@@ -145,9 +132,9 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
   }
 
   /**
-   * Батч відправка повідомлень
-   * @param {string} channelId - Discord channel ID
-   * @param {Array} messageList - Масив повідомлень для відправки
+   * Batch відправка повідомлень.
+   * @param {string}   channelId   - Discord channel ID
+   * @param {object[]} messageList - Масив messageData
    */
   async sendBatch(channelId, messageList) {
     try {
@@ -159,10 +146,10 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
       const results = [];
 
-      for (const message of messageList) {
+      for (const messageData of messageList) {
         try {
-          const discordMessage = await this.formatMessage(message);
-          const sentMessage = await channel.send(discordMessage);
+          const payload     = await this._buildPayload(messageData);
+          const sentMessage = await channel.send(payload);
 
           results.push({ success: true, messageId: sentMessage.id });
           print(`  ✓ Batch message ${results.length} sent`);
@@ -177,254 +164,149 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       );
       return results;
     } catch (error) {
-      print(
-        `✗ Failed batch send to Discord channel ${channelId}: ${error.message}`,
-        "error",
-      );
+      print(`✗ Failed batch send to Discord channel ${channelId}: ${error.message}`, "error");
 
       this.eventBus.emit("error.occurred", {
-        source: "discord-destination",
-        error: error.message,
+        source:    "discord-destination",
+        error:     error.message,
         channelId,
         operation: "batch_send",
-        stack: error.stack,
+        stack:     error.stack,
       });
 
       throw error;
     }
   }
 
+  // ── Побудова payload ─────────────────────────────────────────────────────
+
   /**
-   * Форматування повідомлення під Discord
-   * @param {Object} messageData - Уніфіковані дані повідомлення з завантаженими медіа
-   * @returns {Object} - Discord-formatted message
+   * Будує повний Discord message payload.
+   *
+   * Принцип: лише embed, без content.
+   * Якщо є embeddable медіа (photo/animation) — вставляємо через attachment://.
+   * Всі медіафайли передаються у files щоб Discord міг до них дістатись.
+   *
+   * @param {object} messageData
+   * @returns {{ embeds: EmbedBuilder[], files?: AttachmentBuilder[] }}
    */
-  async formatMessage(messageData) {
-    const discordMessage = {};
+  async _buildPayload(messageData) {
+    const sourceName  = messageData.source?.name ?? "";
+    const text        = messageData.text ?? "";
 
-    // Текст повідомлення (вже обрізаний в sendMessage).
-    // useEmbed не забороняє content — embed і content можуть співіснувати.
-    // Content завжди встановлюємо якщо є текст, щоб уникнути empty message.
-    if (messageData.text) {
-      discordMessage.content = messageData.text;
-    }
+    // Обрізаємо текст під ліміт embed.description
+    const description = this._truncate(text, this.limits.embedDescriptionLength);
 
-    // Обробка завантажених медіа з Telegram
-    if (messageData.downloadedMedia && messageData.downloadedMedia.length > 0) {
-      const mediaResult = await this.prepareMediaAttachments(
-        messageData.downloadedMedia,
+    // Збираємо дані embed
+    const embedSpec = {
+      author:      sourceName,
+      description: description || null,  // null якщо текст порожній
+      color:       0x5865f2,             // Discord Blurple за замовчуванням
+    };
+
+    let files = [];
+
+    // Обробка медіа
+    if (messageData.downloadedMedia?.length > 0) {
+      const mediaResult = await this._prepareAttachments(messageData.downloadedMedia);
+
+      files = mediaResult.attachments;
+
+      // Шукаємо перший embeddable файл для embed.image
+      const firstEmbeddable = mediaResult.validMedia.find(({ media }) =>
+        this.supportedMediaTypes[media.type]?.canEmbed,
       );
 
-      // Якщо є файли які пройшли перевірку розміру
-      if (mediaResult.attachments.length > 0) {
-        discordMessage.files = mediaResult.attachments;
-
-        // Налаштування embed для фото
-        if (messageData.useEmbed || messageData.embed) {
-          const firstImage = mediaResult.validMedia.find((item) => {
-            const mediaType = item.media.type;
-            return (
-              this.supportedMediaTypes[mediaType]?.canEmbed &&
-              (mediaType === "photo" || mediaType === "animation")
-            );
-          });
-
-          if (firstImage) {
-            const embedData = messageData.embed || {};
-            embedData.image = `attachment://${this.getMediaFilename(firstImage.media, firstImage.index)}`;
-            
-            // CRITICAL FIX: Обрізаємо опис embed якщо він задовгий
-            if (messageData.text) {
-              embedData.description = this.truncateText(
-                messageData.text,
-                this.limits.embedDescriptionLength
-              );
-            }
-            
-            messageData.embed = embedData;
-          }
-        }
+      if (firstEmbeddable) {
+        const filename    = this._getFilename(firstEmbeddable.media, firstEmbeddable.index);
+        embedSpec.image   = `attachment://${filename}`;
       }
 
-      // Якщо були файли що не пройшли перевірку - додаємо повідомлення
+      // Попередження про oversized файли (додаємо до footer embed)
       if (mediaResult.oversizedFiles.length > 0) {
-        const warningText = `\n⚠️ ${mediaResult.oversizedFiles.length} файл(ів) пропущено через обмеження розміру (>${this.fileSizeLimit / (1024 * 1024)}MB)`;
-
-        if (discordMessage.content) {
-          // CRITICAL FIX: Перевіряємо чи не перевищимо ліміт після додавання warning
-          const newContent = discordMessage.content + warningText;
-          discordMessage.content = this.truncateText(newContent);
-        } else {
-          discordMessage.content = warningText.trim();
-        }
-      }
-
-      // Якщо жоден файл не пройшов перевірку і немає тексту
-      if (mediaResult.attachments.length === 0 && !discordMessage.content) {
-        discordMessage.content =
-          "⚠️ Не вдалося надіслати медіа файли через обмеження розміру";
+        const limitMb = (this.fileSizeLimit / (1024 * 1024)).toFixed(0);
+        embedSpec.footer = `⚠️ ${mediaResult.oversizedFiles.length} file(s) skipped — exceeds ${limitMb}MB limit`;
       }
     }
 
-    // Embed якщо потрібен
-    if (messageData.embed) {
-      discordMessage.embeds = [this.buildEmbed(messageData.embed)];
+    const embed  = this._buildEmbed(embedSpec);
+    const payload = { embeds: [embed] };
+
+    if (files.length > 0) {
+      payload.files = files;
     }
 
-    return discordMessage;
+    return payload;
   }
 
-  /**
-   * Підготовка медіа файлів для Discord з перевіркою розміру
-   * @param {Array} downloadedMedia - Масив завантажених медіа з Telegram
-   * @returns {Object} - { attachments: Array, validMedia: Array, oversizedFiles: Array }
-   */
-  async prepareMediaAttachments(downloadedMedia) {
-    const attachments = [];
-    const validMedia = [];
-    const oversizedFiles = [];
-
-    for (let i = 0; i < downloadedMedia.length; i++) {
-      const media = downloadedMedia[i];
-
-      if (!media.data) {
-        print(`Skipping media ${i}: no data buffer`, "warning");
-        continue;
-      }
-
-      const fileSize = Buffer.byteLength(media.data);
-
-      // Перевіряємо розмір файлу
-      if (fileSize > this.fileSizeLimit) {
-        print(
-          `Skipping media ${i} (${media.type}): file size ${(fileSize / (1024 * 1024)).toFixed(2)}MB exceeds limit`,
-          "warning",
-        );
-        oversizedFiles.push({
-          index: i,
-          type: media.type,
-          size: fileSize,
-        });
-        continue;
-      }
-
-      const filename = this.getMediaFilename(media, i);
-      const attachment = new AttachmentBuilder(media.data, { name: filename });
-
-      attachments.push(attachment);
-      validMedia.push({ media, index: i });
-
-      print(
-        `Added media ${i} (${media.type}): ${filename} (${(fileSize / 1024).toFixed(2)}KB)`,
-        "debug",
-      );
-    }
-
-    return {
-      attachments,
-      validMedia,
-      oversizedFiles,
-    };
-  }
+  // ── Embed builder ────────────────────────────────────────────────────────
 
   /**
-   * Генерація імені файлу на основі типу медіа та метаданих
-   * @param {Object} media - Медіа об'єкт
-   * @param {number} index - Індекс файлу
-   * @returns {string} - Ім'я файлу
-   */
-  getMediaFilename(media, index) {
-    const mediaConfig = this.supportedMediaTypes[media.type];
-
-    if (!mediaConfig) {
-      print(`Unknown media type: ${media.type}, using default`, "warning");
-      return `attachment${index}.bin`;
-    }
-
-    // Якщо є оригінальне ім'я файлу в метаданих
-    if (media.filename) {
-      return media.filename;
-    }
-
-    // Якщо є mime type, визначаємо розширення
-    if (media.mimeType) {
-      const extension = this.getExtensionFromMimeType(
-        media.mimeType,
-        mediaConfig.extensions,
-      );
-      if (extension) {
-        return `attachment${index}.${extension}`;
-      }
-    }
-
-    // Використовуємо стандартне розширення для типу
-    return `attachment${index}.${mediaConfig.defaultExtension}`;
-  }
-
-  /**
-   * Визначення розширення файлу з MIME type
-   * @param {string} mimeType - MIME type файлу
-   * @param {Array} allowedExtensions - Дозволені розширення
-   * @returns {string|null} - Розширення файлу
-   */
-  getExtensionFromMimeType(mimeType, allowedExtensions) {
-    const mimeMap = {
-      "image/jpeg": "jpg",
-      "image/jpg": "jpg",
-      "image/png": "png",
-      "image/gif": "gif",
-      "image/webp": "webp",
-      "video/mp4": "mp4",
-      "video/quicktime": "mov",
-      "video/webm": "webm",
-      "video/x-matroska": "mkv",
-      "audio/mpeg": "mp3",
-      "audio/wav": "wav",
-      "audio/ogg": "ogg",
-      "audio/mp4": "m4a",
-      "application/pdf": "pdf",
-      "application/zip": "zip",
-    };
-
-    const extension = mimeMap[mimeType];
-    return extension && allowedExtensions.includes(extension)
-      ? extension
-      : null;
-  }
-
-  /**
-   * Побудова Discord embed
-   * @param {Object} embedData - Дані для embed
+   * Будує EmbedBuilder з розширеного spec-об'єкта.
+   *
+   * Spec fields:
+   *  author      {string}  — ім'я джерела (показується вгорі)
+   *  description {string}  — основний текст (Markdown)
+   *  color       {number}  — колір бічної смуги embed
+   *  image       {string}  — URL або attachment://filename
+   *  thumbnail   {string}  — URL мініатюри
+   *  footer      {string}  — текст footer
+   *  timestamp   {Date}    — timestamp повідомлення
+   *  url         {string}  — URL для title (якщо є title)
+   *  title       {string}  — заголовок embed
+   *  fields      {Array}   — [{name, value, inline}]
+   *
+   * @param {object} spec
    * @returns {EmbedBuilder}
    */
-  buildEmbed(embedData) {
-    const embed = new EmbedBuilder().setColor(embedData.color || 0x5865f2);
+  _buildEmbed(spec) {
+    const embed = new EmbedBuilder().setColor(spec.color ?? 0x5865f2);
 
-    if (embedData.author) embed.setAuthor({ name: embedData.author });
-    if (embedData.title) embed.setTitle(embedData.title);
-    
-    // CRITICAL FIX: Обрізаємо description якщо задовгий
-    if (embedData.description) {
-      const truncatedDescription = this.truncateText(
-        embedData.description,
-        this.limits.embedDescriptionLength
-      );
-      embed.setDescription(truncatedDescription);
+    if (spec.author) {
+      embed.setAuthor({
+        name: this._truncate(spec.author, this.limits.embedAuthorLength),
+      });
     }
-    
-    if (embedData.footer) embed.setFooter({ text: embedData.footer });
-    if (embedData.timestamp) embed.setTimestamp(embedData.timestamp);
-    if (embedData.image) embed.setImage(embedData.image);
-    if (embedData.thumbnail) embed.setThumbnail(embedData.thumbnail);
-    if (embedData.url) embed.setURL(embedData.url);
 
-    // Додаткові поля
-    if (embedData.fields && Array.isArray(embedData.fields)) {
-      for (const field of embedData.fields) {
+    if (spec.title) {
+      embed.setTitle(spec.title);
+    }
+
+    if (spec.url && spec.title) {
+      // URL без title не відображається у Discord
+      embed.setURL(spec.url);
+    }
+
+    if (spec.description) {
+      embed.setDescription(
+        this._truncate(spec.description, this.limits.embedDescriptionLength),
+      );
+    }
+
+    if (spec.image) {
+      embed.setImage(spec.image);
+    }
+
+    if (spec.thumbnail) {
+      embed.setThumbnail(spec.thumbnail);
+    }
+
+    if (spec.footer) {
+      embed.setFooter({
+        text: this._truncate(spec.footer, this.limits.embedFooterLength),
+      });
+    }
+
+    if (spec.timestamp) {
+      embed.setTimestamp(spec.timestamp instanceof Date ? spec.timestamp : new Date(spec.timestamp * 1000));
+    }
+
+    if (Array.isArray(spec.fields)) {
+      for (const field of spec.fields) {
         embed.addFields({
-          name: field.name,
-          value: field.value,
-          inline: field.inline || false,
+          name:   field.name,
+          value:  field.value,
+          inline: field.inline ?? false,
         });
       }
     }
@@ -432,32 +314,163 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     return embed;
   }
 
+  // ── Медіа ────────────────────────────────────────────────────────────────
+
   /**
-   * Очистка каналу
-   * @param {string} channelId - Discord channel ID
-   * @param {number} limit - Кількість повідомлень для видалення (max 100)
+   * Готує AttachmentBuilder масив з downloaded media.
+   * Перевіряє розмір кожного файлу проти fileSizeLimit.
+   *
+   * @param {object[]} downloadedMedia
+   * @returns {{ attachments: AttachmentBuilder[], validMedia: {media, index}[], oversizedFiles: object[] }}
+   */
+  async _prepareAttachments(downloadedMedia) {
+    const attachments    = [];
+    const validMedia     = [];
+    const oversizedFiles = [];
+
+    for (let i = 0; i < downloadedMedia.length; i++) {
+      const media = downloadedMedia[i];
+
+      if (!media?.data) {
+        print(`Skipping media ${i}: no data buffer`, "warning");
+        continue;
+      }
+
+      const fileSize = Buffer.byteLength(media.data);
+
+      if (fileSize > this.fileSizeLimit) {
+        print(
+          `Skipping media ${i} (${media.type}): ${(fileSize / (1024 * 1024)).toFixed(2)}MB exceeds limit`,
+          "warning",
+        );
+        oversizedFiles.push({ index: i, type: media.type, size: fileSize });
+        continue;
+      }
+
+      const filename   = this._getFilename(media, i);
+      const attachment = new AttachmentBuilder(media.data, { name: filename });
+
+      attachments.push(attachment);
+      validMedia.push({ media, index: i });
+
+      print(`Added media ${i} (${media.type}): ${filename} (${(fileSize / 1024).toFixed(2)}KB)`, "debug");
+    }
+
+    return { attachments, validMedia, oversizedFiles };
+  }
+
+  // ── Допоміжні методи ─────────────────────────────────────────────────────
+
+  /**
+   * Обрізає рядок до maxLength зі збереженням читабельності.
+   * Якщо рядок довший — додає маркер "(…)".
+   *
+   * @param {string} text
+   * @param {number} maxLength
+   * @returns {string}
+   */
+  _truncate(text, maxLength) {
+    if (!text || text.length <= maxLength) return text ?? "";
+
+    const suffix    = "\n\n*(…)*";
+    const truncateAt = maxLength - suffix.length;
+
+    print(`Truncating message from ${text.length} to ${maxLength} chars`, "warning");
+
+    return text.substring(0, truncateAt) + suffix;
+  }
+
+  /**
+   * Генерує ім'я файлу для вкладення.
+   * Пріоритет: оригінальне ім'я → mime-type → дефолт для типу.
+   *
+   * @param {object} media
+   * @param {number} index
+   * @returns {string}
+   */
+  _getFilename(media, index) {
+    const config = this.supportedMediaTypes[media.type];
+
+    if (!config) {
+      print(`Unknown media type: ${media.type}, using default`, "warning");
+      return `attachment${index}.bin`;
+    }
+
+    if (media.filename) {
+      return media.filename;
+    }
+
+    if (media.mimeType) {
+      const ext = this._extFromMime(media.mimeType, config.extensions);
+      if (ext) return `attachment${index}.${ext}`;
+    }
+
+    return `attachment${index}.${config.defaultExtension}`;
+  }
+
+  /**
+   * Визначає розширення файлу з MIME type.
+   *
+   * @param {string}   mimeType
+   * @param {string[]} allowedExtensions
+   * @returns {string|null}
+   */
+  _extFromMime(mimeType, allowedExtensions) {
+    const mimeMap = {
+      "image/jpeg":       "jpg",
+      "image/jpg":        "jpg",
+      "image/png":        "png",
+      "image/gif":        "gif",
+      "image/webp":       "webp",
+      "video/mp4":        "mp4",
+      "video/quicktime":  "mov",
+      "video/webm":       "webm",
+      "video/x-matroska": "mkv",
+      "audio/mpeg":       "mp3",
+      "audio/wav":        "wav",
+      "audio/ogg":        "ogg",
+      "audio/mp4":        "m4a",
+      "application/pdf":  "pdf",
+      "application/zip":  "zip",
+    };
+
+    const ext = mimeMap[mimeType];
+    return ext && allowedExtensions.includes(ext) ? ext : null;
+  }
+
+  /**
+   * Очищення каналу (утиліта для адміністраторів).
+   * @param {string} channelId
+   * @param {number} limit      - Max 100 (Discord API обмеження)
    */
   async clearChannel(channelId, limit = 100) {
     try {
-      const channel = await this.client.channels.fetch(channelId);
+      const channel  = await this.client.channels.fetch(channelId);
 
       if (!channel) {
         throw new Error(`Could not find channel with ID ${channelId}`);
       }
 
       const messages = await channel.messages.fetch({ limit });
-      await Promise.all(messages.map((message) => message.delete()));
+      await Promise.all(messages.map((msg) => msg.delete()));
 
-      print(
-        `Channel ${channelId} cleared: ${messages.size} messages deleted`,
-        "success",
-      );
+      print(`Channel ${channelId} cleared: ${messages.size} messages deleted`, "success");
 
       return messages.size;
     } catch (error) {
       print(`Failed to clear channel ${channelId}: ${error.message}`, "error");
       throw error;
     }
+  }
+
+  /**
+   * Форматування повідомлення — публічний метод для сумісності з BaseDestinationAdapter.
+   * Основна логіка тепер у _buildPayload.
+   * @param {object} messageData
+   * @returns {object}
+   */
+  async formatMessage(messageData) {
+    return this._buildPayload(messageData);
   }
 }
 

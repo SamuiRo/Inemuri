@@ -9,10 +9,10 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     super("telegram", eventBus);
     this.client = null;
 
-    // Telegram ліміти для user accounts
+    // Telegram ліміти для user accounts (MTProto, не Bot API)
     this.limits = {
       fileSize: 2000 * 1024 * 1024, // 2GB для user accounts
-      caption: 1024, // максимальна довжина caption
+      caption: 4096, // MTProto user account: caption = message ліміт (Bot API має 1024, ми не бот)
       message: 4096, // максимальна довжина текстового повідомлення
     };
 
@@ -193,7 +193,9 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
     const sendOptions = {
       message: messageText,
-      parseMode: options.parseMode || null,
+      // "markdown" забезпечує рендеринг [text](url), **bold**, *italic*, `code`.
+      // Якщо caller явно передав null — вимикаємо (для службових повідомлень без формату).
+      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
       linkPreview: options.linkPreview !== false, // За замовчуванням показуємо preview
       replyTo: options.replyTo || null,
       silent: options.silent || false,
@@ -260,7 +262,8 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
     const baseOptions = {
       caption,
-      parseMode: options.parseMode || null,
+      // "markdown" забезпечує рендеринг посилань і форматування у caption.
+      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
       replyTo: options.replyTo || null,
       silent: options.silent || false,
     };
@@ -335,7 +338,8 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     return await this.client.sendFile(entity, {
       file: files,
       caption,
-      parseMode: options.parseMode || null,
+      // "markdown" забезпечує рендеринг посилань і форматування у caption альбому.
+      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
       replyTo: options.replyTo || null,
       silent: options.silent || false,
       forceDocument: false,
@@ -593,7 +597,7 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
   async formatMessage(messageData) {
     const telegramMessage = {
       text: messageData.text || "",
-      parseMode: messageData.parseMode || null,
+      parseMode: messageData.parseMode !== undefined ? messageData.parseMode : "markdown",
       downloadedMedia: messageData.downloadedMedia || [],
       linkPreview: messageData.linkPreview !== false,
       silent: messageData.silent || false,
