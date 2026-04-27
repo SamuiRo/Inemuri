@@ -194,9 +194,17 @@ class TelegramMessageParser {
   /**
    * Застосовує Markdown-обгортку для конкретного типу entity.
    *
+   * Ключові правила:
+   *  - text_url: trim пробілів у тексті посилання, бо Telegram Markdown не рендерить
+   *              [AERO    ](url) — trailing spaces ламають синтаксис в обох платформах.
+   *  - hashtag / mention / cashtag: повертаємо innerText БЕЗ escape, бо
+   *    _escapeMarkdown екранує їх символи і Discord показує \#testnet замість #testnet.
+   *  - bold / italic / strikethrough / spoiler: rendered вже пройшов через escapeMarkdown
+   *    для plain сегментів — це правильно, залишаємо як є.
+   *
    * @param {string}   type           - Тип entity зі словника ENTITY_TYPE_MAP
    * @param {object}   entity         - Оригінальна entity (для url, pre.language тощо)
-   * @param {string}   innerText      - Текст всередині entity (plain)
+   * @param {string}   innerText      - Текст всередині entity (plain, без escape)
    * @param {object[]} innerEntities  - Вкладені entities
    * @param {number}   innerOffset    - Абсолютний offset початку inner
    * @param {Function} renderFn       - Рекурсивна функція render
@@ -209,11 +217,15 @@ class TelegramMessageParser {
     switch (type) {
       // ── Посилання ──────────────────────────────────────────────────────
       case "text_url": {
-        // MessageEntityTextUrl: entity.url містить ціль
         const url = entity.url ?? "";
         if (!url) return rendered;
-        // Discord та Telegram Markdown: [текст](url)
-        return `[${rendered}](${url})`;
+        // FIX: trim пробілів у тексті посилання.
+        // Telegram часто додає trailing spaces для вирівнювання таблиць:
+        // "[AERO    ](url)" — такий синтаксис не рендериться ні в Telegram ні в Discord.
+        // Після trim: "[AERO](url)" — рендериться коректно.
+        const linkText = rendered.trim();
+        if (!linkText) return rendered; // якщо весь текст — пробіли, повертаємо як є
+        return `[${linkText}](${url})`;
       }
 
       case "url": {
@@ -223,42 +235,77 @@ class TelegramMessageParser {
       }
 
       // ── Форматування ───────────────────────────────────────────────────
-      case "bold":
-        return `**${rendered}**`;
 
-      case "italic":
-        return `*${rendered}*`;
+      // Для bold / italic / strikethrough / spoiler виносимо leading і trailing
+      // пробіли назовні маркерів.
+      //
+      // Причина: Telegram entity може охоплювати trailing пробіл між словами,
+      // наприклад Bold("always ") + Bold("#dyor") → "**always ****#dyor**".
+      // Discord не рендерить bold якщо маркер впирається в пробіл зсередини.
+      // Після trim: "**always** **#dyor**" — рендериться коректно.
+
+      case "bold": {
+        const trimmedEnd   = rendered.trimEnd();
+        const trailing     = rendered.slice(trimmedEnd.length);
+        const trimmedStart = trimmedEnd.trimStart();
+        const leading      = trimmedEnd.slice(0, trimmedEnd.length - trimmedStart.length);
+        if (!trimmedStart) return rendered; // суцільні пробіли — без форматування
+        return `${leading}**${trimmedStart}**${trailing}`;
+      }
+
+      case "italic": {
+        const trimmedEnd   = rendered.trimEnd();
+        const trailing     = rendered.slice(trimmedEnd.length);
+        const trimmedStart = trimmedEnd.trimStart();
+        const leading      = trimmedEnd.slice(0, trimmedEnd.length - trimmedStart.length);
+        if (!trimmedStart) return rendered;
+        return `${leading}*${trimmedStart}*${trailing}`;
+      }
 
       case "code":
         return `\`${innerText}\``; // code — не escapeємо всередині
 
       case "pre": {
-        // Pre block — може містити мову (entity.language)
         const lang = entity.language ?? "";
         return `\`\`\`${lang}\n${innerText}\n\`\`\``;
       }
 
-      case "strikethrough":
-        // Discord: ~~text~~, Telegram: також підтримує
-        return `~~${rendered}~~`;
+      case "strikethrough": {
+        const trimmedEnd   = rendered.trimEnd();
+        const trailing     = rendered.slice(trimmedEnd.length);
+        const trimmedStart = trimmedEnd.trimStart();
+        const leading      = trimmedEnd.slice(0, trimmedEnd.length - trimmedStart.length);
+        if (!trimmedStart) return rendered;
+        return `${leading}~~${trimmedStart}~~${trailing}`;
+      }
 
       case "underline":
         // Discord не підтримує underline в Markdown — залишаємо plain
         return rendered;
 
-      case "spoiler":
-        // Discord: ||text||, Telegram: теж підтримує ||
-        return `||${rendered}||`;
+      case "spoiler": {
+        const trimmedEnd   = rendered.trimEnd();
+        const trailing     = rendered.slice(trimmedEnd.length);
+        const trimmedStart = trimmedEnd.trimStart();
+        const leading      = trimmedEnd.slice(0, trimmedEnd.length - trimmedStart.length);
+        if (!trimmedStart) return rendered;
+        return `${leading}||${trimmedStart}||${trailing}`;
+      }
 
       // ── Спеціальні ─────────────────────────────────────────────────────
       case "mention":
       case "hashtag":
       case "cashtag":
       case "bot_command":
+        // FIX: повертаємо innerText БЕЗ escape.
+        // _escapeMarkdown екранує # → \# і @ → (не в regex, але _ може бути).
+        // Хештеги і mentions — plain символи, їх не треба escape в Discord/Telegram.
+        // Якщо є вкладені entities всередині (рідко) — беремо rendered, інакше innerText.
+        return innerEntities.length > 0 ? rendered : innerText;
+
       case "email":
       case "phone":
-        // Залишаємо як plain text — вже є у innerText
-        return rendered;
+        return innerText;
 
       default:
         return rendered;
@@ -269,17 +316,27 @@ class TelegramMessageParser {
    * Екранує символи Markdown у plain-text сегментах
    * щоб уникнути випадкового форматування.
    *
-   * Екрануємо лише символи, які можуть спричинити проблеми в Discord/Telegram Markdown.
-   * Не чіпаємо символи всередині entities — там форматування навмисне.
+   * Екрануємо лише символи що реально тригерять Markdown rendering
+   * в Discord і Telegram при появі парами:
+   *   *  — italic/bold
+   *   _  — italic/bold
+   *   ~  — strikethrough
+   *   `  — code
+   *   [  — початок посилання (] без [ не шкодить)
+   *   |  — spoiler (||)
+   *
+   * НЕ екрануємо:
+   *   #  — заголовки лише на початку рядка в Discord, в Telegram не форматує взагалі
+   *   >  — blockquote лише на початку рядка; у середині тексту не шкодить
+   *   \  — зайвий escape призводить до відображення зайвих backslash
+   *   @  — mention, не є Markdown
    *
    * @param {string} text
    * @returns {string}
    */
   _escapeMarkdown(text) {
     if (!text) return "";
-    // Екрануємо: ` * _ ~ | \ > [ ]
-    // Не екрануємо: # ! ( ) — рідко конфліктують у звичайному тексті
-    return text.replace(/([`*_~|\\>\[\]])/g, "\\$1");
+    return text.replace(/([*_~`\[|])/g, "\\$1");
   }
 
   // ── Media ─────────────────────────────────────────────────────────────────
