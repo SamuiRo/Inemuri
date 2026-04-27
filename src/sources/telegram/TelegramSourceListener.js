@@ -289,10 +289,6 @@ class TelegramSourceListener extends BaseSourceAdapter {
    * а destinations завжди отримують коректний Markdown.
    */
   async _filterAndProcess(messageData) {
-console.log("DEBUG entities:", JSON.stringify(messageData.entities, null, 2));
-console.log("DEBUG text:", JSON.stringify(messageData.text));
-console.log("DEBUG rawText:", JSON.stringify(messageData.rawText));
-
     const compiledReplacements = this.replacementsCache.get(messageData.channelId);
     const compiledFilter       = this.filtersCache.get(messageData.channelId);
 

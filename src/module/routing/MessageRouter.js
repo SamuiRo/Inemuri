@@ -60,8 +60,6 @@ class MessageRouter {
    */
   async routeMessage(messageData) {
     try {
-      // console.log("messageData", messageData)
-      console.log("messageData", messageData.source)
       // Перевіряємо чи є destinations
       const destinations = messageData.source?.destinations;
 
