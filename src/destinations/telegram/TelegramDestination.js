@@ -78,38 +78,43 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
    */
   async sendMessage(destinationId, messageData) {
     try {
-      // Резолвимо entity (може бути username, phone, chat_id)
       const entity = await this.resolveEntity(destinationId);
 
-      let sentMessage;
+      // Формуємо plain text: "Source Name\nрядок повідомлення"
+      // rawText — оригінальний текст без Markdown (entities зберігають offset відносно нього)
+      const sourceName  = messageData.source.name ?? "";
+      const rawBody     = messageData.rawText ?? messageData.text ?? "";
+      const plainText   = sourceName + "\n" + rawBody;
 
-      let text = messageData.source.name + "\n" + messageData.text;
+      // Зсув entities: source.name + "\n" додає (sourceName.length + 1) символів
+      const entityOffset = sourceName.length + 1;
 
-      // Якщо немає ні тексту ні медіа — пропускаємо
-      const hasMedia = messageData.downloadedMedia && messageData.downloadedMedia.length > 0;
-      if (!text.trim() && !hasMedia) {
+      // Збираємо Api.*Entity об'єкти з оригінальних entities повідомлення
+      const formattingEntities = this.buildFormattingEntities(
+        messageData.entities ?? [],
+        entityOffset,
+      );
+
+      const sendOptions = { formattingEntities };
+
+      const hasMedia = messageData.downloadedMedia?.length > 0;
+
+      if (!plainText.trim() && !hasMedia) {
         print(`Skipping empty message to Telegram chat ${destinationId}`, "warning");
         return null;
       }
 
-      // Якщо є медіа - відправляємо з медіа
-      if (
-        messageData.downloadedMedia &&
-        messageData.downloadedMedia.length > 0
-      ) {
+      let sentMessage;
+
+      if (hasMedia) {
         sentMessage = await this.sendWithMedia(
           entity,
-          text,
+          plainText,
           messageData.downloadedMedia,
-          messageData,
+          sendOptions,
         );
       } else {
-        // Просто текстове повідомлення
-        sentMessage = await this.sendTextMessage(
-          entity,
-          text,
-          messageData,
-        );
+        sentMessage = await this.sendTextMessage(entity, plainText, sendOptions);
       }
 
       print(`✓ Message sent to Telegram chat ${destinationId}`);
@@ -178,28 +183,36 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
   }
 
   /**
-   * Відправка текстового повідомлення
-   * @param {Object} entity - Telegram entity
-   * @param {string} text - Текст повідомлення
-   * @param {Object} options - Додаткові опції
+   * Відправка текстового повідомлення.
+   *
+   * Використовує formattingEntities (MTProto Api.*Entity об'єкти) замість parseMode,
+   * оскільки parseMode: "markdown" ненадійний у GramJS для user accounts —
+   * він не підтримує [text](url) синтаксис і ламає спецсимволи.
+   * formattingEntities передаються напряму в протокол і рендеряться гарантовано.
+   *
+   * @param {Object}   entity   - Telegram entity (destination)
+   * @param {string}   text     - Plain text повідомлення (без Markdown)
+   * @param {Object}   options
+   *   options.formattingEntities {Api.*Entity[]} — entities для цього тексту
    */
   async sendTextMessage(entity, text, options = {}) {
     if (!text || text.trim().length === 0) {
       throw new Error("Message text cannot be empty");
     }
 
-    // Перевіряємо ліміт довжини
     const messageText = this.truncateText(text, this.limits.message);
 
     const sendOptions = {
-      message: messageText,
-      // "markdown" забезпечує рендеринг [text](url), **bold**, *italic*, `code`.
-      // Якщо caller явно передав null — вимикаємо (для службових повідомлень без формату).
-      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
-      linkPreview: options.linkPreview !== false, // За замовчуванням показуємо preview
-      replyTo: options.replyTo || null,
-      silent: options.silent || false,
+      message:     messageText,
+      parseMode:   null,  // вимикаємо parseMode — використовуємо formattingEntities
+      linkPreview: options.linkPreview !== false,
+      replyTo:     options.replyTo || null,
+      silent:      options.silent  || false,
     };
+
+    if (options.formattingEntities?.length) {
+      sendOptions.formattingEntities = options.formattingEntities;
+    }
 
     return await this.client.sendMessage(entity, sendOptions);
   }
@@ -262,10 +275,12 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
     const baseOptions = {
       caption,
-      // "markdown" забезпечує рендеринг посилань і форматування у caption.
-      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
-      replyTo: options.replyTo || null,
-      silent: options.silent || false,
+      parseMode:   null,  // вимикаємо parseMode — використовуємо formattingEntities
+      replyTo:     options.replyTo || null,
+      silent:      options.silent  || false,
+      ...(options.formattingEntities?.length
+        ? { formattingEntities: options.formattingEntities }
+        : {}),
     };
 
     if (mediaType === "photo") {
@@ -336,13 +351,15 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     );
 
     return await this.client.sendFile(entity, {
-      file: files,
+      file:         files,
       caption,
-      // "markdown" забезпечує рендеринг посилань і форматування у caption альбому.
-      parseMode: options.parseMode !== undefined ? options.parseMode : "markdown",
-      replyTo: options.replyTo || null,
-      silent: options.silent || false,
+      parseMode:    null,  // вимикаємо parseMode — використовуємо formattingEntities
+      replyTo:      options.replyTo || null,
+      silent:       options.silent  || false,
       forceDocument: false,
+      ...(options.formattingEntities?.length
+        ? { formattingEntities: options.formattingEntities }
+        : {}),
     });
   }
 
@@ -545,6 +562,99 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
   }
 
   /**
+   * Конвертує масив оригінальних Telegram entities (GramJS raw objects)
+   * у масив Api.*Entity об'єктів для передачі в formattingEntities.
+   *
+   * Чому не parseMode:
+   *   parseMode: "markdown" у GramJS для user accounts НЕ підтримує [text](url),
+   *   може ламати спецсимволи ($, %, дужки тощо) і є нестабільним.
+   *   formattingEntities — нативний MTProto механізм, завжди рендериться вірно.
+   *
+   * @param {object[]} entities     - Масив GramJS entity об'єктів з messageData.entities
+   * @param {number}   offsetDelta  - Зсув всіх offset (для source name + "\n" префіксу)
+   * @returns {Api.*Entity[]}
+   */
+  buildFormattingEntities(entities, offsetDelta = 0) {
+    if (!entities?.length) return [];
+
+    const result = [];
+
+    for (const e of entities) {
+      const offset = (e.offset ?? 0) + offsetDelta;
+      const length = e.length ?? 0;
+
+      if (length <= 0) continue;
+
+      const className = e.className ?? e.constructor?.name ?? "";
+
+      try {
+        switch (className) {
+          case "MessageEntityBold":
+            result.push(new Api.MessageEntityBold({ offset, length }));
+            break;
+          case "MessageEntityItalic":
+            result.push(new Api.MessageEntityItalic({ offset, length }));
+            break;
+          case "MessageEntityUnderline":
+            result.push(new Api.MessageEntityUnderline({ offset, length }));
+            break;
+          case "MessageEntityStrikethrough":
+            result.push(new Api.MessageEntityStrikethrough({ offset, length }));
+            break;
+          case "MessageEntityCode":
+            result.push(new Api.MessageEntityCode({ offset, length }));
+            break;
+          case "MessageEntityPre":
+            result.push(new Api.MessageEntityPre({
+              offset,
+              length,
+              language: e.language ?? "",
+            }));
+            break;
+          case "MessageEntitySpoiler":
+            result.push(new Api.MessageEntitySpoiler({ offset, length }));
+            break;
+          case "MessageEntityTextUrl":
+            if (e.url) {
+              result.push(new Api.MessageEntityTextUrl({ offset, length, url: e.url }));
+            }
+            break;
+          case "MessageEntityUrl":
+            result.push(new Api.MessageEntityUrl({ offset, length }));
+            break;
+          case "MessageEntityMention":
+            result.push(new Api.MessageEntityMention({ offset, length }));
+            break;
+          case "MessageEntityHashtag":
+            result.push(new Api.MessageEntityHashtag({ offset, length }));
+            break;
+          case "MessageEntityCashtag":
+            result.push(new Api.MessageEntityCashtag({ offset, length }));
+            break;
+          case "MessageEntityEmail":
+            result.push(new Api.MessageEntityEmail({ offset, length }));
+            break;
+          case "MessageEntityPhone":
+            result.push(new Api.MessageEntityPhone({ offset, length }));
+            break;
+          case "MessageEntityBotCommand":
+            result.push(new Api.MessageEntityBotCommand({ offset, length }));
+            break;
+          default:
+            // Невідомий тип — пропускаємо, щоб не зламати відправку
+            print(`buildFormattingEntities: unknown entity type "${className}", skipping`, "debug");
+            break;
+        }
+      } catch (err) {
+        // Якщо Api.* конструктор не знайдений (стара версія GramJS) — пропускаємо
+        print(`buildFormattingEntities: failed to build ${className}: ${err.message}`, "debug");
+      }
+    }
+
+    return result;
+  }
+
+  /**
    * Резолв entity (username, phone, chat_id)
    * @param {string|number} identifier - Username, phone або chat_id
    * @returns {Object} - Telegram entity
@@ -595,16 +705,15 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
    * @returns {Object} - Telegram-formatted message
    */
   async formatMessage(messageData) {
-    const telegramMessage = {
-      text: messageData.text || "",
-      parseMode: messageData.parseMode !== undefined ? messageData.parseMode : "markdown",
-      downloadedMedia: messageData.downloadedMedia || [],
-      linkPreview: messageData.linkPreview !== false,
-      silent: messageData.silent || false,
-      replyTo: messageData.replyTo || null,
+    return {
+      text:               messageData.rawText ?? messageData.text ?? "",
+      formattingEntities: messageData.entities ?? [],
+      parseMode:          null,
+      downloadedMedia:    messageData.downloadedMedia || [],
+      linkPreview:        messageData.linkPreview !== false,
+      silent:             messageData.silent || false,
+      replyTo:            messageData.replyTo || null,
     };
-
-    return telegramMessage;
   }
 
   /**
