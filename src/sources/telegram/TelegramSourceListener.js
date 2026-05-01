@@ -400,6 +400,31 @@ class TelegramSourceListener extends BaseSourceAdapter {
     print(`Cached ${this.sourcesCache.size} sources with filters and replacements`);
   }
 
+  /**
+   * Встановлює початкову baseline для нового джерела:
+   * отримує поточний останній message_id і зберігає його як точку старту,
+   * щоб polling не обробляв всю історію каналу при першому запуску.
+   */
+  async _setBaseline(source, state) {
+    try {
+      const messages = await this.client.getMessages(source.channel_id, { limit: 1 });
+
+      const lastId = messages?.[0]?.id ?? 0;
+      await state.advance(lastId);
+
+      print(
+        `[POLLING] Baseline set for "${source.channel_name}": last_message_id=${lastId}`,
+      );
+    } catch (error) {
+      print(
+        `[POLLING] Failed to set baseline for "${source.channel_name}": ${error.message}`,
+        "error",
+      );
+      // Не кидаємо помилку далі — polling запуститься з id=0,
+      // що гірше але не критично
+    }
+  }
+
   _getSourceById(sourceId) {
     for (const source of this.sourcesCache.values()) {
       if (source.id === sourceId) return source;
