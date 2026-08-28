@@ -81,6 +81,20 @@ it never has to guess where in the text a code might be, it is shown candidates.
 The normalized text hash and normalized URLs are checked against the window
 immediately. An exact repost collapses without a single AI call.
 
+## Stage 1.5 — Vision (optional, per source)
+
+For sources with `flow.vision.enabled`, image-only posts pass through a
+transcription step before enrichment. The vision model returns text, never a
+classification, so everything downstream stays unchanged.
+
+```text
+vision gate -> download image -> downscale (sharp) -> perceptual hash
+            -> cache lookup -> gateway.vision() -> UPDATE posts.text_ocr
+```
+
+This runs in the worker, not during ingestion, so the no-outbound-calls
+invariant holds. Full details, gates, and hazards: [VISION.md](VISION.md).
+
 ## Stage 2 — Enrich
 
 A worker that reads from the database. It knows nothing about Telegram,
@@ -92,7 +106,7 @@ SELECT * FROM posts WHERE status='pending' ORDER BY created_at LIMIT batch
         |
 concurrency-limited queue + per-provider token bucket
         |
-gateway.enrich(text, candidates)   -> one structured call
+gateway.enrich(text + text_ocr, candidates)  -> one structured call
         |
 validate response against schema   -> invalid means retry, not write
         |
@@ -181,6 +195,11 @@ Presence validation closes hallucination completely.
 **The same rule applies to every verbatim field:** tickers, project names,
 links, amounts. If a field claims to be verbatim, verify it exists in the
 source text, otherwise discard it.
+
+**The one exception is text that came from an image.** A code transcribed by a
+vision model was never in `raw_text`, so presence validation cannot apply.
+Those entities carry `source: "ocr"` and `verified: false`, and are marked as
+unverified on delivery — see [VISION.md](VISION.md).
 
 ## Resilience invariants
 

@@ -7,16 +7,32 @@ which provider handled a request and contains no vendor-specific code.
 
 ## Contract
 
-The gateway exposes exactly two methods:
+The gateway exposes three methods:
 
 ```js
-await gateway.enrich(input) -> EnrichResult
-await gateway.embed(text)   -> Float32Array
+await gateway.enrich(input)          -> EnrichResult
+await gateway.embed(text)            -> Float32Array
+await gateway.vision(image, options) -> { text_ocr, description }
 ```
 
 Everything else — provider selection, retries, rate limits, parsing,
 validation, caching — stays inside. The pipeline sees neither HTTP nor the
 differences between APIs.
+
+`vision()` is used only by the vision stage and returns transcribed text, never
+a classification — see [VISION.md](VISION.md) for why.
+
+## A module, not a service
+
+The gateway is a standalone **module** with a clean contract, not a separate
+process behind HTTP. It has several consumers, and that is precisely what a
+module is for; an HTTP service would add a server, serialization, auth, a second
+deployment, and a second failure mode while solving nothing that exists today.
+
+Extracting it into its own process becomes worthwhile only when more than one
+*process* needs it — the same criterion that governs extracting TheFlow itself
+(see ARCHITECTURE.md). Until then the boundary is enforced by discipline: the
+gateway imports nothing from Telegram, Discord, or the pipeline.
 
 No new dependencies are required: Gemini and OpenAI-compatible endpoints (which
 is how Qwen is reached) are both plain HTTP and JSON, and `axios` is already in
@@ -129,6 +145,34 @@ the wall rather than after. The counter resets on the provider's schedule
 (usually the UTC day). Without this, the first exhausted quota produces a burst
 of failures instead of a clean switchover.
 
+**The counter is per provider, not per capability.** `enrich`, `embed`, and
+`vision` draw on the same daily allowance. Counting them separately produces a
+specific and confusing failure: vision, which costs several times more per call,
+quietly consumes the daily limit, and enrichment of ordinary posts starts
+failing — which looks like "classification broke" rather than "vision ate the
+quota".
+
+## Consumers and priority classes
+
+Five consumers share the gateway:
+
+| Consumer | Uses | Priority |
+|---|---|---|
+| Enrichment worker | `enrich`, `embed` | `critical` |
+| Deduplication | `embed` | `critical` |
+| Vision stage | `vision` | `normal` |
+| History search | `embed` | `low` |
+| Digests | `enrich` | `low` |
+
+Every call carries a priority. When remaining quota drops below a reserve
+threshold, the gateway sheds work from the bottom up: digests and search stop
+first, vision next, and enrichment plus deduplication are the last to go.
+
+Without explicit priorities, the shedding order is whatever happened to be
+queued first, and the most expensive optional work can starve the core pipeline.
+Shed calls are not errors: the caller is told the request was deferred, and the
+post stays `pending` for a later pass.
+
 ## `model_used` is required
 
 If primary and fallback are different models, the same post is classified
@@ -184,16 +228,22 @@ ignores them. This is the default mode during phase 1.
 
 ```text
 src/services/ai/
-├── LLMGateway.js            # enrich() / embed(), fallback, tiering, cache, queue
+├── LLMGateway.js            # enrich() / embed() / vision(), fallback, tiering,
+│                            # cache, queue, quota accounting, priority shedding
 ├── schemas.js               # JSON response schemas plus validation
 ├── prompts/
 │   ├── enrich.js            # main prompt with the taxonomy injected
-│   └── delta.js             # comparison against the canonical post (DEDUPLICATION.md)
+│   ├── delta.js             # comparison against the canonical post (DEDUPLICATION.md)
+│   └── vision.js            # transcription only, never classification (VISION.md)
 └── providers/
-    ├── BaseProvider.js      # contract: complete(), embed()
+    ├── BaseProvider.js      # contract: complete(), embed(), vision()
     ├── GeminiProvider.js
     └── OpenAICompatProvider.js   # covers Qwen and other compatible endpoints
 ```
+
+A provider that does not support a capability declares it, and the gateway
+routes that capability to a provider that does. Vision and text do not have to
+come from the same vendor.
 
 `OpenAICompatProvider` should be parameterized by base URL — one adapter then
 covers Qwen and most other compatible APIs with no new code.
@@ -210,6 +260,11 @@ keyword filtering.
 Minus whatever the regex stage rejected, minus cache hits on reposts. The
 binding constraint will be the **daily limit (RPD), not the per-minute one** —
 verify current provider values before starting phase 1.
+
+Vision changes this arithmetic disproportionately: a call costs several times
+more than a text call, and the count depends entirely on how many sources have
+it enabled. Budget it separately, gate it hard (VISION.md), and give it a lower
+priority class than enrichment.
 
 Free tiers carry no SLA. Once TheFlow becomes your primary news channel that
 will start to hurt, but thanks to this layer, moving to a paid tier is an

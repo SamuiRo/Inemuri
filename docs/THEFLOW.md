@@ -60,6 +60,8 @@ Existing sources are untouched until explicitly switched over.
 | AI providers | Gateway with primary plus fallback | Free tiers have no SLA. The pipeline only ever sees `enrich()` and `embed()` |
 | Taxonomy | Two closed axes: topic and signal type | Models choose more accurately from short lists, and the result is a routing matrix rather than two dozen separate destination mappings |
 | Deduplication | Three tiers, LLM only in the gray zone | "Is this similar to these 50 posts?" cannot be asked of an LLM directly: expensive, non-deterministic, does not scale |
+| Gateway packaging | A module with a clean contract, not an HTTP service | Several in-process consumers is exactly what a module is for. A separate process would add a server, serialization, auth, and a second failure mode while solving nothing that exists today |
+| Screenshots | Vision transcribes text only, never classifies | The transcription merges into the same text field and the existing pipeline runs unchanged. Classifying from images directly would create a second pipeline with its own reliability and tuning |
 
 ## Pipeline
 
@@ -68,6 +70,9 @@ STAGE 1 — INGEST (synchronous, fast, no outbound network)
   parse -> text_replacements -> regex stage -> INSERT posts (pending)
                                                      |
   ------------------------------ seam: everything below reads from the database
+                                                     |
+STAGE 1.5 — VISION (optional, only on sources that enable it)
+  image-only post -> downscale -> hash -> cache -> transcribe -> text_ocr
                                                      |
 STAGE 2 — ENRICH (worker, async, queued and rate limited)
   SELECT pending -> gateway.enrich() -> gateway.embed() -> UPDATE (enriched)
@@ -88,7 +93,8 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 | [theflow/DATA_MODEL.md](theflow/DATA_MODEL.md) | `posts` and `clusters` tables, statuses, indexes, migration order |
 | [theflow/TAXONOMY.md](theflow/TAXONOMY.md) | The two classification axes, `categories.json` format, routing matrix |
 | [theflow/DEDUPLICATION.md](theflow/DEDUPLICATION.md) | Three deduplication tiers, the `linked` mechanism, handling retractions |
-| [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) | Provider contract, fallback matrix, response schemas, caching |
+| [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) | Provider contract, fallback matrix, quota accounting, priority classes |
+| [theflow/VISION.md](theflow/VISION.md) | Screenshot transcription, gates, unverifiable entities, image-borne injection |
 
 ## Phases
 
@@ -142,6 +148,18 @@ unsorted noise.
 Built on the existing `CronScheduler`, which already emits synthetic messages
 onto the same bus. Reactions to posts write labels into the database, which
 later become few-shot examples.
+
+### Phase 6 — vision for screenshots
+
+Transcription of image-only posts on selected sources, so that screenshots of
+tweets and announcements stop being invisible to the pipeline. See
+[theflow/VISION.md](theflow/VISION.md).
+
+Deliberately last: building it earlier means tuning transcription quality and
+classification quality simultaneously, with no way to tell which one produced a
+bad result. The one thing to do early is record `image_hash` and `has_media`
+during phase 0 — that data answers whether vision is worth building at all, and
+for which channels.
 
 ## Out of scope
 

@@ -15,7 +15,12 @@ flow: {
     enabled: false,          // false = classic forwarding, current behavior
     topics: null,            // null = all topics; or ["games", "market"]
     min_confidence: 0.6,     // below this the post goes to #unsorted, not to the bin
-    dedup_window_hours: null // null = inherit from the category
+    dedup_window_hours: null,// null = inherit from the category
+    vision: {                // see VISION.md
+      enabled: false,        // enabling TheFlow does not enable vision
+      text_threshold: 200,   // skip images when the post already has this much text
+      max_images_per_post: 2
+    }
   },
   comment: 'TheFlow settings for this source'
 }
@@ -40,6 +45,9 @@ The central table. One row per incoming message.
 | `text_md` | TEXT | Markdown rendering with entities, for delivering the post as-is |
 | `text_hash` | STRING | Hash of the normalized text — cheap dedup before embeddings |
 | `has_media` | BOOLEAN | Media is not downloaded at this stage, only flagged |
+| `image_hash` | STRING | Perceptual hash of the first image. Recorded from phase 0, used by the vision cache (see VISION.md) |
+| `text_ocr` | TEXT | Text transcribed from images. Merged with `raw_text` as input to enrichment |
+| `vision_used` | BOOLEAN | Whether a vision call was actually made, for quota attribution |
 | `text_en` | TEXT | **Canonical representation.** Every stage below operates on this |
 | `lang` | STRING | Detected source language (ISO 639-1) |
 | `topic` | STRING | Axis 1 of the taxonomy. Closed enum from `categories.json` |
