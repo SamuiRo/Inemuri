@@ -389,9 +389,25 @@ Check:
 
 Treat those references as historical design notes. The current code uses JSON config files plus SQLite.
 
+## Planned: TheFlow
+
+TheFlow is a planned subsystem of Inemuri, not a separate product. Inemuri stays
+the name of the whole system; TheFlow is the part of it that turns the raw
+ingested firehose into a stream of validated posts — translating them to a
+canonical language, categorizing them, extracting structured entities,
+deduplicating events across channels, and routing by content instead of by
+source.
+
+It is **not implemented yet** — `docs/THEFLOW.md` is a specification written
+before any code. Classic forwarding stays available per source, and the current
+behavior of existing sources does not change.
+
+- [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases
+
 ## Additional documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): project structure and runtime architecture
+- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (planned, not implemented)
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
 - [docs/USE_EMBED.md](docs/USE_EMBED.md): media and Discord embed behavior
 - [docs/DETAILED_OPTIMIZATION_EXPLANATION.md](docs/DETAILED_OPTIMIZATION_EXPLANATION.md): optimization notes

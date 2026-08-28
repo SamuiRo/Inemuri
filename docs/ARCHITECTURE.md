@@ -19,9 +19,16 @@ Inemuri/
 │   ├── ARCHITECTURE.md                    # High-level architecture map
 │   ├── DETAILED_OPTIMIZATION_EXPLANATION.md # Notes about performance-related changes
 │   ├── INEMURI_DOCS.txt                   # General project notes
+│   ├── THEFLOW.md                         # TheFlow spec — planned, not implemented
 │   ├── USE_EMBED.md                       # Discord embed usage notes
 │   ├── description.txt                    # Supporting documentation text
-│   └── text_replacements.md               # Text preprocessing and replacement rules
+│   ├── text_replacements.md               # Text preprocessing and replacement rules
+│   └── theflow/                           # TheFlow detailed specs
+│       ├── ARCHITECTURE.md                # Pipeline stages, pre-AI regex stage, invariants
+│       ├── DATA_MODEL.md                  # posts / clusters tables, migration order
+│       ├── DEDUPLICATION.md               # Three dedup tiers, linked mechanism
+│       ├── LLM_GATEWAY.md                 # Provider contract, fallback matrix
+│       └── TAXONOMY.md                    # Category axes, categories.json, routing
 ├── src/
 │   ├── cli.js                             # CLI for seeding and managing sources
 │   ├── inemuri.js                         # Main application bootstrap
@@ -177,6 +184,24 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 | `DEDUP_TTL_MS` | `600000` | How long a listener-processed message ID stays in the dedup set. |
 | `DEDUP_MAX_SIZE` | `5000` | Max dedup set size before expired entries are evicted. |
 | `DOWNLOADABLE_MEDIA_TYPES` | `["photo","video","document","animation"]` | Media types that will be downloaded and re-uploaded to destinations. |
+
+## Planned subsystem: TheFlow
+
+This document describes the **current** implementation. TheFlow is a planned
+subsystem of Inemuri — not a separate system — that adds canonical-language
+normalization, categorization, entity extraction, cross-channel event
+deduplication, and content-based routing on top of the same ingestion pipeline.
+
+Nothing in TheFlow is implemented yet. Its specification lives in
+[THEFLOW.md](THEFLOW.md) and `docs/theflow/`. Two design points affect how the
+current code will change:
+
+- media download moves from ingestion to the delivery stage, so posts that are
+  deduplicated away never trigger a download;
+- `MessageRouter` keeps its dispatch logic but stops taking destinations from
+  the source — a resolve stage fills that field from the post's category.
+
+Classic per-source forwarding remains available and unchanged.
 
 ## Operational entrypoints
 

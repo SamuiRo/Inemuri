@@ -1,0 +1,175 @@
+# TheFlow — taxonomy and routing
+
+> Related: [THEFLOW.md](../THEFLOW.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
+
+## Two axes instead of one list
+
+Classification decomposes into two independent things, and they must not be
+merged.
+
+**Axis 1 — topic.** What the post is about.
+
+```text
+games · market · crypto · tools · other
+```
+
+**Axis 2 — signal type.** What kind of event it is.
+
+```text
+promo_code · freebie · analysis · event · launch · patch · outage · opinion
+```
+
+Why this way:
+
+- a model chooses more accurately from two short lists than from one long one;
+- the output is a routing matrix rather than two dozen separate destinations;
+- the axes change at different rates: topics are stable for months, signal types
+  get refined more often.
+
+## Both axes are closed enums
+
+The model picks **only** from the lists in `categories.json`. Free-form category
+generation produces `games`, `gaming`, `Game News`, and `gaming_news` as four
+distinct entities within a month, and routing becomes unpredictable.
+
+If the model cannot place a post in any category, it returns `other` with low
+`confidence` and the post goes to `#unsorted`. It never invents a new label.
+
+## `src/config/categories.json`
+
+```json
+{
+  "version": 1,
+  "unsorted_destinations": {
+    "telegram": ["-1001111111111"]
+  },
+  "topics": {
+    "games": {
+      "description": "Games: releases, updates, events, promo codes, giveaways",
+      "examples": [
+        "Genshin Impact 5.3 update goes live March 14",
+        "Free promo code for 300 gems, expires Friday"
+      ],
+      "dedup_window_hours": 48
+    },
+    "market": {
+      "description": "Market news that affects the price or availability of assets",
+      "examples": ["Fed holds rates", "Company X announces buyback"],
+      "dedup_window_hours": 72
+    },
+    "crypto": {
+      "description": "Analysis and specifics only: listings, breakdowns, on-chain data. Not price shouting, not advertising",
+      "examples": ["On-chain analysis of X accumulation", "Token Y lists on Binance"],
+      "dedup_window_hours": 72
+    },
+    "tools": {
+      "description": "Free offers, service discounts, non-obvious solutions to technical problems",
+      "examples": ["Service X free tier expanded to 100GB", "How to work around Y limitation"],
+      "dedup_window_hours": 24
+    },
+    "other": {
+      "description": "Does not fit any topic above",
+      "dedup_window_hours": 24
+    }
+  },
+  "signals": {
+    "promo_code": { "description": "Contains a code that can be redeemed" },
+    "freebie":    { "description": "Something is given away free or at a steep discount" },
+    "analysis":   { "description": "A breakdown with data and reasoning, not just an opinion" },
+    "event":      { "description": "An event with a date: start, deadline, active window" },
+    "launch":     { "description": "A release, a listing, something new going live" },
+    "patch":      { "description": "An update, changes, patch notes" },
+    "outage":     { "description": "A failure, an outage, a problem" },
+    "opinion":    { "description": "An opinion without supporting data" }
+  },
+  "routing": [
+    {
+      "when": { "topic": "games", "signal_type": ["promo_code", "freebie"] },
+      "destinations": { "telegram": ["-1002222222222"] },
+      "priority": 10
+    },
+    {
+      "when": { "topic": "games" },
+      "destinations": { "discord": ["333333333333333333"] },
+      "priority": 1
+    },
+    {
+      "when": { "topic": ["market", "crypto"], "signal_type": ["analysis", "launch"] },
+      "destinations": { "telegram": ["-1004444444444"] },
+      "priority": 10
+    },
+    {
+      "when": { "topic": "tools" },
+      "destinations": { "telegram": ["-1005555555555"] },
+      "priority": 5
+    }
+  ]
+}
+```
+
+### How resolve works
+
+1. `routing` rules are evaluated in descending `priority` order.
+2. The first rule whose `when` matches supplies the destinations.
+3. If nothing matches, `unsorted_destinations` is used.
+4. If `confidence` is below the source's `flow.min_confidence`,
+   `unsorted_destinations` is used regardless of what matched.
+
+A single value and an array are equivalent in `when`: `"games"` equals
+`["games"]`.
+
+## `#unsorted` is mandatory
+
+**Nothing disappears silently.** It receives everything where:
+
+- the model failed or returned invalid output after all attempts;
+- `confidence` is below the threshold;
+- the topic is `other`;
+- no routing rule matched.
+
+Without this channel you will stop trusting the system within a week and will
+not be able to tell why a particular story never arrived. It is also the primary
+material for refining the taxonomy: whatever keeps landing in `#unsorted` is
+either a new category you need or a gap in an existing description.
+
+## "Importance" is a threshold, not a category
+
+The temptation is to add an `importance: 1..10` field and filter on it. That
+does not work: a numeric score from an LLM is not reproducible between calls,
+and the same post will score 6 and 8 across two runs.
+
+Instead:
+
+- **importance is expressed as a signal type** with explicit criteria
+  (`event` with a date, `outage`, `launch`), not as an adjective in the prompt;
+- a numeric score may be kept for **ordering within a digest**;
+- **never use a score to decide whether to deliver.**
+
+The same applies to the phrase "important market news" — that is not a category.
+It is `market` plus a specific set of signal types.
+
+## "Interesting posts" is a special case
+
+The `tools` category — free offers, discounts, non-obvious solutions — differs
+from the rest fundamentally: it is not a topic, it is **personal taste**. No
+perfect prompt exists for it, and trying to write one is wasted effort.
+
+The working approach:
+
+1. Keep the category description deliberately broad — better too much than
+   missed.
+2. Route to a separate review channel rather than the main one.
+3. **Build the feedback loop in from the start** (the `post_feedback` table):
+   a reaction to a post writes a label, and those labels later become few-shot
+   examples for the prompt.
+
+Collecting that feedback retroactively is expensive — it means going through
+history by hand. At the start it is nearly free.
+
+## Versioning
+
+`categories.json` carries a `version` field. It is incremented whenever a
+category description or the set of axes changes, and the value is written into
+`posts` alongside the verdict. Without it there is no way to distinguish "the
+model started making mistakes" from "I changed a category description last
+Tuesday".

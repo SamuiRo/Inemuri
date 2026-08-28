@@ -1,0 +1,217 @@
+# TheFlow — pipeline architecture
+
+> Related: [THEFLOW.md](../THEFLOW.md) · [DATA_MODEL.md](DATA_MODEL.md) · [LLM_GATEWAY.md](LLM_GATEWAY.md)
+
+## Why the pipeline is decoupled through the database
+
+The naive implementation inserts AI calls directly into the existing chain:
+MTProto event, filter, AI, media download, emit, route. That breaks in three
+places at once:
+
+1. **Ingestion starts waiting on the network.** A GramJS event handler holds the
+   update loop while the provider responds. Under a burst, everything stalls.
+2. **Bursts are unavoidable.** First startup, recovery after downtime, a polling
+   cycle with `POLLING_FETCH_LIMIT` across 30 channels — the provider's
+   per-minute limit burns through in seconds.
+3. **There is nowhere to re-run from.** A prompt for a system like this gets
+   refined over months. Without the stored raw text, every prompt change means
+   "wait for new traffic and hope".
+
+Decoupling through the `posts` table closes all three and adds retries,
+backfill, backpressure when quota is exhausted, and offline re-runs of a new
+prompt over history.
+
+## Stage 1 — Ingest
+
+Synchronous, fast, and **makes no outbound network calls**. This is the part
+that is never allowed to stop.
+
+```text
+parseEvent / parseRaw          (TelegramMessageParser — unchanged)
+        |
+text_replacements              (MessageFilter.preprocessText — unchanged)
+        |
+regex stage                    (new — see below)
+        |
+INSERT posts (status: pending)
+        |
+ACK — ingestion complete
+```
+
+For sources with `flow.enabled: false`, stage 1 ends not with a database insert
+but with the current path: keyword filter, media, `EventBus.emit`, routing.
+
+### The regex stage: what happens before the AI
+
+This stage is deterministic and free. Its job is to reduce what reaches the
+model and to give the model something to anchor on. Three distinct jobs:
+
+**1. Rejection — the post never reaches the AI**
+
+| Rule | Status |
+|---|---|
+| Source blacklist (existing mechanism) | `skipped_blacklist` |
+| Empty, or shorter than N characters after replacements | `skipped_empty` |
+| Emoji only, link only, or service text | `skipped_noise` |
+| Exact hash match against the last N hours | `skipped_repost` |
+
+Note that the keyword **whitelist** is disabled for TheFlow sources. Channels
+that post everything have no useful keywords, and a whitelist there cuts
+precisely what the system exists to find. The **blacklist stays** as a cheap
+pre-filter.
+
+**2. Candidate extraction — passed into the prompt**
+
+Regex does not decide what something is. It only finds what *looks like* an
+entity and hands the model a list to confirm:
+
+| Candidate | Pattern (approximate) |
+|---|---|
+| Promo code | `[A-Z0-9]{5,20}`, no spaces, contains both a digit and a letter |
+| Ticker | `\$[A-Z]{2,10}` |
+| Link | standard URL |
+| Date or deadline | ISO, `DD.MM`, `until / till / by <date>` |
+| Amount or percentage | number with a currency symbol or `%` |
+
+This is the basis of hybrid extraction (below) and gives the model an anchor:
+it never has to guess where in the text a code might be, it is shown candidates.
+
+**3. Cheap deduplication before embeddings**
+
+The normalized text hash and normalized URLs are checked against the window
+immediately. An exact repost collapses without a single AI call.
+
+## Stage 2 — Enrich
+
+A worker that reads from the database. It knows nothing about Telegram,
+Discord, or the event bus — only `posts` and `LLMGateway`. That boundary is
+what keeps a later extraction into a separate process cheap.
+
+```text
+SELECT * FROM posts WHERE status='pending' ORDER BY created_at LIMIT batch
+        |
+concurrency-limited queue + per-provider token bucket
+        |
+gateway.enrich(text, candidates)   -> one structured call
+        |
+validate response against schema   -> invalid means retry, not write
+        |
+gateway.embed(text_en)             -> vector for deduplication
+        |
+UPDATE posts SET status='enriched', model_used=..., ...
+```
+
+**One call, not five.** The temptation to make separate calls for translation,
+classification, extraction, and scoring is a four-times-too-expensive mistake.
+A single structured call returns everything at once, plus one call for the
+embedding. That is **2 requests per post**.
+
+Field order inside the call matters: **translation comes first**. The model
+normalizes the text to English, and the remaining response fields describe that
+canonical representation. This is what makes everything downstream monolingual.
+
+## Stage 3 — Flow
+
+```text
+SELECT * FROM posts WHERE status='enriched'
+        |
+deduplication (3 tiers — see DEDUPLICATION.md)
+        |
+   +----+---------------------------+
+new event                    joins an existing cluster
+   |                                |
+resolve destinations         linked: append to what was already sent
+   |                         (or suppressed, if it adds nothing)
+download media  <- ONLY HERE
+   |
+adapter.sendMessage / editMessage
+   |
+UPDATE posts SET status='routed'
+```
+
+## Changes to existing code
+
+Three places. The rest of Inemuri is untouched.
+
+### 1. Media downloads lazily
+
+`TelegramSourceListener._processFiltered()` currently downloads media **before**
+emitting the event. Under TheFlow that means downloading video for posts that
+will be discarded as duplicates two seconds later.
+
+The download moves to stage 3, for delivered posts only. Classic mode keeps its
+current behavior.
+
+Consequence: `posts` must store enough to fetch media later. `channel_id` plus
+`message_id` is sufficient — GramJS can re-fetch the message.
+
+### 2. Content-based routing
+
+`MessageRouter.routeMessage()` currently takes destinations from
+`messageData.source.destinations` — that is, **the source decides where a post
+goes**. TheFlow requires the opposite: the content decides.
+
+The router itself barely changes; it already iterates over `{platform: [ids]}`.
+What changes is **who fills that field**: a resolve stage looks at `topic` and
+`signal_type` and reads destinations from `categories.json`.
+`source.destinations` remains the fallback for classic mode.
+
+### 3. Filter order for TheFlow sources
+
+The keyword whitelist is disabled, the blacklist stays. See the regex stage.
+
+## Hybrid entity extraction
+
+A promo code is exactly the case where the model cannot be trusted on its own:
+it invents plausible codes that do not exist and misses real ones.
+
+```text
+regex finds candidates
+        |
+model receives the text plus the candidate list
+        |
+model states which are real codes, for what, what they grant, expiry if stated
+        |
+VALIDATION: every code in the response must be present in raw_text
+```
+
+The model never writes a code itself — it only confirms what was found.
+Presence validation closes hallucination completely.
+
+**The same rule applies to every verbatim field:** tickers, project names,
+links, amounts. If a field claims to be verbatim, verify it exists in the
+source text, otherwise discard it.
+
+## Resilience invariants
+
+These cannot be broken, not even temporarily.
+
+| Invariant | Consequence of breaking it |
+|---|---|
+| Ingestion never makes outbound network calls | The Telegram update loop stalls and messages are lost |
+| No post ever disappears silently: `#unsorted` exists | You stop trusting the system and cannot debug it |
+| An AI failure leaves the post `pending` rather than dropping it | Provider downtime becomes a hole in history |
+| Classic mode depends on TheFlow for nothing | An experiment breaks a working service |
+| Every verdict records `model_used` | Fallback makes history irreproducible |
+| `raw_text` is always retained | New prompts cannot be re-run over history |
+
+## What stays in-process, and what could move out
+
+Everything currently runs in one Node process. The enrichment worker is just a
+module reading from the database on a timer. Its work is I/O bound, so Node's
+single thread is not the bottleneck.
+
+**Moving it to a separate process is worth doing once one of these appears:**
+
+- AI processing needs to run on a different machine;
+- a crash or restart of processing must not affect forwarding uptime;
+- differing release cadences start to get in the way.
+
+**Until then, extraction costs more than it gives.** But the boundary must stay
+clean from day one: the TheFlow module touches only the database and the
+gateway, and never imports Telegram or Discord internals. Then extraction is a
+few hours of work rather than a rewrite.
+
+If it is extracted, SQLite needs `PRAGMA journal_mode=WAL` and an explicit
+`busy_timeout` in both processes; otherwise `SQLITE_BUSY` appears under load,
+because two independent Sequelize pools know nothing about each other.
