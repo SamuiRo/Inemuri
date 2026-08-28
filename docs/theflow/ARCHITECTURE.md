@@ -174,6 +174,15 @@ What changes is **who fills that field**: a resolve stage looks at `topic` and
 
 The keyword whitelist is disabled, the blacklist stays. See the regex stage.
 
+**Implemented.** The branch lives in
+`TelegramSourceListener._filterAndProcess()`, after `text_replacements` and
+before filtering. `text_replacements` and Markdown re-sync are shared
+preprocessing; below the branch, flow sources go to `FlowIngest`
+(`src/module/theflow/`) which runs `RegexStage` and persists to `posts`.
+It is not branched earlier (`_routeIncoming`, where album buffering lives, is
+needed by both modes) or later (`_processFiltered`, which already downloads
+media — exactly what flow must defer to stage 3).
+
 ## Hybrid entity extraction
 
 A promo code is exactly the case where the model cannot be trusted on its own:

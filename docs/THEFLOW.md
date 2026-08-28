@@ -1,7 +1,8 @@
 # TheFlow
 
-> **Status:** specification written before any code. Nothing here is implemented yet.
-> This file is the entry point; detailed specs live in `docs/theflow/`.
+> **Status:** Phase 0 (persistence without AI) is implemented. Phases 1–6 are
+> still specification only. This file is the entry point; detailed specs live in
+> `docs/theflow/`.
 
 ## What TheFlow is
 
@@ -100,7 +101,7 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 
 Each phase is useful on its own and does not require the next one.
 
-### Phase 0 — persistence without AI
+### Phase 0 — persistence without AI ✅ implemented
 
 The `posts` table, ingestion writing everything raw, the `flow.enabled` flag on
 sources. No AI calls at all.
@@ -111,6 +112,33 @@ for search and digests in any scenario.
 
 Without this phase, similarity thresholds and category definitions have to be
 guessed.
+
+What landed:
+
+- `Source.flow` JSON column (default `{ enabled: false, ... }`), plus
+  `getFlowConfig()` / `isFlowEnabled()` / `isVisionEnabled()` on the model.
+  `flow` is managed declaratively through `Sources.json` (the seeder merges
+  partial config with defaults).
+- `posts` and `clusters` tables — `src/module/teapot/models/Post.js` and
+  `Cluster.js`, full field set from [DATA_MODEL.md](theflow/DATA_MODEL.md).
+- `src/module/theflow/RegexStage.js` — the deterministic pre-AI stage:
+  rejection (`skipped_blacklist` / `skipped_empty` / `skipped_noise`),
+  candidate extraction, normalized-text hashing.
+- `src/module/theflow/FlowIngest.js` — stage 1: regex stage → repost check
+  over a window → idempotent `INSERT posts`. No outbound network calls.
+- `TelegramSourceListener._filterAndProcess()` branches on
+  `source.isFlowEnabled()`: replacements are shared, then flow sources persist
+  to `posts` (blacklist-only, whitelist disabled) instead of `emit` + media
+  download. Classic forwarding is byte-for-byte unchanged.
+- Migration: `npm run migrate:theflow`
+  (`scripts/migrate-theflow-phase0.js`) — idempotent, self-backup, refuses
+  `NODE_ENV=development`.
+
+Deviation from spec: `image_hash` is **not** written during ingest. Recording it
+there would require downloading the image, which breaks the "ingestion makes no
+outbound network calls" invariant. `has_media` is recorded at ingest;
+`image_hash` is filled by a separate pass — `scripts/backfill-image-hash.js`
+(dHash via `sharp`, rate-limited, resumable).
 
 ### Phase 1 — gateway plus enrichment in shadow mode
 

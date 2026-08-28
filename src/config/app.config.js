@@ -48,3 +48,11 @@ export const POLLING_CHANNEL_DELAY_MS = 500;
 // ── TelegramSourceListener: media ─────────────────────────────────────────
 // Типи медіа, які варто завантажувати і пересилати далі.
 export const DOWNLOADABLE_MEDIA_TYPES = ["photo", "video", "document", "animation"];
+
+// ── TheFlow (Phase 0) ────────────────────────────────────────────────────
+// Мінімальна довжина нормалізованого тексту після replacements. Коротше —
+// пост зберігається зі статусом skipped_empty (не викидається).
+export const THEFLOW_MIN_TEXT_LENGTH = Number(process.env.THEFLOW_MIN_TEXT_LENGTH ?? 10);
+// Вікно для skipped_repost: точний збіг хешу нормалізованого тексту в межах
+// останніх N годин вважається репостом.
+export const THEFLOW_REPOST_WINDOW_HOURS = Number(process.env.THEFLOW_REPOST_WINDOW_HOURS ?? 24);

@@ -1,0 +1,119 @@
+import { Op } from "sequelize";
+
+import { Post } from "../teapot/models/index.js";
+import RegexStage from "./RegexStage.js";
+import {
+  THEFLOW_MIN_TEXT_LENGTH,
+  THEFLOW_REPOST_WINDOW_HOURS,
+} from "../../config/app.config.js";
+
+/**
+ * TheFlow — стадія 1 (Ingest).
+ *
+ * Синхронна, швидка, БЕЗ вихідних мережевих викликів — це частина, якій
+ * ніколи не дозволено зупинятись (docs/theflow/ARCHITECTURE.md).
+ *
+ * Приймає нормалізований messageData з TelegramSourceListener (після
+ * text_replacements), проганяє regex-стадію, перевіряє repost по вікну і
+ * робить ідемпотентний INSERT у `posts`. Далі рядок читає воркер enrich —
+ * у фазі 0 воркера ще немає, тож рядки просто накопичуються.
+ *
+ * Кожен вхідний пост отримує рядок. status фіксує, чому пост не піде далі
+ * (skipped_*), — це не «викинуто», а «збережено з причиною».
+ *
+ * Медіа НЕ завантажується тут (інваріант: ingest без мережі). image_hash
+ * лишається null — його рахує окремий бекфіл-прохід (див. VISION.md: у фазі 0
+ * важливо мати has_media та хеш, але не ціною мережі в update-loop).
+ */
+
+const REAL_MEDIA_TYPES = new Set([
+  "photo", "video", "video_note", "document", "animation", "audio",
+]);
+
+export class FlowIngest {
+  constructor({
+    minTextLength = THEFLOW_MIN_TEXT_LENGTH,
+    repostWindowHours = THEFLOW_REPOST_WINDOW_HOURS,
+  } = {}) {
+    this._regex = new RegexStage({ minTextLength });
+    this._repostWindowMs = repostWindowHours * 60 * 60 * 1000;
+  }
+
+  /**
+   * @param {object} args
+   * @param {import("../teapot/models/Source.js").default} args.source
+   * @param {object} args.messageData         Нормалізований messageData.
+   * @param {string} args.text                Plain text ПІСЛЯ text_replacements.
+   * @param {Set<string>|null} args.blacklist Скомпільований blacklist джерела.
+   * @returns {Promise<{ created: boolean, post: object, status: string }>}
+   */
+  async ingest({ source, messageData, text, blacklist }) {
+    const channelId = String(messageData.channelId);
+
+    // 1. Regex-стадія (чиста, без I/O)
+    const stage = this._regex.evaluate({ text, blacklist });
+
+    // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин.
+    //    Кросканальний і внутрішньоканальний: та сама подія з іншим
+    //    message_id у вікні — це repost. Той самий message_id ловиться
+    //    нижче ідемпотентністю findOrCreate, сюди не доходить.
+    let status = stage.status;
+    if (status === "ok" && stage.textHash) {
+      const since = new Date(Date.now() - this._repostWindowMs);
+      const earlier = await Post.findOne({
+        where: {
+          text_hash: stage.textHash,
+          createdAt: { [Op.gte]: since },
+        },
+        attributes: ["id"],
+      });
+      if (earlier) status = "skipped_repost";
+    }
+
+    const finalStatus = status === "ok" ? "pending" : status;
+
+    // 3. Ідемпотентний INSERT по (channel_id, message_id).
+    //    created === false → режим "both" або повторний polling; рядок уже є.
+    const [post, created] = await Post.ingest({
+      source_id: source.id,
+      channel_id: channelId,
+      message_id: messageData.messageId,
+      grouped_id: messageData.groupedId ?? null,
+      posted_at: FlowIngest._toDate(messageData.timestamp),
+      // raw_text = plain text ПІСЛЯ replacements: це саме той вхід, що бачить
+      // enrich() ("text after text_replacements"), і проти нього працює
+      // verbatim-валідація. Не перезаписується стадіями нижче.
+      raw_text: text ?? null,
+      text_md: messageData.text ?? null,
+      text_hash: stage.textHash,
+      has_media: FlowIngest._hasRealMedia(messageData.media),
+      image_hash: null, // рахує окремий прохід, не ingest
+      candidates: stage.candidates,
+      status: finalStatus,
+      attempts: 0,
+    });
+
+    return { created, post, status: post.status };
+  }
+
+  // ── helpers ───────────────────────────────────────────────────────
+
+  static _hasRealMedia(media) {
+    if (!media) return false;
+    const list = Array.isArray(media) ? media : [media];
+    return list.some((m) => m && REAL_MEDIA_TYPES.has(m.type));
+  }
+
+  /**
+   * GramJS message.date — Unix-секунди (number). Буває вже Date.
+   */
+  static _toDate(ts) {
+    if (ts === null || ts === undefined) return null;
+    if (ts instanceof Date) return ts;
+    if (typeof ts === "number") return new Date(ts * 1000);
+    const parsed = new Date(ts);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+}
+
+export default FlowIngest;

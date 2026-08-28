@@ -64,12 +64,17 @@ Inemuri/
 │   │   │   └── MessageRouter.js           # Routes normalized messages to destinations
 │   │   ├── seeders/
 │   │   │   └── Sourceseeder.js            # Imports Sources.json into the database
+│   │   ├── theflow/                       # TheFlow subsystem (Phase 0)
+│   │   │   ├── RegexStage.js              # Deterministic pre-AI stage: rejection, candidates, text hash
+│   │   │   └── FlowIngest.js              # Stage 1: regex stage -> idempotent INSERT posts
 │   │   ├── teapot/
 │   │   │   ├── config/                    # Reserved area for teapot module config
 │   │   │   ├── models/
 │   │   │   │   ├── index.js               # Model exports
 │   │   │   │   ├── Source.js              # Source config model and helper methods
-│   │   │   │   └── SourceState.js         # Polling checkpoint model
+│   │   │   │   ├── SourceState.js         # Polling checkpoint model
+│   │   │   │   ├── Post.js                # TheFlow: one row per ingested message
+│   │   │   │   └── Cluster.js             # TheFlow: one row per deduplicated event
 │   │   │   └── sqlite/
 │   │   │       └── sqlite_db.js           # Sequelize SQLite connection singleton
 │   │   └── telegram/
@@ -169,8 +174,9 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 - `src/config/app.config.js` is the single source of truth for all constants — both env-backed values and hardcoded tunables. This includes polling intervals, album group timeout, dedup TTL, channel delay, and downloadable media types.
 - `src/config/Sources.json` is the declarative source registry. `src/module/seeders/Sourceseeder.js` imports it into SQLite.
 - `database/pot.sqlite` is the runtime database.
-- `Source` stores source metadata, filters, text replacements, destination mappings, and source mode.
+- `Source` stores source metadata, filters, text replacements, destination mappings, source mode, and the `flow` column (TheFlow settings, default `{ enabled: false }`).
 - `SourceState` stores polling checkpoints (`last_message_id`) so polling can resume safely and support deduplication in `both` mode.
+- `Post` and `Cluster` are the TheFlow tables (Phase 0). `Post` holds one row per ingested message from a `flow.enabled` source; `Cluster` holds one row per deduplicated event. Created by `npm run migrate:theflow`.
 - `src/config/cronjob.config.json` provides destination mapping for scheduled jobs, while `src/config/cronjobs.js` defines the actual job handlers.
 
 ## Configuration constants (app.config.js)
@@ -184,28 +190,38 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 | `DEDUP_TTL_MS` | `600000` | How long a listener-processed message ID stays in the dedup set. |
 | `DEDUP_MAX_SIZE` | `5000` | Max dedup set size before expired entries are evicted. |
 | `DOWNLOADABLE_MEDIA_TYPES` | `["photo","video","document","animation"]` | Media types that will be downloaded and re-uploaded to destinations. |
+| `THEFLOW_MIN_TEXT_LENGTH` | `10` | Normalized text shorter than this after replacements is stored as `skipped_empty`. |
+| `THEFLOW_REPOST_WINDOW_HOURS` | `24` | Exact `text_hash` match within this window is `skipped_repost`. |
 
-## Planned subsystem: TheFlow
+## Subsystem: TheFlow
 
-This document describes the **current** implementation. TheFlow is a planned
-subsystem of Inemuri — not a separate system — that adds canonical-language
-normalization, categorization, entity extraction, cross-channel event
-deduplication, and content-based routing on top of the same ingestion pipeline.
+TheFlow is a subsystem of Inemuri — not a separate system — that adds
+canonical-language normalization, categorization, entity extraction,
+cross-channel event deduplication, and content-based routing on top of the same
+ingestion pipeline.
 
-Nothing in TheFlow is implemented yet. Its specification lives in
-[THEFLOW.md](THEFLOW.md) and `docs/theflow/`. Two design points affect how the
-current code will change:
+**Phase 0 (persistence without AI) is implemented**: the `flow` column,
+`posts` / `clusters` tables, the deterministic regex stage
+(`src/module/theflow/RegexStage.js`), and stage-1 ingest
+(`src/module/theflow/FlowIngest.js`) wired into
+`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phases 1–6 are
+still specification — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
+
+Two design points that shape the remaining work:
 
 - media download moves from ingestion to the delivery stage, so posts that are
   deduplicated away never trigger a download;
 - `MessageRouter` keeps its dispatch logic but stops taking destinations from
   the source — a resolve stage fills that field from the post's category.
 
-Classic per-source forwarding remains available and unchanged.
+Classic per-source forwarding remains available and unchanged. A source only
+enters TheFlow when its `flow.enabled` is set to `true` in `Sources.json`.
 
 ## Operational entrypoints
 
 - `npm start` runs `src/inemuri.js` and starts the full service.
 - `npm run seed` imports `Sources.json` into the SQLite database.
 - `npm run seed:fresh` clears all existing sources and reseeds them.
+- `npm run migrate:theflow` runs the one-off TheFlow Phase 0 schema migration (`scripts/migrate-theflow-phase0.js`).
+- `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
 - `src/cli.js` also provides helper commands for listing, toggling, and clearing sources.

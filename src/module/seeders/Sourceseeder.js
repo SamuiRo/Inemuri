@@ -4,6 +4,29 @@ import { SOURCE_CONFIG } from "../../config/app.config.js";
 
 const VALID_MODES = ["listener", "polling", "both"];
 
+// Дефолт колонки Source.flow. Тримаємо синхронним з моделлю (Source.js)
+// і docs/theflow/DATA_MODEL.md.
+const FLOW_DEFAULT = {
+  enabled: false,
+  topics: null,
+  min_confidence: 0.6,
+  dedup_window_hours: null,
+  vision: { enabled: false, text_threshold: 200, max_images_per_post: 2 },
+};
+
+/**
+ * Зливає частковий flow-конфіг із Sources.json з дефолтами, щоб у БД
+ * завжди лежав повний об'єкт. flow керується декларативно через Sources.json.
+ */
+function mergeFlow(flow) {
+  if (!flow || typeof flow !== "object") return { ...FLOW_DEFAULT };
+  return {
+    ...FLOW_DEFAULT,
+    ...flow,
+    vision: { ...FLOW_DEFAULT.vision, ...(flow.vision || {}) },
+  };
+}
+
 class SourceSeeder {
   /**
    * Валідація одного джерела
@@ -66,6 +89,7 @@ class SourceSeeder {
           telegram: [],
           discord: [],
         },
+        flow: mergeFlow(sourceData.flow),
       };
 
       if (existing) {

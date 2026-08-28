@@ -70,6 +70,29 @@ export const Source = database.sequelize.define("Source", {
       discord: []    // ['channel_id1', 'channel_id2']
     },
     comment: 'Список отримувачів для кожної платформи'
+  },
+  // ── TheFlow ────────────────────────────────────────────────────────────
+  // Налаштування підсистеми TheFlow для цього джерела.
+  //   enabled: false — класичний форвардинг (поточна поведінка), дефолт.
+  //   enabled: true  — джерело йде через конвеєр TheFlow:
+  //                    ingest → posts(pending) → enrich → flow.
+  // Наявні джерела не змінюють поведінку, поки їх явно не переключать.
+  // Повна специфікація полів — docs/theflow/DATA_MODEL.md.
+  flow: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: {
+      enabled: false,           // false = класичний форвардинг
+      topics: null,             // null = усі топіки; або ["games", "market"]
+      min_confidence: 0.6,      // нижче — пост іде в #unsorted, а не в смітник
+      dedup_window_hours: null, // null = успадкувати з категорії
+      vision: {                 // див. docs/theflow/VISION.md
+        enabled: false,         // вмикання TheFlow НЕ вмикає vision
+        text_threshold: 200,    // пропускати зображення, якщо тексту вже >= стільки
+        max_images_per_post: 2
+      }
+    },
+    comment: 'Налаштування TheFlow для цього джерела'
   }
 }, {
   tableName: 'sources',
@@ -238,6 +261,57 @@ Source.prototype.getDestinations = function(platform) {
  */
 Source.prototype.getAllDestinations = function() {
   return this.destinations || { telegram: [], discord: [] };
+};
+
+// ==================== TheFlow ====================
+
+const FLOW_DEFAULTS = {
+  enabled: false,
+  topics: null,
+  min_confidence: 0.6,
+  dedup_window_hours: null,
+  vision: {
+    enabled: false,
+    text_threshold: 200,
+    max_images_per_post: 2,
+  },
+};
+
+/**
+ * Повна конфігурація TheFlow для джерела з підставленими дефолтами.
+ * Рядки, засіяні до появи колонки `flow`, мають flow === null —
+ * тоді повертаються дефолти (enabled: false), тобто класичний форвардинг.
+ */
+Source.prototype.getFlowConfig = function() {
+  let raw = this.flow;
+  // Захист: якщо колонка потрапила в БД як TEXT (не JSON), Sequelize віддає
+  // сирий рядок замість об'єкта. Парсимо, а на невдачу — падаємо в дефолти.
+  if (typeof raw === "string") {
+    try { raw = JSON.parse(raw); } catch { raw = null; }
+  }
+  if (!raw || typeof raw !== "object") raw = {};
+  return {
+    ...FLOW_DEFAULTS,
+    ...raw,
+    vision: { ...FLOW_DEFAULTS.vision, ...(raw.vision || {}) },
+  };
+};
+
+/**
+ * Чи проходить це джерело через конвеєр TheFlow.
+ * false → класичний форвардинг (поточна поведінка Inemuri).
+ */
+Source.prototype.isFlowEnabled = function() {
+  return this.getFlowConfig().enabled === true;
+};
+
+/**
+ * Чи увімкнено vision-стадію (транскрипція скріншотів) для джерела.
+ * Вимагає одночасно flow.enabled і flow.vision.enabled.
+ */
+Source.prototype.isVisionEnabled = function() {
+  const flow = this.getFlowConfig();
+  return flow.enabled === true && flow.vision.enabled === true;
 };
 
 export default Source;

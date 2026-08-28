@@ -15,6 +15,7 @@ import TelegramMessageParser  from "./TelegramMessageParser.js";
 import TelegramMediaDownloader from "./TelegramMediaDownloader.js";
 import TelegramGroupBuffer    from "./TelegramGroupBuffer.js";
 import TelegramDeduplicator   from "./TelegramDeduplicator.js";
+import FlowIngest             from "../../module/theflow/FlowIngest.js";
 
 class TelegramSourceListener extends BaseSourceAdapter {
   constructor(eventBus) {
@@ -43,6 +44,9 @@ class TelegramSourceListener extends BaseSourceAdapter {
       (groupedMessage) => this._filterAndProcess(groupedMessage),
     );
     this._dedup = new TelegramDeduplicator();
+
+    // ── TheFlow (стадія 1: ingest у таблицю posts) ────────────────
+    this._flowIngest = new FlowIngest();
   }
 
   // ================================================================
@@ -291,14 +295,27 @@ class TelegramSourceListener extends BaseSourceAdapter {
   async _filterAndProcess(messageData) {
     const compiledReplacements = this.replacementsCache.get(messageData.channelId);
     const compiledFilter       = this.filtersCache.get(messageData.channelId);
+    const source               = this.sourcesCache.get(messageData.channelId);
 
-    // Крок 1: застосовуємо replacements до rawText (plain text)
+    // Крок 1 (спільний препроцесинг): replacements до rawText (plain text).
     const processedRawText = messageFilter.preprocessText(
       compiledReplacements,
       messageData.rawText ?? messageData.text,
     );
 
-    // Крок 2: фільтрація по обробленому plain text
+    // ── Розгалуження: TheFlow чи класичний форвардинг ──────────────
+    // Спільне вище цієї точки — препроцесинг (replacements). Нижче розходяться
+    // рівно дві речі: семантика фільтра (для flow-джерел whitelist вимкнено,
+    // лишається тільки blacklist) і фінальна дія (persist у posts замість
+    // emit + завантаження медіа). Медіа для flow їде на стадію 3, після
+    // дедуплікації, тому гілку не можна ставити в _processFiltered.
+    if (source?.isFlowEnabled()) {
+      this._syncMarkdown(messageData, processedRawText);
+      await this._ingestToFlow(messageData, processedRawText, compiledFilter, source);
+      return;
+    }
+
+    // Крок 2: фільтрація по обробленому plain text (keyword / blacklist).
     const passed = messageFilter.checkMessageFast(
       null,             // replacements вже застосовані вище
       compiledFilter,
@@ -313,31 +330,65 @@ class TelegramSourceListener extends BaseSourceAdapter {
       return;
     }
 
-    // Крок 3: оновлюємо rawText і перегенеровуємо Markdown text
-    // Якщо replacements змінили plain text — перераховуємо Markdown з entities.
-    // Entities залишаються оригінальними (вони про позиції в original text),
-    // тому якщо replacement видалив / змінив текст — entities, що стосуються
-    // видаленої ділянки, будуть ігноровані парсером (offset out of range).
-    if (processedRawText !== messageData.rawText) {
-      messageData.rawText = processedRawText;
-      // Перегенеровуємо Markdown: entities прив'язані до оригінального тексту,
-      // тому якщо raw text змінився через replacements — безпечніше передати
-      // processedRawText без entities, щоб не зіпсувати offsets.
-      // Entities, які стосуються видаленого тексту, вже не актуальні.
-      const hasActiveEntities = (messageData.entities ?? []).length > 0;
-      if (hasActiveEntities) {
-        // Залишаємо entities — parser entitiesToMarkdown безпечно обробляє
-        // out-of-range slice (String.prototype.slice повертає '' для oor offsets)
-        messageData.text = this._parser.entitiesToMarkdown(
-          processedRawText,
-          messageData.entities,
-        );
-      } else {
-        messageData.text = processedRawText;
-      }
-    }
+    // Крок 3: синхронізуємо Markdown text із оновленим plain text.
+    this._syncMarkdown(messageData, processedRawText);
 
     await this._processFiltered(messageData);
+  }
+
+  /**
+   * Якщо replacements змінили plain text — оновлюємо messageData.rawText і
+   * перегенеровуємо messageData.text (Markdown) з оригінальних entities.
+   *
+   * Entities прив'язані до позицій в оригінальному тексті, тому якщо
+   * replacement видалив / змінив ділянку — entities для неї парсер безпечно
+   * ігнорує (String.prototype.slice повертає '' для out-of-range offset).
+   */
+  _syncMarkdown(messageData, processedRawText) {
+    if (processedRawText === messageData.rawText) return;
+
+    messageData.rawText = processedRawText;
+
+    const hasActiveEntities = (messageData.entities ?? []).length > 0;
+    messageData.text = hasActiveEntities
+      ? this._parser.entitiesToMarkdown(processedRawText, messageData.entities)
+      : processedRawText;
+  }
+
+  /**
+   * TheFlow стадія 1: regex-стадія + ідемпотентний INSERT у `posts`.
+   * Помилка ingest НЕ валить update-loop — логуємо як подію і рухаємось далі.
+   */
+  async _ingestToFlow(messageData, text, compiledFilter, source) {
+    try {
+      const { created, post, status } = await this._flowIngest.ingest({
+        source,
+        messageData,
+        text,
+        blacklist: compiledFilter?.blacklist ?? null,
+      });
+
+      if (created) {
+        print(
+          `[THEFLOW] ${source.channel_name} msg ${messageData.messageId} → posts#${post.id} [${status}]`,
+          status === "pending" ? "success" : "debug",
+        );
+      } else {
+        print(
+          `[THEFLOW] Duplicate ingest ignored: ${source.channel_name} msg ${messageData.messageId}`,
+          "debug",
+        );
+      }
+    } catch (error) {
+      print(`[THEFLOW] Ingest failed for msg ${messageData.messageId}: ${error.message}`, "error");
+      console.error(error);
+      this.eventBus.emit("error.occurred", {
+        source:  this.platform,
+        error:   error.message,
+        context: `theflow-ingest:${messageData.channelId}`,
+        stack:   error.stack,
+      });
+    }
   }
 
   /**

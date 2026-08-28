@@ -73,6 +73,17 @@
       "destinations": {
         "telegram": [],
         "discord": ["123123123123"]
+      },
+      "flow": {
+        "enabled": true,
+        "topics": null,
+        "min_confidence": 0.6,
+        "dedup_window_hours": null,
+        "vision": {
+          "enabled": false,
+          "text_threshold": 200,
+          "max_images_per_post": 2
+        }
       }
     }
   ]

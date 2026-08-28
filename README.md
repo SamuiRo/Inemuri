@@ -389,20 +389,25 @@ Check:
 
 Treat those references as historical design notes. The current code uses JSON config files plus SQLite.
 
-## Planned: TheFlow
+## TheFlow
 
-TheFlow is a planned subsystem of Inemuri, not a separate product. Inemuri stays
-the name of the whole system; TheFlow is the part of it that turns the raw
-ingested firehose into a stream of validated posts — translating them to a
-canonical language, categorizing them, extracting structured entities,
-deduplicating events across channels, and routing by content instead of by
-source.
+TheFlow is a subsystem of Inemuri, not a separate product. Inemuri stays the
+name of the whole system; TheFlow is the part of it that turns the raw ingested
+firehose into a stream of validated posts — translating them to a canonical
+language, categorizing them, extracting structured entities, deduplicating
+events across channels, and routing by content instead of by source.
 
-It is **not implemented yet** — `docs/THEFLOW.md` is a specification written
-before any code. Classic forwarding stays available per source, and the current
-behavior of existing sources does not change.
+**Phase 0 (persistence without AI) is implemented.** A `flow` column on each
+source (default `{ enabled: false }`), the `posts` / `clusters` tables, a
+deterministic regex stage, and stage-1 ingest. No AI calls yet. Enable it per
+source with `"flow": { "enabled": true }` in `Sources.json`, then
+`npm run migrate:theflow` once. Classic forwarding is unchanged and stays
+available per source; sources without `flow.enabled` behave exactly as before.
 
-- [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases
+Phases 1–6 (LLM gateway, enrichment, content routing, deduplication, entity
+extraction, vision) are still specification.
+
+- [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases, Phase 0 status
 
 ## Additional documentation
 

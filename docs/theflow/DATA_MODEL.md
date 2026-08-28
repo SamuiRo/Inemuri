@@ -136,16 +136,30 @@ add columns to existing tables.** Both `src/inemuri.js` and `src/cli.js` call
 `database.sync()`; in development mode that path uses `force: true`, which
 recreates tables.
 
-Order of operations:
+Implemented as `scripts/migrate-theflow-phase0.js` — run once:
 
-1. **Back up `database/pot.sqlite`.** Copy the file while the process is stopped.
-2. The new `posts` and `clusters` tables are created by a plain `sync()` —
-   sufficient for tables that do not yet exist.
-3. The `flow` column on the existing `sources` table needs either a one-off
-   `sync({ alter: true })` or a manual
-   `ALTER TABLE sources ADD COLUMN flow TEXT`.
-4. **Do not run with `NODE_ENV=development`** — `force: true` there destroys
-   existing sources.
+```bash
+npm run migrate:theflow      # NODE_ENV must not be "development"
+```
+
+It is idempotent (safe to re-run), takes its own backup into
+`database/backups/`, and does:
+
+1. **Back up `database/pot.sqlite`** into `database/backups/`.
+2. Add the `flow` column to `sources` — **declared type `JSON`, not `TEXT`**.
+   Sequelize v6 on SQLite decides whether to parse a value as JSON from the
+   column's declared DDL type; a `TEXT` column comes back as a raw string
+   despite `DataTypes.JSON` on the model. A manual
+   `ALTER TABLE sources ADD COLUMN flow JSON DEFAULT '...'` is used rather than
+   `sync({ alter: true })`, which rebuilds the whole table on SQLite. If a
+   mistyped column already exists it is dropped and re-added.
+3. Backfill `flow` with the default object for existing rows.
+4. `database.sync()` creates the new `posts` and `clusters` tables — a plain
+   `sync()` is sufficient for tables that do not yet exist.
+5. Verify: table list, source count, sample `flow` value.
+
+**Do not run with `NODE_ENV=development`** — `force: true` there destroys
+existing sources. The script refuses to run in that mode.
 
 Verification after migration:
 
@@ -155,3 +169,12 @@ node src/cli.js list
 
 If the sources are still listed and `flow` reads as `{enabled: false}`, the
 migration succeeded and behavior is unchanged.
+
+## `image_hash` is not written at ingest
+
+`DATA_MODEL` lists `image_hash` as "recorded from phase 0", but ingestion must
+make **no outbound network calls** (ARCHITECTURE.md invariant) and a perceptual
+hash needs the image bytes. So at ingest only `has_media` is set; `image_hash`
+stays `NULL` and is filled by `scripts/backfill-image-hash.js` (dHash via
+`sharp`, rate-limited, resumable, picks `has_media = true AND image_hash IS
+NULL`).

@@ -1,6 +1,6 @@
 {
   "name": "inemuri",
-  "version": "4.1.9",
+  "version": "4.2.0",
   "description": "Data Control Unit",
   "main": "inemuri.js",
   "type": "module",
@@ -8,7 +8,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node src/inemuri.js",
     "seed": "node src/cli.js seed",
-    "seed:fresh": "node src/cli.js seed --fresh"
+    "seed:fresh": "node src/cli.js seed --fresh",
+    "migrate:theflow": "node scripts/migrate-theflow-phase0.js"
   },
   "repository": {
     "type": "git",
