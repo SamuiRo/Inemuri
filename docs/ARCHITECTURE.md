@@ -28,7 +28,9 @@ Inemuri/
 │       ├── DATA_MODEL.md                  # posts / clusters tables, migration order
 │       ├── DEDUPLICATION.md               # Three dedup tiers, linked mechanism
 │       ├── LLM_GATEWAY.md                 # Provider contract, fallback matrix
-│       └── TAXONOMY.md                    # Category axes, categories.json, routing
+│       ├── ROADMAP.md                     # Work plan: current state, ordering, exit gates
+│       ├── TAXONOMY.md                    # Category axes, categories.json, routing
+│       └── VISION.md                      # Screenshot transcription, gates, OCR provenance
 ├── src/
 │   ├── cli.js                             # CLI for seeding and managing sources
 │   ├── inemuri.js                         # Main application bootstrap

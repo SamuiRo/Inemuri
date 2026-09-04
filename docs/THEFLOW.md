@@ -96,6 +96,7 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 | [theflow/DEDUPLICATION.md](theflow/DEDUPLICATION.md) | Three deduplication tiers, the `linked` mechanism, handling retractions |
 | [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) | Provider contract, fallback matrix, quota accounting, priority classes |
 | [theflow/VISION.md](theflow/VISION.md) | Screenshot transcription, gates, unverifiable entities, image-borne injection |
+| [theflow/ROADMAP.md](theflow/ROADMAP.md) | The work plan: current state, task 0, cross-cutting work, per-phase tasks and exit gates |
 
 ## Phases
 
