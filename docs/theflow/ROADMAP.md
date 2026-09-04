@@ -108,11 +108,23 @@ backup pins its value for 8 channels at 2026-06-07:
 | Source I | 2745 |
 | Source E | 2675 |
 
-**Dump `source_states` from the VPS now.** The delta against these values,
-divided by the elapsed days, gives real messages-per-day per channel — the
-number phase 1 needs in order to choose a provider tier, available immediately
-and without running TheFlow at all. Task 2.1 turns this into a repeatable
-command.
+This backup is the most recent one, so there is no second snapshot to diff
+against — but none is needed. **GramJS can read the current last message id for
+each channel directly**, and each row carries its own baseline date in
+`updatedAt`. One pass gives real messages-per-day per channel, today:
+
+```text
+messages/day  =  (current_id - baseline_id) / days_since(row.updatedAt)
+```
+
+Using each row's own `updatedAt` rather than the backup date matters — the rows
+were written between 2026-05-01 and 2026-06-07, so a single shared denominator
+would understate the busy channels and wildly overstate Source M. Task 2.1 does
+this.
+
+The figure counts every message in the channel, deleted and service messages
+included, so it is an upper bound rather than an exact post count. For sizing a
+provider tier that is the right direction to be wrong in.
 
 One anomaly the same table already shows: **Source M has not advanced since
 2026-05-01**, more than a month before the backup, while every other polling
@@ -124,15 +136,32 @@ it is broken. Worth checking before it is considered for the pilot.
 Everything here is a prerequisite for something later, and none of it needs AI,
 a corpus, or an unmade decision. Do it first and completely.
 
-### 2.1 Volume snapshot (`S`) — do this before anything else
+### 2.1 Volume estimate (`S`) — do this before anything else
 
-`node src/cli.js flow:volume` — reads `source_states`, writes a timestamped
-JSON snapshot into `database/snapshots/`, and diffs against the previous
-snapshot to print messages/day per channel. Seed it with the backup values above
-so the first run already produces a 3-month average.
+`scripts/estimate-volume.js` — for each source, read the current last message id
+from Telegram (`getMessages` with `limit: 1`), diff it against that source's
+`source_states` row, divide by the days since that row's `updatedAt`, and print
+messages/day per channel plus the total.
 
-This is the entire answer to "how much traffic will reach the AI", and it comes
-from data that already exists.
+It answers "how much traffic will reach the AI" in one run, from data that
+already exists — no waiting, no second snapshot, no TheFlow running.
+
+Three details that decide whether the number is usable:
+
+- **Per-row baselines.** Each `source_states` row has its own `updatedAt`; do not
+  divide everything by the backup date.
+- **Listener sources have no row.** Six of the fourteen produce no estimate this
+  way. Take their current id now as a fresh baseline and re-run the script in a
+  few days, or accept that the eight polling sources are a representative
+  sample — they include the three busiest channels.
+- **Rate limiting.** Fourteen `getMessages` calls with the existing
+  `POLLING_CHANNEL_DELAY_MS` pause between them. This is a script, not a hot
+  path.
+
+Multiply the result by 2 requests per post (`enrich` + `embed`), subtract what
+the regex stage rejects and what the cache absorbs, and compare against the RPD
+of the model ids from 3.1. That comparison is the whole input to the provider
+decision.
 
 ### 2.2 Migration runner (`M`)
 
@@ -175,18 +204,54 @@ The VPS is several versions behind, on pre-TheFlow code. Nothing else in this
 plan can be verified against production until that is closed, and there is no
 deployment documentation in the repository at all.
 
-Order matters and is not negotiable:
+The service runs under pm2. Order matters and is not negotiable:
 
-1. back up `pot.sqlite` off the VPS;
-2. deploy the code (`git pull`, `npm ci`);
-3. `npm run migrate:status`, then `npm run migrate`;
-4. restart under whatever process manager runs it;
-5. verify classic forwarding still works — **before** any source is switched to
-   flow mode.
+```bash
+pm2 stop inemuri            # 1. stop first — see below
+cp database/pot.sqlite ~/pot.sqlite.2026-09-04   # 2. back up off-box too
+git pull && npm ci          # 3. deploy code
+npm run migrate:status      # 4. inspect, then apply
+npm run migrate
+pm2 start inemuri           # 5. start
+pm2 logs inemuri --lines 100
+```
 
-Write this down in `docs/DEPLOYMENT.md` as part of the task. A migration that
-runs after the new code has already started is a runtime failure in the ingest
-path, which is the one place that must never stop.
+**Stop pm2 before migrating.** Two failure modes otherwise, both nasty: the
+running process holds the SQLite file while `ALTER TABLE` runs, and pm2 restarts
+on crash — so a process that fails against a half-applied schema restarts into
+the same failure in a loop, writing garbage to the log and hammering Telegram
+reconnects.
+
+Then verify classic forwarding **before** any source is switched to flow mode.
+
+Two pm2 details worth pinning down in an `ecosystem.config.cjs`:
+
+- **The file must be `.cjs`.** The project is `"type": "module"`, and pm2 loads
+  an `ecosystem.config.js` as CommonJS — it fails on an ESM project.
+- **`cwd` must be the app root.** `dotenv` resolves `.env` relative to
+  `process.cwd()`, so `pm2 start src/inemuri.js` from the wrong directory starts
+  a process with no Telegram credentials and no obvious reason why.
+
+```js
+// ecosystem.config.cjs
+module.exports = {
+  apps: [{
+    name: "inemuri",
+    script: "src/inemuri.js",
+    cwd: "/path/to/Inemuri",
+    env: { NODE_ENV: "production" },
+    time: true,
+  }],
+};
+```
+
+`NODE_ENV` is set explicitly there because the development path uses
+`force: true` and recreates tables. Add `pm2 save` and `pm2 startup` so a reboot
+brings it back.
+
+Write the whole procedure into `docs/DEPLOYMENT.md` as part of this task. A
+migration that runs after the new code has started is a runtime failure in the
+ingest path — the one place that must never stop.
 
 ### 2.4 Generalize the schema for non-Telegram sources (`M`)
 
@@ -588,11 +653,22 @@ news is being lost.
 
 ### Non-negotiable
 
-`corrects` and `denies` are **never** suppressed, even when the append cap is
-exhausted. A cancelled event with a cheerful announcement still standing is the
-worst failure this system can produce. Until tier 3 exists, the gray zone is a
-**new event**, flagged — publishing a duplicate is annoying, swallowing a real
-story is worse.
+Three things are never suppressed, whatever the dedup gate or the append cap
+says:
+
+- `corrects` and `denies` — a cancelled event with a cheerful announcement still
+  standing is the worst failure this system can produce;
+- **anything with `signal_type: security`** — a second channel reporting the same
+  exchange hack may be the one that names the contract to stay away from, and a
+  `denies` on a hack rumour is exactly the retraction you must see;
+- the gray zone, until tier 3 exists: it is treated as a **new event** and
+  flagged. Publishing a duplicate is annoying, swallowing a real story is worse.
+
+Security is also where first-wins is at its most valuable and its most
+dangerous: the fastest report of a hack is the one you want, and it is also the
+one most likely to be a rumour. That combination is precisely what the
+`linked` / `corrects` / `denies` mechanism exists for — publish immediately,
+and let the correction always through.
 
 ## 7. Phase 3.5 — Reddit and news sources
 
@@ -644,7 +720,7 @@ the same post will score 6 and 8 across two runs.
 ## 10. Sequencing
 
 ```text
-PHASE 0.5  flow:volume snapshot -> migration runner -> deploy VPS + migrate
+PHASE 0.5  volume estimate -> migration runner -> deploy VPS + migrate
            schema generalization -> resolver seam -> delivery ids -> Discord edit
            post_feedback -> tests -> flow:stats/export -> enable pilot
               |
@@ -679,13 +755,17 @@ gray-zone volume.
 
 | When | What |
 |---|---|
-| Now | A fresh `source_states` dump from the VPS — with the 2026-06-07 baseline in 1.2 it yields real messages/day per channel immediately |
-| Now | Why Source M's checkpoint has not advanced since 2026-05-01 |
-| Before 2.3 | How the VPS runs the service (process manager, deploy path), so `docs/DEPLOYMENT.md` is accurate |
+| Now | Why Source M's checkpoint has not advanced since 2026-05-01 — dead channel or broken polling |
+| Before 2.3 | The app root path on the VPS, for `ecosystem.config.cjs` and `docs/DEPLOYMENT.md` |
 | Before 2.9 | Confirmation that forwarding may pause on the pilot sources, and which channel is the screenshot-heavy one |
 | Before phase 1 | The OpenRouter model ids you intend to use, and whether your account exposes embeddings |
 | Before the phase 1 checkpoint | Your own read of `#unsorted`: which categories are missing, which descriptions are too narrow |
-| Before phase 2 | The new destination channels, including `#unsorted` — today there is only the one firehose chat |
+| Before phase 2 | The new destination channels, including `#unsorted` and a `security` channel — today there is only the one firehose chat |
+
+Answered already, recorded here so the plan does not ask twice: the service runs
+under pm2 (`pm2 start inemuri`), the 2026-06-07 backup is the most recent one
+(so 2.1 estimates volume through GramJS rather than through a second snapshot),
+and `security` is a required category (appendix A).
 
 ## 12. Migration discipline
 
@@ -722,26 +802,57 @@ blacklists (1.1c) name the signal types you already reject by hand.
 | `tools` | Free offers, service discounts, non-obvious technical solutions | any |
 | `other` | Fits nothing above → `#unsorted` | — |
 
-**Signals** — the spec's eight, plus two that the blacklists prove you already
-filter by hand:
+**Signals** — the spec's eight, plus three the real stream demands:
 
 `promo_code · freebie · analysis · event · launch · patch · outage · opinion ·
-giveaway_result · stream`
+security · giveaway_result · stream`
 
-`giveaway_result` and `stream` earn their place because four sources maintain
-separate blacklists for exactly them (`<filter>`, `<filter>`,
+**`security` — hacks, exploits, and scams.** Platform and exchange breaches,
+contract exploits and drains, rug pulls, phishing waves, compromised accounts,
+stolen-funds reports, "do not interact with X" warnings.
+
+It is a **signal, not a topic**, and that is the whole argument for two axes: an
+exchange hack is `crypto` + `security`, a Steam trading scam wave is `steam` +
+`security`, a breached SaaS provider is `tools` + `security`. One topic could
+not hold those together, and three separate topics would fragment the routing.
+
+It is distinct from `outage`, which the spec already has. `outage` is "the
+service is down"; `security` is "funds or accounts are at risk". They fail
+differently, they age differently, and only one of them is urgent enough to
+ignore the confidence threshold.
+
+Three rules follow, and all three should be in place the day `security` is
+added to the enum:
+
+1. **Its own routing rule at the highest priority**, matching
+   `signal_type: security` across *every* topic, before any topic-specific rule.
+2. **Never suppressed by deduplication** — same class as `corrects` and `denies`
+   (§6).
+3. **A short dedup window, 6 h**, matching `outage`. A hack is news for hours,
+   not days, and a fresh report about the same exchange a week later is a
+   different incident.
+
+That this matters is visible in the source list: three of the fourteen channels
+are named Source I, Source A, and Source K. Scam and breach reporting
+is already a large share of the incoming stream — it is currently mixed into the
+same firehose as giveaway spam.
+
+`giveaway_result` and `stream` earn their place differently: four sources
+maintain separate blacklists for exactly them (`<filter>`, `<filter>`,
 `<filter>`, `<filter>`, `<filter>`, `twitch.tv`). As signal types
 they are classified once and routed nowhere, and those four hand-kept lists can
 shrink. That is the first concrete thing TheFlow gives back.
 
 **Dedup windows** — `promo_code` and `freebie` 24 h, `event` / `launch` /
-`patch` 48 h, `analysis` / `opinion` 72 h, `outage` 6 h. Per
+`patch` 48 h, `analysis` / `opinion` 72 h, `outage` and `security` 6 h. Per
 [DEDUPLICATION.md](DEDUPLICATION.md), and per topic in `categories.json` with a
 per-source override through `flow.dedup_window_hours`.
 
 **Routing** cannot be written until the channels in 5.1 exist. Until then,
 `unsorted_destinations` is the only entry, which is also the correct shadow-mode
-configuration.
+configuration. When those channels are created, `security` is the one that
+justifies a channel of its own before any other: it is the category where a
+missed post has a cost beyond annoyance.
 
 One tension to resolve at the phase 1 checkpoint: Source I blacklists
 `<filter>` / `<filter>`, while `tools` is *defined* as discounts and free offers.

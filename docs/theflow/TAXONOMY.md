@@ -2,6 +2,10 @@
 
 > Related: [THEFLOW.md](../THEFLOW.md) · [ARCHITECTURE.md](ARCHITECTURE.md)
 
+> The axis values below are the illustrative set. The **v1 draft written against
+> the real sources** — including the required `security` signal for platform and
+> exchange hacks — is in [ROADMAP.md](ROADMAP.md) appendix A.
+
 ## Two axes instead of one list
 
 Classification decomposes into two independent things, and they must not be
