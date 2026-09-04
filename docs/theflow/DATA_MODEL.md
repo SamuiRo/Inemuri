@@ -131,8 +131,13 @@ They later become few-shot examples for the prompt.
 
 ## Migration
 
-**The project has no migrations, and `sequelize.sync()` without `alter` does not
-add columns to existing tables.** Both `src/inemuri.js` and `src/cli.js` call
+> **Superseded from phase 0.5 onward.** A migration runner
+> (`database/migrations/` plus `npm run migrate`) is the first task of phase 0.5 —
+> see [ROADMAP.md](ROADMAP.md) §1.1. The section below describes the one-off
+> script that established the phase 0 schema; migration `001` adopts it.
+
+**At the time of phase 0 the project had no migrations, and `sequelize.sync()`
+without `alter` does not add columns to existing tables.** Both `src/inemuri.js` and `src/cli.js` call
 `database.sync()`; in development mode that path uses `force: true`, which
 recreates tables.
 

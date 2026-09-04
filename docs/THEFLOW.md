@@ -96,11 +96,17 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 | [theflow/DEDUPLICATION.md](theflow/DEDUPLICATION.md) | Three deduplication tiers, the `linked` mechanism, handling retractions |
 | [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) | Provider contract, fallback matrix, quota accounting, priority classes |
 | [theflow/VISION.md](theflow/VISION.md) | Screenshot transcription, gates, unverifiable entities, image-borne injection |
-| [theflow/ROADMAP.md](theflow/ROADMAP.md) | The work plan: current state, task 0, cross-cutting work, per-phase tasks and exit gates |
+| [theflow/ROADMAP.md](theflow/ROADMAP.md) | **The work plan.** Current state, per-phase task tables with files and effort, exit gates, sequencing |
 
 ## Phases
 
 Each phase is useful on its own and does not require the next one.
+
+> The ordered task breakdown, with files, effort and exit gates, lives in
+> [theflow/ROADMAP.md](theflow/ROADMAP.md). Two phases were added there after this
+> list was written — **0.5 (foundation: migrations, schema generalization)** and
+> **3.5 (Reddit and news adapters)** — and **vision moved from phase 6 to phase
+> 1.5**, straight after the gateway. The former phase 6 is retired.
 
 ### Phase 0 — persistence without AI ✅ implemented
 
@@ -178,22 +184,27 @@ Built on the existing `CronScheduler`, which already emits synthetic messages
 onto the same bus. Reactions to posts write labels into the database, which
 later become few-shot examples.
 
-### Phase 6 — vision for screenshots
+### Phase 1.5 — vision for screenshots (was phase 6)
 
 Transcription of image-only posts on selected sources, so that screenshots of
 tweets and announcements stop being invisible to the pipeline. See
 [theflow/VISION.md](theflow/VISION.md).
 
-Deliberately last: building it earlier means tuning transcription quality and
-classification quality simultaneously, with no way to tell which one produced a
-bad result. The one thing to do early is record `image_hash` and `has_media`
-during phase 0 — that data answers whether vision is worth building at all, and
-for which channels.
+Originally placed last, to avoid tuning transcription quality and classification
+quality simultaneously with no way to tell which one produced a bad result. It
+moved to 1.5 because vision is required, not optional, and because storing
+`text_ocr` separately from `text_en` answers the same question the ordering was
+meant to answer — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3.
+
+`has_media` is already recorded at ingest, and `image_hash` is filled by
+`scripts/backfill-image-hash.js`. Their per-source ratio is what decides which
+channels get `vision.enabled`.
 
 ## Out of scope
 
-- **Scraping Twitter / X.** Sources stay on Telegram. Twitter is a consumer of
-  the output (material to publish), not a source.
+- **Scraping Twitter / X.** Twitter is a consumer of the output (material to
+  publish), not a source. Reddit and open news feeds **are** planned as sources —
+  see [theflow/ROADMAP.md](theflow/ROADMAP.md) §6.
 - **Publishing anywhere externally.** TheFlow delivers to your own channels;
   what happens next is your decision.
 - **Replacing classic forwarding.** Both modes coexist permanently.
