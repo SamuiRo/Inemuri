@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "_comment": "TheFlow taxonomy v1, drafted against the 14 real sources (ROADMAP appendix A). Two closed axes: topic (what it is about) and signal (what kind of event). The model picks only from these lists; it never invents a label. dedup_window_hours lives on the signal axis (DEDUPLICATION.md): a promo_code is stale in hours, analysis in days, regardless of topic. A source may override with flow.dedup_window_hours. routing is empty until the phase 2 channels exist (ROADMAP 5.1); until then everything resolves to unsorted_destinations, which is also the correct shadow-mode configuration.",
+
+  "unsorted_destinations": {
+    "telegram": ["-100XXXXXXXXXX"],
+    "discord": ["XXXXXXXXXXXXXXXXXXX"]
+  },
+
+  "topics": {
+    "steam": {
+      "description": "Steam and game drops, sales, inventory, releases, patches",
+      "examples": [
+        "Free case drop this weekend for CS2 players",
+        "Steam Summer Sale starts June 26",
+        "New Divine skin added to the market"
+      ]
+    },
+    "airdrop": {
+      "description": "Testnets, retrodrops, farming tasks, allocations, snapshots",
+      "examples": [
+        "Complete these 3 testnet tasks before the snapshot",
+        "Project X confirms retroactive airdrop for early users",
+        "Allocation checker is live, claim opens Thursday"
+      ]
+    },
+    "crypto": {
+      "description": "Listings, on-chain specifics, market moves, analysis. Not price shouting, not advertising",
+      "examples": [
+        "Token Y lists on Binance with a USDT pair",
+        "On-chain analysis of whale accumulation in $ABC",
+        "Exchange Z halts withdrawals after a suspected exploit"
+      ]
+    },
+    "tools": {
+      "description": "Free offers, service discounts, non-obvious solutions to technical problems",
+      "examples": [
+        "Service X free tier expanded to 100 GB",
+        "How to work around the Y rate limit",
+        "50% off annual plan for new accounts this week"
+      ]
+    },
+    "other": {
+      "description": "Does not fit any topic above. Routes to #unsorted"
+    }
+  },
+
+  "signals": {
+    "promo_code": {
+      "description": "Contains a code that can be redeemed",
+      "dedup_window_hours": 24
+    },
+    "freebie": {
+      "description": "Something is given away free or at a steep discount",
+      "dedup_window_hours": 24
+    },
+    "analysis": {
+      "description": "A breakdown with data and reasoning, not just an opinion",
+      "dedup_window_hours": 72
+    },
+    "event": {
+      "description": "An event with a date: a start, a deadline, an active window",
+      "dedup_window_hours": 48
+    },
+    "launch": {
+      "description": "A release, a listing, something new going live",
+      "dedup_window_hours": 48
+    },
+    "patch": {
+      "description": "An update, changes, patch notes",
+      "dedup_window_hours": 48
+    },
+    "outage": {
+      "description": "A failure or outage: the service is down",
+      "dedup_window_hours": 6
+    },
+    "opinion": {
+      "description": "An opinion without supporting data",
+      "dedup_window_hours": 72
+    },
+    "security": {
+      "description": "Funds or accounts are at risk: platform and exchange hacks, contract exploits and drains, rug pulls, phishing waves, compromised accounts, stolen-funds reports, 'do not interact with X' warnings. Distinct from outage, which is only 'the service is down'",
+      "dedup_window_hours": 6
+    },
+    "giveaway_result": {
+      "description": "Announcement of giveaway or contest winners (Победители, <filter>, Розыгрыш завершен, <filter>). Classified once, routed nowhere",
+      "dedup_window_hours": 24
+    },
+    "stream": {
+      "description": "A livestream announcement or link (<filter>, twitch.tv). Classified once, routed nowhere",
+      "dedup_window_hours": 24
+    }
+  },
+
+  "routing": []
+}

@@ -531,6 +531,18 @@ with OpenRouter, tiering to a stronger model is a model-id change.
 
 ### 3.3 Schemas and validation (`M`)
 
+> **Done (v4.10.0).** `src/services/ai/schemas.js`: `enrichResponseSchema(taxonomy)`
+> (JSON-Schema with enums filled from categories.json, for provider structured
+> output), `validateStructural(obj, taxonomy)`, `validateVerbatim(obj, rawText)`,
+> and `validateEnrichResponse()` (structural then verbatim). Hand-rolled, no
+> `ajv`. `test/ai-schemas.test.js` covers it.
+>
+> **Scope call:** verbatim strips only literal quotes — `extracted.promo_codes[].code`
+> and `entities.tickers[]` (case-insensitive `raw_text` membership). `entities.project`
+> is **not** stripped: a project name is an identification that is legitimately
+> transliterated or translated away from the source spelling, and false-rejecting
+> a real one is worse than keeping a wrong one the reader sees in context.
+
 `src/services/ai/schemas.js`. Hand-roll the validator rather than adding `ajv`:
 the schema is small and fixed, the interesting checks are custom anyway, and it
 stays testable.
@@ -546,6 +558,16 @@ An invalid response is a failure, not data: the post stays `pending`, `attempts`
 increments, `last_error` records why.
 
 ### 3.4 Prompts (`M`)
+
+> **Done (v4.10.0).** `src/services/ai/prompts/enrich.js`:
+> `buildEnrichPrompt({ text, candidates, textOcr, taxonomy })` → `{ system,
+> user, responseSchema, settings }`. Taxonomy descriptions injected from
+> categories.json; `text_en` first; `summary_uk` optional; `ENRICH_CALL_SETTINGS
+> = { temperature: 0 }`. The source text (and OCR text, when it exists) sits
+> inside a per-call nonced `<<<UNTRUSTED …>>>` block the model is told to treat
+> as data — built now, while `text_ocr` is still empty. `prompts/delta.js` and
+> `prompts/vision.js` come with phases 3 and 1.5. `test/enrich-prompt.test.js`
+> covers it. Explicit timeout is a call setting the gateway (3.5) applies.
 
 `prompts/enrich.js` — taxonomy injected from `categories.json`,
 `temperature: 0`, structured output, explicit timeout.
@@ -593,6 +615,17 @@ Two distinctions that are cheap to keep and expensive to lose:
   never mark a post `failed`.
 
 ### 3.6 `categories.json` v1 and the enrichment worker (`M` + `M`)
+
+> **`categories.json` v1 done (v4.10.0).** `src/config/categories.json` —
+> topics `steam / airdrop / crypto / tools / other`, the 11 signals from
+> appendix A (incl. `security`, `giveaway_result`, `stream`),
+> `dedup_window_hours` on each **signal** (DEDUPLICATION.md's table is
+> signal-keyed; TAXONOMY.md's example showing it on topics is the stale
+> illustrative set). `routing: []` and `unsorted_destinations` = the current
+> firehose — the correct shadow-mode config until the phase 2 channels exist.
+> Loaded as `CATEGORIES` from `app.config.js`; `test/categories.test.js` pins
+> the shape. **The `EnrichWorker` still needs the gateway (3.5) and the
+> provider decisions (§11) — not started.**
 
 Write `categories.json` v1 now, from **appendix A** — which is derived from the
 real channel mix and the existing blacklists, not from the spec's generic

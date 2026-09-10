@@ -44,6 +44,7 @@ Inemuri/
 │   ├── config/
 │   │   ├── app.config.js                  # All env vars and hardcoded constants in one place
 │   │   ├── appearance.config.json         # UI/theme config used by helper assets
+│   │   ├── categories.json                # TheFlow taxonomy v1: topics, signals, routing
 │   │   ├── cronjob.config.json            # Runtime destination mapping for cron jobs
 │   │   ├── cronjob.config.sample.json     # Example cronjob config
 │   │   ├── cronjobs.js                    # Cron job definitions and Discord slash commands
@@ -91,6 +92,10 @@ Inemuri/
 │   │   └── telegram/
 │   │       └── TelegramClient.js          # Shared GramJS MTProto client singleton
 │   ├── services/
+│   │   ├── ai/                            # TheFlow LLM layer (phase 1, in progress)
+│   │   │   ├── schemas.js                 # enrich() response schema + structural/verbatim validation
+│   │   │   └── prompts/
+│   │   │       └── enrich.js              # enrich prompt: taxonomy injection, untrusted block
 │   │   └── crypto/
 │   │       └── CryptoDataService.js       # External crypto market data provider
 │   ├── shared/
@@ -184,6 +189,7 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 - `.env` stores secrets and runtime parameters such as Telegram credentials, Discord bot token, CoinMarketCap key, and polling settings.
 - `src/config/app.config.js` is the single source of truth for all constants — both env-backed values and hardcoded tunables. This includes polling intervals, album group timeout, dedup TTL, channel delay, and downloadable media types.
 - `src/config/Sources.json` is the declarative source registry. `src/module/seeders/Sourceseeder.js` imports it into SQLite.
+- `src/config/categories.json` is the TheFlow taxonomy (topics, signals with per-signal dedup windows, routing rules). Exposed as `CATEGORIES` from `app.config.js`; the enrich schema and the phase 2 resolve stage read it.
 - `database/pot.sqlite` is the runtime database.
 - `Source` stores source metadata, filters, text replacements, destination mappings, source mode, and the `flow` column (TheFlow settings, default `{ enabled: false }`).
 - `SourceState` stores polling checkpoints (`last_message_id`) so polling can resume safely and support deduplication in `both` mode.

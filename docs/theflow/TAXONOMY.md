@@ -4,7 +4,15 @@
 
 > The axis values below are the illustrative set. The **v1 draft written against
 > the real sources** — including the required `security` signal for platform and
-> exchange hacks — is in [ROADMAP.md](ROADMAP.md) appendix A.
+> exchange hacks — is in [ROADMAP.md](ROADMAP.md) appendix A, and the shipped
+> file is [`src/config/categories.json`](../../src/config/categories.json).
+>
+> Two things the illustrative JSON below gets differently from the shipped v1:
+> the real topics are `steam / airdrop / crypto / tools / other`, and
+> `dedup_window_hours` lives on each **signal**, not on the topic — a
+> `promo_code` is stale in hours and `analysis` in days regardless of topic
+> ([DEDUPLICATION.md](DEDUPLICATION.md)). A source still overrides with
+> `flow.dedup_window_hours`.
 
 ## Two axes instead of one list
 

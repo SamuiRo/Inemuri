@@ -2,11 +2,14 @@ import "dotenv/config";
 
 import pkg from "../../package.json" with { type: "json" };
 import SourceConfig from "./sources.json" with { type: "json" };
+import CategoriesConfig from "./categories.json" with { type: "json" };
 
 // ── Runtime ────────────────────────────────────────────────────────────────
 export const NODE_ENV = process.env.NODE_ENV;
 export const PKG = pkg;
 export const SOURCE_CONFIG = SourceConfig;
+// TheFlow taxonomy (topics / signals / routing) — src/config/categories.json.
+export const CATEGORIES = CategoriesConfig;
 
 // ── Telegram auth ──────────────────────────────────────────────────────────
 export const TELEGRAM_SESSION =
