@@ -1,6 +1,7 @@
 *.sqlite
 
-/database
+/database/*
+!/database/migrations/
 /src/config/Sources.json
 /src/config/cronjob.config.json
 /test

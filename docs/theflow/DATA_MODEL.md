@@ -138,40 +138,32 @@ They later become few-shot examples for the prompt.
 
 ## Migration
 
-> **Superseded from phase 0.5 onward.** A migration runner
-> (`database/migrations/` plus `npm run migrate`) is the first task of phase 0.5 —
-> see [ROADMAP.md](ROADMAP.md) §2.2. The section below describes the one-off
-> script that established the phase 0 schema; migration `001` adopts it.
+The project now has a migration runner (`database/migrations/` plus
+`npm run migrate` / `npm run migrate:status`) — ROADMAP §2.2. Migrations are
+`NNN-name.js` files, each exporting `up({ sequelize, queryInterface })`,
+forward-only, applied in numeric order and recorded in a `schema_migrations`
+table. The runner takes one backup into `database/backups/` before the first
+migration of a run and refuses `NODE_ENV=development` (that path uses
+`force: true` and recreates tables). `database/` is git-ignored except
+`database/migrations/`.
 
-**At the time of phase 0 the project had no migrations, and `sequelize.sync()`
-without `alter` does not add columns to existing tables.** Both `src/inemuri.js` and `src/cli.js` call
-`database.sync()`; in development mode that path uses `force: true`, which
-recreates tables.
+### `001-theflow-phase0`
 
-Implemented as `scripts/migrate-theflow-phase0.js` — run once:
+Establishes the schema on this page. On a pre-TheFlow database (the VPS) it
+**creates** it; on a copy that already ran the earlier one-off script it
+**adopts** it — every step is idempotent:
 
-```bash
-npm run migrate:theflow      # NODE_ENV must not be "development"
-```
-
-It is idempotent (safe to re-run), takes its own backup into
-`database/backups/`, and does:
-
-1. **Back up `database/pot.sqlite`** into `database/backups/`.
-2. Add the `flow` column to `sources` — **declared type `JSON`, not `TEXT`**.
+1. Add the `flow` column to `sources` — **declared type `JSON`, not `TEXT`**.
    Sequelize v6 on SQLite decides whether to parse a value as JSON from the
    column's declared DDL type; a `TEXT` column comes back as a raw string
    despite `DataTypes.JSON` on the model. A manual
    `ALTER TABLE sources ADD COLUMN flow JSON DEFAULT '...'` is used rather than
    `sync({ alter: true })`, which rebuilds the whole table on SQLite. If a
    mistyped column already exists it is dropped and re-added.
-3. Backfill `flow` with the default object for existing rows.
-4. `database.sync()` creates the new `posts` and `clusters` tables — a plain
+2. Backfill `flow` with the default object for existing rows.
+3. `sequelize.sync()` creates the new `posts` and `clusters` tables — a plain
    `sync()` is sufficient for tables that do not yet exist.
-5. Verify: table list, source count, sample `flow` value.
-
-**Do not run with `NODE_ENV=development`** — `force: true` there destroys
-existing sources. The script refuses to run in that mode.
+4. Verify: expected tables present, sources preserved.
 
 Verification after migration:
 

@@ -401,7 +401,7 @@ events across channels, and routing by content instead of by source.
 source (default `{ enabled: false }`), the `posts` / `clusters` tables, a
 deterministic regex stage, and stage-1 ingest. No AI calls yet. Enable it per
 source with `"flow": { "enabled": true }` in `Sources.json`, then
-`npm run migrate:theflow` once. Classic forwarding is unchanged and stays
+`npm run migrate` once. Classic forwarding is unchanged and stays
 available per source; sources without `flow.enabled` behave exactly as before.
 
 Phases 1–6 (LLM gateway, enrichment, content routing, deduplication, entity

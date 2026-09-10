@@ -179,7 +179,7 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 - `database/pot.sqlite` is the runtime database.
 - `Source` stores source metadata, filters, text replacements, destination mappings, source mode, and the `flow` column (TheFlow settings, default `{ enabled: false }`).
 - `SourceState` stores polling checkpoints (`last_message_id`) so polling can resume safely and support deduplication in `both` mode.
-- `Post` and `Cluster` are the TheFlow tables (Phase 0). `Post` holds one row per ingested message from a `flow.enabled` source; `Cluster` holds one row per deduplicated event. Created by `npm run migrate:theflow`.
+- `Post` and `Cluster` are the TheFlow tables (Phase 0). `Post` holds one row per ingested message from a `flow.enabled` source; `Cluster` holds one row per deduplicated event. Created by migration `001-theflow-phase0` (`npm run migrate`).
 - `src/config/cronjob.config.json` provides destination mapping for scheduled jobs, while `src/config/cronjobs.js` defines the actual job handlers.
 
 ## Configuration constants (app.config.js)
@@ -225,6 +225,7 @@ enters TheFlow when its `flow.enabled` is set to `true` in `Sources.json`.
 - `npm start` runs `src/inemuri.js` and starts the full service.
 - `npm run seed` imports `Sources.json` into the SQLite database.
 - `npm run seed:fresh` clears all existing sources and reseeds them.
-- `npm run migrate:theflow` runs the one-off TheFlow Phase 0 schema migration (`scripts/migrate-theflow-phase0.js`).
+- `npm run migrate` applies pending schema migrations from `database/migrations/` (`NNN-name.js`, forward-only, one backup per run into `database/backups/`, refuses `NODE_ENV=development`); `npm run migrate:status` lists applied and pending. Migration `001-theflow-phase0` creates the Phase 0 schema on a fresh database and adopts it on one that already has it.
+- `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
 - `src/cli.js` also provides helper commands for listing, toggling, and clearing sources.

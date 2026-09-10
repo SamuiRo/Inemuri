@@ -1,6 +1,6 @@
 {
   "name": "inemuri",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "description": "Data Control Unit",
   "main": "inemuri.js",
   "type": "module",
@@ -9,7 +9,8 @@
     "start": "node src/inemuri.js",
     "seed": "node src/cli.js seed",
     "seed:fresh": "node src/cli.js seed --fresh",
-    "migrate:theflow": "node scripts/migrate-theflow-phase0.js"
+    "migrate": "node scripts/migrate.js",
+    "migrate:status": "node scripts/migrate.js status"
   },
   "repository": {
     "type": "git",
@@ -34,7 +35,6 @@
     "input": "^1.0.1",
     "node-cron": "^4.2.1",
     "sequelize": "^6.37.7",
-    "sequelize-cli": "^6.6.5",
     "sharp": "^0.34.5",
     "sqlite3": "^5.1.7",
     "telegram": "^2.26.22"

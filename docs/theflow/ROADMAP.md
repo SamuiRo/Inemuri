@@ -138,6 +138,11 @@ a corpus, or an unmade decision. Do it first and completely.
 
 ### 2.1 Volume estimate (`S`) — do this before anything else
 
+> **Done (v4.3.1).** `scripts/estimate-volume.js` is written. It still needs to
+> be *run* against the live Telegram session to produce the numbers — that is an
+> operator step, not a code step. `--save-baselines` records a baseline for the
+> listener sources so a re-run in a few days covers all fourteen.
+
 `scripts/estimate-volume.js` — for each source, read the current last message id
 from Telegram (`getMessages` with `limit: 1`), diff it against that source's
 `source_states` row, divide by the days since that row's `updatedAt`, and print
@@ -164,6 +169,14 @@ of the model ids from 3.1. That comparison is the whole input to the provider
 decision.
 
 ### 2.2 Migration runner (`M`)
+
+> **Done (v4.4.0).** `scripts/migrate.js` (`npm run migrate` /
+> `npm run migrate:status`), `database/migrations/001-theflow-phase0.js`
+> wrapping the old one-off script, `schema_migrations` ledger, one backup per
+> run, `NODE_ENV=development` refusal. `scripts/migrate-theflow-phase0.js` and
+> the `sequelize-cli` dependency are removed. `.gitignore` now un-ignores
+> `database/migrations/` (the rest of `database/` stays ignored). Verified on
+> the dev copy: `001` adopts the existing schema and re-runs clean.
 
 `sequelize-cli` is in `package.json`, unused, and fits badly with ESM — its
 migrations are CJS and it wants its own config loader. A hand-rolled runner is

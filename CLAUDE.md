@@ -74,11 +74,16 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 
 - **Never run with `NODE_ENV=development`.** The sync path uses `force: true`
   and will recreate tables, destroying configured sources. Use `production`.
-- The runtime database is `database/pot.sqlite`. Back it up before any schema
-  change.
-- There are **no migrations** in this project. `sequelize.sync()` without
-  `alter` will not add columns to existing tables; adding one needs a one-off
-  `sync({ alter: true })` or a manual `ALTER TABLE`.
+- The runtime database is `database/pot.sqlite`. `npm run migrate` takes its
+  own backup into `database/backups/` before applying anything; still back up
+  before any manual schema change.
+- **Migrations** live in `database/migrations/` (`NNN-name.js`, each exporting
+  `up({ sequelize, queryInterface })`, forward-only). `npm run migrate` applies
+  pending ones, `npm run migrate:status` lists applied and pending. Both refuse
+  `NODE_ENV=development`. Add a schema change as a new numbered migration with
+  explicit `ALTER TABLE` — never `sync({ alter: true })` against a real
+  database (SQLite rebuilds the whole table). `database/` is git-ignored except
+  `database/migrations/`.
 - There are no tests and no CI. `npm test` is a placeholder that exits 1.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
@@ -89,5 +94,7 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 npm start            # start the service
 npm run seed         # seed sources from src/config/Sources.json
 npm run seed:fresh   # clear all sources and reseed
+npm run migrate      # apply pending schema migrations (backs up first)
+npm run migrate:status  # list applied and pending migrations
 node src/cli.js list # list configured sources
 ```

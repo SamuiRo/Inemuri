@@ -138,9 +138,9 @@ What landed:
   `source.isFlowEnabled()`: replacements are shared, then flow sources persist
   to `posts` (blacklist-only, whitelist disabled) instead of `emit` + media
   download. Classic forwarding is byte-for-byte unchanged.
-- Migration: `npm run migrate:theflow`
-  (`scripts/migrate-theflow-phase0.js`) — idempotent, self-backup, refuses
-  `NODE_ENV=development`.
+- Migration: `001-theflow-phase0` via `npm run migrate` — idempotent (creates
+  the schema on a fresh database, adopts it on one that already has it). The
+  runner backs up before applying and refuses `NODE_ENV=development`.
 
 Deviation from spec: `image_hash` is **not** written during ingest. Recording it
 there would require downloading the image, which breaks the "ingestion makes no
