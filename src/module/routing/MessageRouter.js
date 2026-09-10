@@ -75,6 +75,9 @@ class MessageRouter {
         `[ROUTER] Routing message from ${messageData.platform}:${messageData.source?.name || messageData.channelId}`,
       );
 
+      // Ідентичності всіх успішно надісланих повідомлень у цьому виклику.
+      const delivered = [];
+
       for (const [platform, destinationList] of Object.entries(destinations)) {
         // Пропускаємо порожні масиви
         if (!Array.isArray(destinationList) || destinationList.length === 0) {
@@ -88,11 +91,14 @@ class MessageRouter {
           // CRITICAL FIX: Обгортаємо кожну відправку в try-catch
           // щоб помилка в одному destination не ламала інші
           try {
-            await this.sendToDestination(
+            const identity = await this.sendToDestination(
               platform,
               destinationId,
               messageData,
             );
+            // Ідентичність надісланого — для clusters.delivered / linked
+            // (docs/theflow/DELIVERY.md). Класичний форвардинг її ігнорує.
+            if (identity) delivered.push(identity);
           } catch (error) {
             print(
               `[ROUTER] Failed to send to ${platform}:${destinationId}, but continuing with other destinations`,
@@ -108,7 +114,10 @@ class MessageRouter {
         messageId: messageData.messageId,
         sourceChannel: messageData.channelId,
         sourcePlatform: messageData.platform,
+        delivered,
       });
+
+      return delivered;
     } catch (error) {
       print(`[ROUTER] Error routing message: ${error.message}`, "error");
       console.error(error);
@@ -130,7 +139,8 @@ class MessageRouter {
    * @param {string} platform - Платформа (telegram, discord, etc.)
    * @param {string} destinationId - ID каналу/чату
    * @param {Object} messageData - Дані повідомлення
-   * @returns {boolean} - true якщо успішно, false якщо помилка
+   * @returns {Promise<object|null>} Ідентичність надісланого повідомлення
+   *   `{ platform, channel_id, message_id, sent_at }`, або `null` при помилці.
    */
   async sendToDestination(platform, destinationId, messageData) {
     try {
@@ -150,7 +160,7 @@ class MessageRouter {
           destinationId,
         });
 
-        return false;
+        return null;
       }
 
       // Перевіряємо чи адаптер підключений
@@ -162,20 +172,28 @@ class MessageRouter {
         await adapter.connect();
       }
 
-      await adapter.sendMessage(destinationId, messageData);
+      const sent = await adapter.sendMessage(destinationId, messageData);
+      const identity =
+        adapter.describeSent?.(sent, destinationId) ?? {
+          platform,
+          channel_id: String(destinationId),
+          message_id: sent?.id ?? null,
+          sent_at: new Date(),
+        };
 
       // Емітимо подію про успішну відправку
       this.eventBus.emit("message.sent", {
         platform,
         destinationId,
         messageId: messageData.messageId,
+        deliveredMessageId: identity.message_id,
         sourceChannel: messageData.channelId,
         timestamp: new Date(),
       });
 
       print(`[ROUTER] ✓ Sent to ${platform}:${destinationId}`, "success");
 
-      return true;
+      return identity;
     } catch (error) {
       print(
         `[ROUTER] ✗ Failed to send to ${platform}:${destinationId}: ${error.message}`,
@@ -183,8 +201,7 @@ class MessageRouter {
       );
 
       // Помилка вже була залогована в адаптері через handleSendError
-      // Тут просто повертаємо false
-      return false;
+      return null;
     }
   }
 }

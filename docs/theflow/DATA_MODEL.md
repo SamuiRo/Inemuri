@@ -135,11 +135,13 @@ expensive.
 
 | Field | Type | Purpose |
 |---|---|---|
-| `post_id` | INTEGER | FK |
-| `verdict` | STRING | `good` \| `noise` \| `wrong_topic` \| `missed` |
+| `id` | INTEGER PK | |
+| `post_id` | INTEGER | FK to `posts.id`, `SET NULL` — `missed` has no post, and label history is kept |
+| `verdict` | STRING NOT NULL | `good` \| `noise` \| `wrong_topic` \| `missed` (validated) |
 | `note` | TEXT | Optional |
-| `created_at` | DATE | |
+| `created_at` | DATE NOT NULL | Rows are immutable — no `updatedAt` (`timestamps: false`) |
 
+Table and `PostFeedback` model land in migration `004-post-feedback`.
 Labels come from your reaction to a post in the channel (emoji, forward).
 They later become few-shot examples for the prompt.
 

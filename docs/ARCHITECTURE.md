@@ -81,7 +81,8 @@ Inemuri/
 │   │   │   │   ├── Source.js              # Source config model and helper methods
 │   │   │   │   ├── SourceState.js         # Polling checkpoint model
 │   │   │   │   ├── Post.js                # TheFlow: one row per ingested message
-│   │   │   │   └── Cluster.js             # TheFlow: one row per deduplicated event
+│   │   │   │   ├── Cluster.js             # TheFlow: one row per deduplicated event
+│   │   │   │   └── PostFeedback.js        # TheFlow: a human's label on a post
 │   │   │   └── sqlite/
 │   │   │       └── sqlite_db.js           # Sequelize SQLite connection singleton
 │   │   └── telegram/

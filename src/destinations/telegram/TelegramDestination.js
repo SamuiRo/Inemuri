@@ -71,6 +71,24 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     print("Telegram destination adapter disconnected");
   }
 
+  get capabilities() {
+    return { edit: true };
+  }
+
+  /**
+   * Ідентичність надісланого повідомлення для clusters.delivered / linked.
+   * @param {object} sentMessage  GramJS Message з sendMessage().
+   * @param {string} destinationId
+   */
+  describeSent(sentMessage, destinationId) {
+    return {
+      platform: "telegram",
+      channel_id: String(destinationId),
+      message_id: sentMessage?.id ?? null,
+      sent_at: new Date(),
+    };
+  }
+
   /**
    * Відправка одного повідомлення
    * @param {string} destinationId - Telegram chat ID, username або phone
@@ -746,16 +764,19 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
    * Редагування повідомлення
    * @param {string} destinationId - Chat ID
    * @param {number} messageId - ID повідомлення
-   * @param {string} newText - Новий текст
+   * @param {(string|object)} payload - Новий текст, або payload GramJS
+   *   editMessage (напр. { text, formattingEntities })
    */
-  async editMessage(destinationId, messageId, newText) {
+  async editMessage(destinationId, messageId, payload) {
     try {
       const entity = await this.resolveEntity(destinationId);
 
-      await this.client.editMessage(entity, {
-        message: messageId,
-        text: newText,
-      });
+      const editOptions =
+        typeof payload === "string"
+          ? { message: messageId, text: payload }
+          : { message: messageId, ...payload };
+
+      await this.client.editMessage(entity, editOptions);
 
       print(`Edited message ${messageId} in chat ${destinationId}`, "success");
 

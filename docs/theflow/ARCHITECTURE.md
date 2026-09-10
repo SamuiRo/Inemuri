@@ -173,6 +173,12 @@ What changes is **who fills that field**: a resolve stage looks at `topic` and
 `signal_type` and reads destinations from `categories.json`.
 `source.destinations` remains the fallback for classic mode.
 
+One additive change already landed (ROADMAP §2.6): `sendToDestination()` now
+returns `{ platform, channel_id, message_id, sent_at }` instead of a boolean,
+and `routeMessage()` returns and emits the `delivered[]` array. Stage 3 needs
+those ids to edit a cluster's messages later (`clusters.delivered`, the
+`linked` mechanism); classic forwarding ignores the return.
+
 ### 3. Filter order for TheFlow sources
 
 The keyword whitelist is disabled, the blacklist stays. See the regex stage.

@@ -34,14 +34,47 @@ class BaseDestinationAdapter {
   }
 
   /**
+   * Опційні можливості адаптера. Шлях доставки перевіряє це замість того,
+   * щоб припускати. Нащадки перевизначають потрібне.
+   * @returns {{ edit: boolean }}
+   */
+  get capabilities() {
+    return { edit: false };
+  }
+
+  /**
    * Відправка повідомлення (має бути реалізовано в нащадках)
    * @param {string} destinationId - ID каналу/чату куди відправляти
    * @param {Object} messageData - Дані повідомлення в уніфікованому форматі
+   * @returns {Promise<object|null>} Надіслане повідомлення платформи (або null).
    */
   async sendMessage(destinationId, messageData) {
     throw new Error(
       `sendMessage() must be implemented in ${this.constructor.name}`,
     );
+  }
+
+  /**
+   * Ідентичність надісланого повідомлення — для clusters.delivered і механізму
+   * linked (docs/theflow/DELIVERY.md). Нащадки перевизначають; база не знає
+   * форми platform-об'єкта.
+   * @param {object} sentMessage  Те, що повернув sendMessage().
+   * @param {string} destinationId
+   * @returns {{ platform: string, channel_id: string, message_id: (number|string|null), sent_at: Date } | null}
+   */
+  describeSent(sentMessage, destinationId) {
+    return null;
+  }
+
+  /**
+   * Редагування вже надісланого повідомлення. Опційна можливість —
+   * див. `capabilities.edit`. База кидає, щоб виклик без перевірки був гучним.
+   * @param {string} destinationId
+   * @param {(number|string)} messageId
+   * @param {(string|object)} payload  Текст або готовий payload платформи.
+   */
+  async editMessage(destinationId, messageId, payload) {
+    throw new Error(`editMessage() is not supported by the ${this.platform} adapter`);
   }
 
   /**

@@ -79,6 +79,51 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     print("Discord destination adapter disconnected");
   }
 
+  get capabilities() {
+    return { edit: true };
+  }
+
+  /**
+   * Ідентичність надісланого повідомлення для clusters.delivered / linked.
+   * @param {import("discord.js").Message} sentMessage
+   * @param {string} destinationId
+   */
+  describeSent(sentMessage, destinationId) {
+    return {
+      platform: "discord",
+      channel_id: sentMessage?.channelId ?? String(destinationId),
+      message_id: sentMessage?.id ?? null,
+      sent_at: new Date(),
+    };
+  }
+
+  /**
+   * Редагування вже надісланого повідомлення.
+   * @param {string} channelId
+   * @param {string} messageId
+   * @param {(string|object)} payload  Рядок → { content }; об'єкт → payload
+   *   discord.js Message#edit (напр. { embeds: [...] }).
+   */
+  async editMessage(channelId, messageId, payload) {
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel) throw new Error(`Could not find channel with ID ${channelId}`);
+
+      const message = await channel.messages.fetch(messageId);
+      const editPayload = typeof payload === "string" ? { content: payload } : payload;
+      await message.edit(editPayload);
+
+      print(`Edited message ${messageId} in Discord channel ${channelId}`, "success");
+      return true;
+    } catch (error) {
+      print(
+        `Failed to edit message ${messageId} in Discord channel ${channelId}: ${error.message}`,
+        "error",
+      );
+      throw error;
+    }
+  }
+
   /**
    * Налаштування ліміту файлів залежно від Nitro boost сервера.
    * @param {boolean} hasNitroBoost

@@ -355,6 +355,21 @@ turns phase 3.5 into an adapter instead of a refactor of the delivery path.
 
 ### 2.6 Delivery, edit, and feedback plumbing (`S` each)
 
+> **Done (v4.7.0).**
+> - `MessageRouter.sendToDestination()` returns
+>   `{ platform, channel_id, message_id, sent_at }` (or `null`);
+>   `routeMessage()` collects them into `delivered[]`, returns it, and adds it
+>   to the `message.routed` event. Identity comes from a new
+>   `adapter.describeSent(sent, destinationId)` (Telegram/Discord override it;
+>   the router has a fallback). Classic forwarding ignores the return.
+> - `BaseDestinationAdapter`: `get capabilities()` (`{ edit: false }` by
+>   default), `describeSent()` (→ `null`), and `editMessage()` that throws
+>   unless overridden. Telegram/Discord declare `{ edit: true }`;
+>   `DiscordDestination.editMessage()` implemented (string → `{ content }`,
+>   object → passthrough to `Message#edit`). Telegram's now takes a string or a
+>   GramJS edit payload.
+> - `post_feedback` table + `PostFeedback` model + migration `004-post-feedback`.
+
 - **Deliveries must return what they sent.** `clusters.delivered` is
   `[{platform, channel_id, message_id, sent_at}]`, and the `linked` mechanism
   cannot edit a message whose id was never recorded. Both adapters already
