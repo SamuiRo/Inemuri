@@ -55,8 +55,8 @@ export class FlowIngest {
 
     // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин.
     //    Кросканальний і внутрішньоканальний: та сама подія з іншим
-    //    message_id у вікні — це repost. Той самий message_id ловиться
-    //    нижче ідемпотентністю findOrCreate, сюди не доходить.
+    //    external_id у вікні — це repost. Той самий (source_id, external_id)
+    //    ловиться нижче ідемпотентністю findOrCreate, сюди не доходить.
     let status = stage.status;
     if (status === "ok" && stage.textHash) {
       const since = new Date(Date.now() - this._repostWindowMs);
@@ -72,21 +72,34 @@ export class FlowIngest {
 
     const finalStatus = status === "ok" ? "pending" : status;
 
-    // 3. Ідемпотентний INSERT по (channel_id, message_id).
+    // 3. Ідемпотентний INSERT по (source_id, external_id).
     //    created === false → режим "both" або повторний polling; рядок уже є.
+    const hasMedia = FlowIngest._hasRealMedia(messageData.media);
     const [post, created] = await Post.ingest({
       source_id: source.id,
+      platform: messageData.platform ?? "telegram",
+      // external_id — універсальна ідентичність елемента. Для Telegram це
+      // message id як текст; для Reddit/RSS підставлять свій адаптери.
+      external_id: String(messageData.messageId),
+      external_url: null, // Telegram: канонічного публічного лінка немає
       channel_id: channelId,
-      message_id: messageData.messageId,
+      message_id: messageData.messageId, // legacy NOT NULL, Telegram-only, більше не читається
       grouped_id: messageData.groupedId ?? null,
       posted_at: FlowIngest._toDate(messageData.timestamp),
+      title: null, // Telegram не має окремого заголовка
+      author: null,
       // raw_text = plain text ПІСЛЯ replacements: це саме той вхід, що бачить
       // enrich() ("text after text_replacements"), і проти нього працює
       // verbatim-валідація. Не перезаписується стадіями нижче.
       raw_text: text ?? null,
       text_md: messageData.text ?? null,
+      // entities — оригінальні MTProto entities як plain-масив. Offset-и
+      // індексують ОРИГІНАЛЬНИЙ текст (до replacements); _syncMarkdown уже
+      // толерує дрейф, і доставка теж (DELIVERY.md).
+      entities: FlowIngest._serializeEntities(messageData.entities),
       text_hash: stage.textHash,
-      has_media: FlowIngest._hasRealMedia(messageData.media),
+      has_media: hasMedia,
+      media_ref: hasMedia ? FlowIngest._buildMediaRef(channelId, messageData) : null,
       image_hash: null, // рахує окремий прохід, не ingest
       candidates: stage.candidates,
       status: finalStatus,
@@ -102,6 +115,48 @@ export class FlowIngest {
     if (!media) return false;
     const list = Array.isArray(media) ? media : [media];
     return list.some((m) => m && REAL_MEDIA_TYPES.has(m.type));
+  }
+
+  /**
+   * Що стадії 3 треба, щоб дістати медіа пізніше (лінива доставка).
+   * GramJS getMessages по channel_id + message_id повертає повідомлення,
+   * далі TelegramMediaDownloader робить решту.
+   */
+  static _buildMediaRef(channelId, messageData) {
+    return {
+      kind: "telegram",
+      channel_id: channelId,
+      message_id: messageData.messageId,
+      grouped_id: messageData.groupedId ?? null,
+    };
+  }
+
+  /**
+   * Сирі GramJS entity-об'єкти → plain-масив, придатний для JSON-колонки.
+   * Зберігаємо рівно те, що потрібно TelegramDestination.buildFormattingEntities:
+   * className + offset + length, плюс url (TextUrl) і language (Pre).
+   */
+  static _serializeEntities(entities) {
+    if (!Array.isArray(entities) || entities.length === 0) return null;
+    const out = [];
+    for (const e of entities) {
+      // Справжні GramJS entity завжди мають className "MessageEntity*".
+      // Fallback на constructor.name НЕ беремо — на plain-об'єкті це "Object".
+      const className = e?.className;
+      if (
+        typeof className !== "string" ||
+        !className.startsWith("MessageEntity") ||
+        typeof e.offset !== "number" ||
+        typeof e.length !== "number"
+      ) {
+        continue;
+      }
+      const item = { className, offset: e.offset, length: e.length };
+      if (e.url) item.url = e.url;
+      if (e.language) item.language = e.language;
+      out.push(item);
+    }
+    return out.length ? out : null;
   }
 
   /**

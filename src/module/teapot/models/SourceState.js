@@ -28,8 +28,17 @@ export const SourceState = database.sequelize.define("SourceState", {
     allowNull: true,
     defaultValue: null,
     comment:
-      "ID останнього обробленого повідомлення. " +
-      "null = baseline ще не встановлено (перший запуск).",
+      "Telegram-only ID останнього обробленого повідомлення. " +
+      "null = baseline ще не встановлено (перший запуск). " +
+      "Нове per-adapter — у cursor; цю колонку прибере окрема міграція.",
+  },
+  cursor: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      "Per-adapter чекпоінт (міграція 003): Telegram — { last_message_id }, " +
+      "RSS — { guid, ts }, Reddit — { fullname }. Telegram-адаптер поки читає last_message_id.",
   },
   baseline_set_at: {
     type: DataTypes.DATE,

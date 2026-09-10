@@ -101,8 +101,16 @@ async function main() {
     for (const post of rows) {
       done++;
       try {
-        const [msg] = await client.getMessages(post.channel_id, {
-          ids: [post.message_id],
+        // Медіа дістаємо через media_ref (міграція 002), не через legacy
+        // channel_id/message_id. Для telegram-рефа це ті самі поля.
+        const ref = post.media_ref;
+        if (!ref || ref.kind !== "telegram") {
+          print(`posts#${post.id}: no telegram media_ref, skipping`, "debug");
+          skipped++;
+          continue;
+        }
+        const [msg] = await client.getMessages(ref.channel_id, {
+          ids: [ref.message_id],
         });
         if (!msg || !msg.media) { skipped++; continue; }
 
@@ -116,7 +124,7 @@ async function main() {
           await post.save();
         }
         hashed++;
-        print(`posts#${post.id} ${post.channel_id}/${post.message_id} → ${hash}`, "debug");
+        print(`posts#${post.id} ${ref.channel_id}/${ref.message_id} → ${hash}`, "debug");
       } catch (error) {
         failed++;
         print(`posts#${post.id}: ${error.message}`, "error");

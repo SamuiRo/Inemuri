@@ -272,6 +272,22 @@ ingest path — the one place that must never stop.
 
 ### 2.4 Generalize the schema for non-Telegram sources (`M`)
 
+> **Done (v4.5.0).** Migrations `002-generalize-sources.js` and
+> `003-source-cursor.js`; `Post` and `SourceState` models updated;
+> `Post.ingest` keys on `(source_id, external_id)`; `FlowIngest` writes
+> `platform`, `external_id`, `media_ref`, `entities` (serialized to a plain
+> array), `title`/`author` (null for Telegram); `scripts/backfill-image-hash.js`
+> re-fetches via `media_ref` instead of `message_id`; DATA_MODEL.md rewritten.
+> Verified on the dev copy: migrations apply and re-run idempotently, JSON
+> columns round-trip as objects, ingest idempotency holds on the new key, and a
+> fresh `sync()` from the models produces the same schema the migrations leave.
+>
+> **Deviation:** `message_id` keeps its `NOT NULL` and stays populated for
+> Telegram rather than becoming nullable — nothing *reads* it, and a later
+> migration DROPs it outright when the first non-Telegram adapter lands (§7).
+> This keeps every migration a plain `ADD COLUMN` / index op with no SQLite
+> table rebuild (§12).
+
 The change that must not be deferred. `posts` is Telegram-shaped in four places,
 and each breaks on Reddit or RSS:
 

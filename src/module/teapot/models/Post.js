@@ -47,20 +47,50 @@ export const Post = database.sequelize.define("Post", {
     references: { model: "sources", key: "id" },
     onDelete: "SET NULL",
   },
+  platform: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "telegram",
+    comment: "Платформа джерела: telegram | reddit | rss | ... (міграція 002)",
+  },
+  external_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      "Універсальна ідентичність елемента: Telegram message id як текст, " +
+      "Reddit fullname (t3_...), для статті — її URL. Унікальний у парі з source_id",
+  },
+  external_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Канонічне посилання. Для Reddit і новин — ще й tier-1 ключ дедуплікації",
+  },
   channel_id: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Дубльований channel_id для швидких вибірок без join",
+    comment: "Денормалізований швидкий ключ пошуку для Telegram (не частина ідентичності)",
   },
   message_id: {
     type: DataTypes.INTEGER,
     allowNull: false,
-    comment: "Telegram message ID. Унікальний у парі з channel_id",
+    comment:
+      "Legacy Telegram message id. Ідентичність тепер (source_id, external_id); " +
+      "цю колонку більше ніхто не читає — окрема міграція її прибере",
   },
   grouped_id: {
     type: DataTypes.STRING,
     allowNull: true,
     comment: "ID альбому, якщо пост — частина групи",
+  },
+  title: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+    comment: "Заголовок, окремо від тіла. Для новин і Reddit несе всю подію; у Telegram немає",
+  },
+  author: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Автор Reddit-поста, підпис статті",
   },
   posted_at: {
     type: DataTypes.DATE,
@@ -84,6 +114,14 @@ export const Post = database.sequelize.define("Post", {
     allowNull: true,
     comment: "Хеш нормалізованого тексту — дешева дедуплікація до embeddings",
   },
+  entities: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment:
+      "Оригінальні MTProto entities як plain-масив {className, offset, length, url?, language?}. " +
+      "Доставка компонує текст із offset-ів, не з Markdown. Offset-и індексують текст " +
+      "ДО text_replacements (міграція 002, див. DELIVERY.md)",
+  },
 
   // ── Медіа (не завантажується на цій стадії, лише позначається) ──────
   has_media: {
@@ -91,6 +129,13 @@ export const Post = database.sequelize.define("Post", {
     allowNull: false,
     defaultValue: false,
     comment: "Чи має пост медіа. Завантаження — на стадії 3 (доставка)",
+  },
+  media_ref: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment:
+      "Що стадії 3 треба, щоб дістати медіа пізніше, per-platform. " +
+      "{ kind: 'telegram', channel_id, message_id, grouped_id } | { kind: 'url', urls: [...] }",
   },
   image_hash: {
     type: DataTypes.STRING,
@@ -148,7 +193,21 @@ export const Post = database.sequelize.define("Post", {
   embedding: {
     type: DataTypes.BLOB,
     allowNull: true,
-    comment: "Float32Array, збережений як BLOB. Вектор для дедуплікації",
+    comment:
+      "Float32Array як BLOB, нормалізований до одиничної довжини при записі " +
+      "(cosine = звичайний dot product). Little-endian; buffer.length === embedding_dim * 4",
+  },
+  embedding_model: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment:
+      "Яка модель дала вектор, напр. gemini:text-embedding-004. НЕ model_used " +
+      "(той — модель збагачення). Tier 2 порівнює лише вектори однієї моделі",
+  },
+  embedding_dim: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Розмірність вектора. Різна per-provider і per-configured output size",
   },
 
   // ── Кластеризація (дедуплікація) ───────────────────────────────────
@@ -202,8 +261,11 @@ export const Post = database.sequelize.define("Post", {
   tableName: "posts",
   timestamps: true,
   indexes: [
-    // Ідемпотентний ingest: захист від подвійної вставки в режимі "both"
-    { fields: ["channel_id", "message_id"], unique: true },
+    // Ідемпотентний ingest: ідентичність = (джерело, id елемента), platform-neutral.
+    // Замінює (channel_id, message_id) з міграцією 002.
+    { fields: ["source_id", "external_id"], unique: true, name: "posts_source_id_external_id" },
+    // Денормалізований швидкий ключ пошуку для Telegram
+    { fields: ["channel_id"], name: "posts_channel_id" },
     // Головний запит воркера enrich
     { fields: ["status", "createdAt"] },
     // Дешева дедуплікація
@@ -212,6 +274,8 @@ export const Post = database.sequelize.define("Post", {
     { fields: ["cluster_id"] },
     // Дайджести та пошук по історії
     { fields: ["topic", "signal_type", "posted_at"] },
+    // Tier 2 порівнює лише вектори, зроблені однією моделлю
+    { fields: ["embedding_model"] },
   ],
 });
 
@@ -220,13 +284,13 @@ export const Post = database.sequelize.define("Post", {
 /**
  * Ідемпотентна вставка ingest-стадії.
  * Повертає [post, created]. created === false означає, що пост із цією
- * парою (channel_id, message_id) вже був — режим "both" або повторний polling.
+ * парою (source_id, external_id) вже був — режим "both" або повторний polling.
  */
 Post.ingest = async function (fields) {
   return await this.findOrCreate({
     where: {
-      channel_id: String(fields.channel_id),
-      message_id: fields.message_id,
+      source_id: fields.source_id,
+      external_id: String(fields.external_id),
     },
     defaults: fields,
   });

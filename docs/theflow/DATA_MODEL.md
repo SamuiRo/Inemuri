@@ -36,17 +36,23 @@ The central table. One row per incoming message.
 | Field | Type | Purpose |
 |---|---|---|
 | `id` | INTEGER PK | |
-| `source_id` | INTEGER | FK to `sources` |
-| `channel_id` | STRING | Duplicated for fast lookups without a join |
-| `message_id` | INTEGER | Telegram message ID. Unique together with `channel_id` |
+| `source_id` | INTEGER | FK to `sources`. `SET NULL` on source delete — post history is kept |
+| `platform` | STRING NOT NULL | `telegram` \| `reddit` \| `rss` \| … Default `'telegram'`. Migration `002` |
+| `external_id` | STRING | Universal item identity: Telegram message id as text, Reddit fullname (`t3_…`), an article's URL. **UNIQUE with `source_id`.** Migration `002` |
+| `external_url` | STRING | Canonical link. For Reddit and news also a tier 1 dedup key. Migration `002` |
+| `channel_id` | STRING | Denormalized fast Telegram lookup key. No longer part of an item's identity |
+| `message_id` | INTEGER | **Legacy Telegram message id.** Identity is now `(source_id, external_id)`; nothing reads this column. Still written for Telegram (its NOT NULL stands) until a later migration DROPs it |
 | `grouped_id` | STRING | Album ID when the post is part of a group |
 | `posted_at` | DATE | Publication time at the source, not ingestion time |
+| `title` | TEXT | Headline, separate from the body. Carries the whole event for news and Reddit; Telegram has none. Migration `002` |
+| `author` | STRING | Reddit author, article byline. Migration `002` |
 | `raw_text` | TEXT | **Original, in the source language.** Never overwritten |
 | `text_md` | TEXT | Markdown rendering with entities, for reading and export |
-| `entities` | JSON | **Original MTProto entities.** What delivery actually needs: Telegram formatting is offsets, not Markdown. Offsets index the text *before* replacements. Added by migration `002`; see [DELIVERY.md](DELIVERY.md) |
+| `entities` | JSON | **Original MTProto entities**, as a plain array `[{ className, offset, length, url?, language? }]` — exactly what `TelegramDestination.buildFormattingEntities` consumes. Telegram formatting is offsets, not Markdown. Offsets index the text *before* replacements. Written by `FlowIngest`; added by migration `002`; see [DELIVERY.md](DELIVERY.md) |
 | `text_hash` | STRING | Hash of the normalized text — cheap dedup before embeddings |
 | `has_media` | BOOLEAN | Media is not downloaded at this stage, only flagged |
-| `image_hash` | STRING | Perceptual hash of the first image. Recorded from phase 0, used by the vision cache (see VISION.md) |
+| `media_ref` | JSON | What stage 3 needs to fetch media later, per platform: `{ kind: "telegram", channel_id, message_id, grouped_id }` or `{ kind: "url", urls: [...] }`. Written when `has_media`. Migration `002` |
+| `image_hash` | STRING | Perceptual hash of the first image. Filled by `scripts/backfill-image-hash.js` (not at ingest), used by the vision cache (see VISION.md) |
 | `text_ocr` | TEXT | Text transcribed from images. Merged with `raw_text` as input to enrichment |
 | `vision_used` | BOOLEAN | Whether a vision call was actually made, for quota attribution |
 | `text_en` | TEXT | **Canonical representation.** Every stage below operates on this |
@@ -91,7 +97,8 @@ pending ---> enriched ---> routed
 
 | Index | Purpose |
 |---|---|
-| `(channel_id, message_id)` UNIQUE | Idempotent ingestion, protects against double insertion in `both` mode |
+| `(source_id, external_id)` UNIQUE | Idempotent ingestion, platform-neutral, protects against double insertion in `both` mode. Replaces `(channel_id, message_id)` — migration `002` |
+| `(channel_id)` | Denormalized fast Telegram lookup |
 | `(status, createdAt)` | The worker's main query |
 | `text_hash` | Cheap deduplication |
 | `(cluster_id)` | Collecting cluster members |
@@ -173,6 +180,37 @@ node src/cli.js list
 
 If the sources are still listed and `flow` reads as `{enabled: false}`, the
 migration succeeded and behavior is unchanged.
+
+### `002-generalize-sources`
+
+Makes `posts` platform-neutral while the corpus is small (ROADMAP §2.4). All
+`ADD COLUMN` plus index add/remove — no table rebuild:
+
+- adds `platform`, `external_id`, `external_url`, `title`, `author`,
+  `media_ref`, `entities`, `embedding_model`, `embedding_dim`;
+- backfills `platform = 'telegram'`, `external_id = CAST(message_id AS TEXT)`,
+  and a Telegram `media_ref` for rows with media. `entities` cannot be
+  backfilled — phase-0 rows never stored it;
+- drops `UNIQUE (channel_id, message_id)`, adds `UNIQUE (source_id,
+  external_id)` and plain indexes on `(channel_id)` and `(embedding_model)`.
+
+`message_id` keeps its NOT NULL and stays populated for Telegram (FlowIngest
+always has it); nothing reads it. A later migration DROPs it outright once a
+non-Telegram adapter exists — SQLite 3.44 on the VPS has `DROP COLUMN`.
+
+### `003-source-cursor`
+
+Adds `source_states.cursor` JSON and backfills
+`{ "last_message_id": <value> }` from the existing checkpoint. The Telegram
+adapter keeps reading `last_message_id`; RSS/Reddit adapters (phase 3.5) store
+their own cursor shape.
+
+### Fresh installs
+
+`src/inemuri.js` and `src/cli.js` still call `database.sync()` on boot, which
+on a brand-new database creates every table from the models — already at the
+latest shape. `npm run migrate` then runs the idempotent migrations, which
+find everything present and simply record themselves in `schema_migrations`.
 
 ## `image_hash` is not written at ingest
 

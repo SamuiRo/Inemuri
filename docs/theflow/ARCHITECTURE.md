@@ -156,8 +156,11 @@ will be discarded as duplicates two seconds later.
 The download moves to stage 3, for delivered posts only. Classic mode keeps its
 current behavior.
 
-Consequence: `posts` must store enough to fetch media later. `channel_id` plus
-`message_id` is sufficient — GramJS can re-fetch the message.
+Consequence: `posts` must store enough to fetch media later. That is
+`posts.media_ref` (migration `002`) — `{ kind: "telegram", channel_id,
+message_id, grouped_id }` for Telegram, `{ kind: "url", urls }` for feed
+items — resolved through the stage-2.5 `MediaResolver` seam. `FlowIngest`
+writes it at ingest whenever `has_media` is set.
 
 ### 2. Content-based routing
 
