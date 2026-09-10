@@ -59,3 +59,53 @@ export const THEFLOW_MIN_TEXT_LENGTH = Number(process.env.THEFLOW_MIN_TEXT_LENGT
 // Вікно для skipped_repost: точний збіг хешу нормалізованого тексту в межах
 // останніх N годин вважається репостом.
 export const THEFLOW_REPOST_WINDOW_HOURS = Number(process.env.THEFLOW_REPOST_WINDOW_HOURS ?? 24);
+
+// ── TheFlow — LLM gateway (Phase 1) ─────────────────────────────────────
+// Специфікація: docs/theflow/LLM_GATEWAY.md §Configuration.
+export const LLM_PRIMARY        = process.env.LLM_PRIMARY  || "gemini";
+export const LLM_FALLBACK       = process.env.LLM_FALLBACK || null;
+export const LLM_TIER_UP        = process.env.LLM_TIER_UP  || null; // сильніша модель, НЕ fallback
+export const LLM_TIER_UP_BELOW  = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
+export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
+export const LLM_TIMEOUT_MS     = Number(process.env.LLM_TIMEOUT_MS || 30_000);
+// Verdicts пишуться в БД, але routing їх ігнорує. Дефолт фази 1.
+export const LLM_SHADOW_MODE    = process.env.LLM_SHADOW_MODE !== "false";
+
+// Кеш і shedding — прості константи, дзеркалять DEDUP_TTL_MS / DEDUP_MAX_SIZE.
+export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;
+export const LLM_CACHE_MAX_SIZE = 5_000;
+export const LLM_QUOTA_RESERVE  = 0.15; // частка RPD, зарезервована під `critical`
+
+// Enrichment worker (ROADMAP 3.6). Tick і batch виводяться з виміряного RPD
+// (3.1), не вгадуються — гальмо все одно token bucket, не таймер.
+export const ENRICH_TICK_MS      = Number(process.env.ENRICH_TICK_MS ?? 30_000);
+export const ENRICH_BATCH_SIZE   = Number(process.env.ENRICH_BATCH_SIZE ?? 10);
+export const ENRICH_MAX_ATTEMPTS = Number(process.env.ENRICH_MAX_ATTEMPTS ?? 3);
+// Воркер стартує лише коли є ключ провайдера LLM_PRIMARY і це не вимкнено явно.
+export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
+
+// Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
+// embedModel === null, не оголошує capability `embed` — gateway маршрутизує
+// `embed()` на іншого провайдера або деградує до tier 1 (ROADMAP 3.1).
+export const LLM_PROVIDERS = {
+  gemini: {
+    apiKey:        process.env.GEMINI_API_KEY || null,
+    baseUrl:       process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
+    completeModel: process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
+    embedModel:    process.env.GEMINI_EMBED_MODEL    || "text-embedding-004",
+    visionModel:   process.env.GEMINI_VISION_MODEL   || process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
+    embedDim:      Number(process.env.GEMINI_EMBED_DIM || 768),
+    rpd:           Number(process.env.GEMINI_RPD || 1_400), // verify per 3.1
+    rpm:           Number(process.env.GEMINI_RPM || 12),
+  },
+  openrouter: {
+    apiKey:        process.env.OPENROUTER_API_KEY || null,
+    baseUrl:       process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1",
+    completeModel: process.env.OPENROUTER_COMPLETE_MODEL || null, // Serhii picks per 3.1
+    embedModel:    process.env.OPENROUTER_EMBED_MODEL    || null, // null => no embed capability
+    visionModel:   process.env.OPENROUTER_VISION_MODEL   || null,
+    embedDim:      Number(process.env.OPENROUTER_EMBED_DIM || 0),
+    rpd:           Number(process.env.OPENROUTER_RPD || 200),
+    rpm:           Number(process.env.OPENROUTER_RPM || 20),
+  },
+};
