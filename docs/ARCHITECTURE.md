@@ -19,7 +19,7 @@ Inemuri/
 │   ├── ARCHITECTURE.md                    # High-level architecture map
 │   ├── DETAILED_OPTIMIZATION_EXPLANATION.md # Notes about performance-related changes
 │   ├── INEMURI_DOCS.txt                   # General project notes
-│   ├── THEFLOW.md                         # TheFlow spec — planned, not implemented
+│   ├── THEFLOW.md                         # TheFlow spec — Phase 0 implemented, 1+ specified
 │   ├── USE_EMBED.md                       # Discord embed usage notes
 │   ├── description.txt                    # Supporting documentation text
 │   ├── text_replacements.md               # Text preprocessing and replacement rules
@@ -27,6 +27,7 @@ Inemuri/
 │       ├── ARCHITECTURE.md                # Pipeline stages, pre-AI regex stage, invariants
 │       ├── DATA_MODEL.md                  # posts / clusters tables, migration order
 │       ├── DEDUPLICATION.md               # Three dedup tiers, linked mechanism
+│       ├── DELIVERY.md                    # Render contract, entity offsets, platform limits
 │       ├── LLM_GATEWAY.md                 # Provider contract, fallback matrix
 │       ├── ROADMAP.md                     # Work plan: current state, ordering, exit gates
 │       ├── TAXONOMY.md                    # Category axes, categories.json, routing
@@ -206,8 +207,8 @@ ingestion pipeline.
 `posts` / `clusters` tables, the deterministic regex stage
 (`src/module/theflow/RegexStage.js`), and stage-1 ingest
 (`src/module/theflow/FlowIngest.js`) wired into
-`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phases 1–6 are
-still specification — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
+`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phases 0.5 through
+5 are still specification — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
 
 Two design points that shape the remaining work:
 

@@ -187,7 +187,7 @@ quota".
 | Deduplication | `embed` | `critical` | phase 3 |
 | Vision stage | `vision` | `normal` | phase 1.5 |
 | Digests | `enrich` | `low` | phase 5 |
-| History search | `embed` | `low` | **unspecified** — ROADMAP §13.7 |
+| History search | `embed` | `low` | phase 5 — ROADMAP §9.1 |
 | AI-assisted screening | `enrich` | `low` | **unspecified** — ROADMAP §13.8 |
 
 **Every consumer runs worker-side.** No consumer may be added to the ingestion
@@ -250,7 +250,24 @@ export const LLM_TIER_UP_BELOW = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
 export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
 export const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 30_000);
 export const LLM_SHADOW_MODE = process.env.LLM_SHADOW_MODE === "true";
+
+// Cache and shedding. Plain constants, mirroring DEDUP_TTL_MS / DEDUP_MAX_SIZE.
+export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;
+export const LLM_CACHE_MAX_SIZE = 5_000;
+export const LLM_QUOTA_RESERVE  = 0.15;   // fraction of RPD held for `critical`
+
+// Enrichment worker (ROADMAP 3.6)
+export const ENRICH_TICK_MS      = Number(process.env.ENRICH_TICK_MS ?? 30_000);
+export const ENRICH_BATCH_SIZE   = Number(process.env.ENRICH_BATCH_SIZE ?? 10);
+export const ENRICH_MAX_ATTEMPTS = Number(process.env.ENRICH_MAX_ATTEMPTS ?? 3);
 ```
+
+**Derive `ENRICH_TICK_MS` and `ENRICH_BATCH_SIZE` from RPD, do not guess them.**
+`batch / tick` is throughput; multiply by 2 requests per post and compare against
+the daily limit measured in 3.1 against the real volume from 2.1. The defaults
+above allow far more than any free tier will grant, which means the brake is the
+token bucket rather than the timer — better to slow the timer deliberately than
+to discover it through `429`s.
 
 Provider keys go in `.env` like every other secret. `.env.example` is updated
 alongside phase 1.

@@ -1,0 +1,128 @@
+# TheFlow — delivery contract
+
+> Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [DEDUPLICATION.md](DEDUPLICATION.md) ·
+> [VISION.md](VISION.md) · [DATA_MODEL.md](DATA_MODEL.md) · [ROADMAP.md](ROADMAP.md)
+
+Stage 3 sends a post and then keeps it current as its cluster grows. This
+document fixes the **mechanism**. The template itself — the exact lines, wording,
+emoji, and the Discord embed layout — is deliberately left open and filled in
+during phase 2, when the destination channels from 5.1 exist and there is real
+material to look at.
+
+Three documents impose requirements on the rendered message and none of them
+owned it: VISION.md requires OCR-derived entities to be marked unverified,
+DEDUPLICATION.md requires an addition block, an addition cap and a full rewrite
+when the canonical post is replaced, DATA_MODEL.md offers `members_count` for the
+"also reported by N" line. This is where those requirements meet.
+
+## Decision 1 — full re-render, never string append
+
+```js
+render(cluster, posts, { platform }) -> { text, entities }
+```
+
+A pure function. Every edit calls it again over the current database state and
+**rewrites the message whole**. Nothing is ever appended to a string that was
+already sent.
+
+This collapses a whole class of problems in DEDUPLICATION.md step 3:
+
+- the addition cap becomes a rendering rule — show three, then a counter —
+  rather than mutable state that has to be correct at every append;
+- replacing the canonical post stops being a special case; it is the same
+  function over a different input;
+- the platform length limit is checked once, on the output, instead of at every
+  append;
+- being pure, it is testable — which is what 2.7 asks for.
+
+## Decision 2 — compose by segments, rebase entity offsets
+
+Telegram carries formatting as **MTProto entities with absolute offsets**, not as
+Markdown: `parseMode: "markdown"` is unreliable in GramJS for user accounts, so
+the project passes `formattingEntities` straight into the protocol
+(`src/destinations/telegram/TelegramDestination.js`). Classic delivery already
+composes a two-segment message this way — a source-name header plus the body —
+and shifts the body's entities by the header's length:
+
+```js
+const plainText    = sourceName + "\n" + rawBody;
+const entityOffset = sourceName.length + 1;
+const formattingEntities = this.buildFormattingEntities(messageData.entities ?? [], entityOffset);
+```
+
+`render()` is the generalization: N segments instead of two, each contributing
+its own entities, every offset rebased by the length of everything before it.
+`buildFormattingEntities(entities, offsetDelta)` already accepts that shift, so
+no change is needed on the adapter side.
+
+`String.prototype.length` counts UTF-16 code units, which is exactly the unit
+MTProto offsets use — so emoji in a header are counted correctly with no special
+handling.
+
+**This requires `posts.entities`.** The original entity array is what makes
+"deliver the post as it was written" possible; without it the only path is
+re-parsing Markdown back into entities, which is lossy. It is written at ingest
+and added by migration `002` — see [DATA_MODEL.md](DATA_MODEL.md). Note that the
+offsets index the text **before** text replacements; `_syncMarkdown()` already
+tolerates the drift a replacement can introduce, and the same tolerance applies
+here.
+
+## Decision 3 — a correction is a new message, not an edit
+
+**Editing a message produces no notification.** A retraction delivered only as an
+edit is a retraction nobody sees, and DEDUPLICATION.md names exactly that as the
+worst failure this system can produce: a cancelled event with a cheerful
+announcement still standing.
+
+| Relation | Delivery |
+|---|---|
+| `adds` | Re-render and edit. No new message — that is the point of clustering |
+| `corrects` | Re-render the canonical message with a correction banner **and** send a new message as a reply to it |
+| `denies` | Same as `corrects`, and the cluster closes |
+
+The addition cap never applies to `corrects` or `denies`.
+
+A failed edit is not a failed delivery: message deleted, permissions lost, edit
+window expired — fall back to a reply carrying the re-rendered content.
+
+## Platform limits
+
+| Platform | Where the body goes | Limit |
+|---|---|---|
+| Telegram | message text, or media caption | 4096 for both. The client is a user account over MTProto, not a bot, so the Bot API's 1024-character caption limit does not apply |
+| Discord | `embed.description` | 4096, within a 6000-character budget across the whole embed |
+
+Discord delivery already goes **exclusively through embeds**
+(`src/destinations/discord/DiscordDestination.js`): source name →
+`embed.author` (256), text → `embed.description` (4096), the first photo or
+animation → `embed.image`, everything else as attachments alongside. `content` is
+deliberately unused to avoid duplication, so the 2000-character plain-message
+limit never applies to this project.
+
+That makes an embed the natural target for flow posts as well, and it is the
+richer surface of the two: fields, a footer, and a colour keyed to
+`signal_type` all become available. **The exact embed layout is decided in phase
+2**, together with the rest of the template.
+
+Because the two platforms differ, `platform` is a parameter of `render()`, not a
+global assumption, and truncation is decided once on the rendered output.
+
+## Constraints the template must satisfy
+
+Whatever the final wording, these are fixed by other documents:
+
+| Element | Rule | Source |
+|---|---|---|
+| Body | `text_md` with its original entities, delivered as written. `raw_text` is the plain text those offsets index | this document |
+| Lead | `summary_uk` when the enrichment produced one — one line, above the body | THEFLOW.md open questions |
+| Axes | `topic` and `signal_type` are visible, so a mis-route is obvious at a glance | TAXONOMY.md |
+| Unverified OCR | Any entity carrying `verified: false` is marked as unverified. It is never presented indistinguishably from a verified one | VISION.md |
+| Cluster size | `members_count > 0` renders the "also reported by N" line | DATA_MODEL.md |
+| Additions | At most three shown, then a counter. `corrects` and `denies` are exempt | DEDUPLICATION.md |
+| Diagnostics | `confidence`, `model_used` and `taxonomy_version` render **only** into `#unsorted`. That channel exists to be debugged; everywhere else they are noise | ROADMAP.md 13.4 |
+
+## Testing
+
+`render()` is pure and belongs in the 2.7 test list: offset rebasing across
+segments, the addition cap, truncation at each platform's limit, unverified
+marking, and that a `denies` survives every cap.

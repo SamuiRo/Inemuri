@@ -96,7 +96,14 @@ source can override it via `flow.dedup_window_hours`.
 | `promo_code`, `freebie` | 24 h |
 | `event`, `launch`, `patch` | 48 h |
 | `analysis`, `opinion` | 72 h |
-| `outage` | 6 h |
+| `outage`, `security` | 6 h |
+| `giveaway_result`, `stream` | 24 h — classified once, routed nowhere |
+
+`security`, `giveaway_result` and `stream` come from the v1 taxonomy drafted
+against the real sources — [ROADMAP.md](ROADMAP.md) appendix A. A hack is news
+for hours, not days: a fresh report about the same exchange a week later is a
+different incident, which is why `security` shares the short window with
+`outage` rather than the analysis window.
 
 A cluster with `closed: true` accepts no new members.
 

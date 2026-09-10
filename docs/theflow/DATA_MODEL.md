@@ -42,7 +42,8 @@ The central table. One row per incoming message.
 | `grouped_id` | STRING | Album ID when the post is part of a group |
 | `posted_at` | DATE | Publication time at the source, not ingestion time |
 | `raw_text` | TEXT | **Original, in the source language.** Never overwritten |
-| `text_md` | TEXT | Markdown rendering with entities, for delivering the post as-is |
+| `text_md` | TEXT | Markdown rendering with entities, for reading and export |
+| `entities` | JSON | **Original MTProto entities.** What delivery actually needs: Telegram formatting is offsets, not Markdown. Offsets index the text *before* replacements. Added by migration `002`; see [DELIVERY.md](DELIVERY.md) |
 | `text_hash` | STRING | Hash of the normalized text — cheap dedup before embeddings |
 | `has_media` | BOOLEAN | Media is not downloaded at this stage, only flagged |
 | `image_hash` | STRING | Perceptual hash of the first image. Recorded from phase 0, used by the vision cache (see VISION.md) |
@@ -55,7 +56,9 @@ The central table. One row per incoming message.
 | `confidence` | FLOAT | 0..1. Below threshold routes to `#unsorted` |
 | `analysis` | JSON | Entities, extracted codes, summary, why it is interesting |
 | `candidates` | JSON | What the regex stage found, kept for audit and re-runs |
-| `embedding` | BLOB | Float32Array stored as a BLOB |
+| `embedding` | BLOB | Float32Array as a BLOB, **normalized to unit length at write time** so cosine is a plain dot product. Little-endian; `buffer.length === embedding_dim * 4` |
+| `embedding_model` | STRING | Which model produced the vector, e.g. `gemini:text-embedding-004`. **Not** `model_used`, which is the enrichment model |
+| `embedding_dim` | INTEGER | Vector dimension. Differs per provider and per configured output size |
 | `cluster_id` | INTEGER | NULL means not yet assigned to an event |
 | `link_role` | STRING | `canonical` \| `linked` \| `duplicate` \| `correction` |
 | `adds` | JSON | What this post adds over the canonical one (see DEDUPLICATION.md) |
@@ -92,7 +95,8 @@ pending ---> enriched ---> routed
 | `(status, createdAt)` | The worker's main query |
 | `text_hash` | Cheap deduplication |
 | `(cluster_id)` | Collecting cluster members |
-| `(topic, signal_type, posted_at)` | Digests and history search |
+| `(topic, signal_type, posted_at)` | Digests and history search (ROADMAP §9.1) |
+| `(embedding_model)` | Tier 2 compares only vectors produced by the same model |
 
 ## clusters
 
@@ -103,7 +107,8 @@ One row per event that one or more channels wrote about.
 | `id` | INTEGER PK | |
 | `canonical_post_id` | INTEGER | The first published post about the event |
 | `topic` / `signal_type` | STRING | Copied from the canonical post, for queries without a join |
-| `centroid` | BLOB | Canonical (or averaged) vector used for comparison |
+| `centroid` | BLOB | Canonical (or averaged) vector used for comparison. Same format as `posts.embedding` |
+| `embedding_model` | STRING | Which model the centroid belongs to. Vectors from different models are never compared |
 | `members_count` | INTEGER | "Also reported by N more channels" |
 | `richness` | FLOAT | Informativeness of the current canonical version (see DEDUPLICATION.md) |
 | `delivered` | JSON | `[{platform, channel_id, message_id, sent_at}]`, so sent messages can be edited |
@@ -114,10 +119,12 @@ One row per event that one or more channels wrote about.
 `delivered` is an array because one post may have gone to several destinations,
 and each one has to be edited.
 
-## post_feedback (phase 5)
+## post_feedback
 
-Not needed before phase 5, but worth designing now — collecting this feedback
-retroactively is expensive.
+Created in **phase 0.5** (ROADMAP 2.6), not phase 5: `flow:review` starts writing
+labels during phase 1 shadow mode, which turns verdict-checking you have to do
+anyway into a labelled dataset. Collecting this feedback retroactively is
+expensive.
 
 | Field | Type | Purpose |
 |---|---|---|

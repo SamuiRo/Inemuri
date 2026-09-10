@@ -412,7 +412,7 @@ extraction, vision) are still specification.
 ## Additional documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): project structure and runtime architecture
-- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (planned, not implemented)
+- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 implemented, later phases specified)
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
 - [docs/USE_EMBED.md](docs/USE_EMBED.md): media and Discord embed behavior
 - [docs/DETAILED_OPTIMIZATION_EXPLANATION.md](docs/DETAILED_OPTIMIZATION_EXPLANATION.md): optimization notes

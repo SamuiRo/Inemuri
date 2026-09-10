@@ -239,14 +239,18 @@ module.exports = {
     name: "inemuri",
     script: "src/inemuri.js",
     cwd: "/path/to/Inemuri",
+    instances: 1,
+    exec_mode: "fork",
     env: { NODE_ENV: "production" },
     time: true,
   }],
 };
 ```
 
-`NODE_ENV` is set explicitly there because the development path uses
-`force: true` and recreates tables. Add `pm2 save` and `pm2 startup` so a reboot
+`instances: 1` and `exec_mode: "fork"` are load-bearing from phase 1 onward:
+cluster mode would start a second process, a second enrichment worker, and
+silently double every AI call — see 13.1. `NODE_ENV` is set explicitly because
+the development path uses `force: true` and recreates tables. Add `pm2 save` and `pm2 startup` so a reboot
 brings it back.
 
 Write the whole procedure into `docs/DEPLOYMENT.md` as part of this task. A
@@ -275,6 +279,8 @@ Migration `002-generalize-sources.js`:
 | `+ posts.title` TEXT NULL | Headline, separate from body |
 | `+ posts.author` STRING NULL | Reddit author, article byline |
 | `+ posts.media_ref` JSON NULL | What stage 3 needs to fetch media later, per platform |
+| `+ posts.entities` JSON NULL | Original MTProto entities. Delivery composes text from offsets, not Markdown — without this, stage 3 has to re-parse `text_md`, which is lossy. Cannot be recovered later without re-fetching from Telegram. See [DELIVERY.md](DELIVERY.md) |
+| `+ posts.embedding_model` STRING NULL, `+ posts.embedding_dim` INTEGER NULL | Vectors from different models are not comparable — see 13.2 |
 | UNIQUE `(source_id, external_id)` | Replaces `(channel_id, message_id)` |
 | `message_id` nullable, no longer written | Dropped in a later migration once nothing reads it. SQLite on the VPS is 3.44.2, so `DROP COLUMN` is available |
 
@@ -293,8 +299,10 @@ Telegram-only. Add `cursor` JSON, backfill `{ "last_message_id": <value> }`, and
 let each adapter define its own cursor shape — RSS stores a guid plus timestamp,
 Reddit stores a fullname.
 
-**Done when:** `FlowIngest` writes `platform`, `external_id`, `media_ref`, and
-`title`; Telegram behaves identically; nothing reads `posts.message_id`.
+**Done when:** `FlowIngest` writes `platform`, `external_id`, `media_ref`,
+`entities`, and `title`; Telegram behaves identically; nothing reads
+`posts.message_id`; and **[DATA_MODEL.md](DATA_MODEL.md) describes the schema this
+migration leaves behind** — it is the reference every later phase reads.
 
 ### 2.5 Media resolver seam (`S`)
 
@@ -337,6 +345,7 @@ being tolerable at phase 1.
 | Verbatim validation | The entire anti-hallucination guarantee is this one check |
 | Cosine similarity, `richness()` | Numeric, easy to get subtly wrong, impossible to eyeball |
 | Routing resolve | Priority order and `when` matching over `categories.json` |
+| `render()` | Pure by design ([DELIVERY.md](DELIVERY.md)): offset rebasing across segments, the addition cap, truncation per platform, unverified marking, and that a `denies` survives every cap |
 | Quota ledger, circuit breaker | State machines whose failure mode is a burned daily quota |
 
 `node --test` — built into Node 22, no new dependency. `npm test` becomes
@@ -382,7 +391,7 @@ Do **not** include Source M until the stale checkpoint from 1.2 is explained.
 
 - VPS running current code, `npm run migrate:status` clean, classic forwarding
   verified unchanged;
-- `flow:volume` has produced real messages/day per channel;
+- `scripts/estimate-volume.js` has produced real messages/day per channel;
 - a flow post ingests with `platform`, `external_id`, `media_ref`, no
   `message_id`;
 - `npm test` passes and covers `RegexStage`;
@@ -512,6 +521,16 @@ timer -> Post.takePending(batch)
       -> UPDATE status='enriched', model_used, taxonomy_version, ...
 ```
 
+- **Claiming (13.1).** The tick is a chained `setTimeout`, scheduled after the
+  batch resolves, so ticks cannot overlap by construction and a slow provider
+  throttles the worker instead of stacking batches. Claiming is one statement —
+  `UPDATE posts SET attempts = attempts + 1 WHERE id IN (…) AND status='pending'`,
+  the affected-row count being the result — wrapped in `Post.claimPending(limit)`
+  so a lease can replace it later without touching the call site. Note that
+  `attempts` increments **at claim time, before the gateway call**: a crash
+  mid-call then counts toward the cap instead of producing a row that is retried
+  forever, and if that row is what killed the process, forever means a restart
+  loop.
 - `model_used` and `taxonomy_version` on **every** verdict — without them, a
   month later there is no telling a prompt regression from a provider switch.
 - Attempts capped; on exhaustion the post becomes `failed` and **stays** with
@@ -589,10 +608,10 @@ Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 �
 | 5.1 | **Create the destination channels** — see 1.1b; today there is exactly one | — | S |
 | 5.2 | Resolve stage: `topic` + `signal_type` + `confidence` → destinations | `ResolveStage.js` | M |
 | 5.3 | `#unsorted`, wired to every fallthrough | `categories.json` | S |
-| 5.4 | Flow delivery: `MediaResolver.resolve(post)` then send | `FlowDelivery.js` | M |
+| 5.4 | Flow delivery: `render()` per [DELIVERY.md](DELIVERY.md), `MediaResolver.resolve(post)`, then send. **The template is designed here** | `FlowDelivery.js` | M |
 | 5.5 | Record deliveries into `clusters.delivered` (needs 2.6) | | S |
 | 5.6 | Status transitions `enriched` → `routed` / `unsorted` | | S |
-| 5.7 | Reaction capture → `post_feedback` (needs 2.6) | | M |
+| 5.7 | Reaction capture → `post_feedback` (needs 2.6). Run the 13.5 probe first — the estimate depends on it | | M |
 
 Resolve is a pure function and is tested as one: rules in descending `priority`,
 first match wins, a single value equals a one-element array in `when`, and
@@ -724,6 +743,37 @@ A numeric score may order posts **within** a digest. It is never used to decide
 whether to deliver: an LLM's numeric score is not reproducible between calls, and
 the same post will score 6 and 8 across two runs.
 
+### 9.1 History search (`M`)
+
+The corpus is the reason phase 0 is worth having on its own, and search is what
+makes it readable. Both mechanisms it needs already exist in the project, so this
+is small.
+
+**Surface: a Discord slash command.** `DiscordCommandHandler` already registers
+slash commands, checks a user-id whitelist and handles errors; a search command
+is one entry in the `commands` array. It is also the right surface in practice —
+the question gets asked from a phone and answered in the same place.
+
+**Two tiers, the first with no AI at all:**
+
+1. **Keywords through SQLite FTS5.** A virtual table over `text_en`, `raw_text`
+   and `title`, with ranking. Zero provider requests, works with the quota
+   exhausted, and it honestly covers most real queries — "what was there about
+   Hamster", "mentions of $ARB" are entity lookups, where keywords beat semantics.
+2. **Vectors, for descriptive questions.** One `embed()` at `low` priority, then
+   the same brute-force cosine over the same window as tier 2 deduplication,
+   filtered by `embedding_model` (13.2). Cached by query hash, so a repeat is
+   free.
+
+Filters over `topic`, `signal_type`, date range and source are ordinary SQL on
+the `(topic, signal_type, posted_at)` index, which DATA_MODEL.md already declares
+for exactly this.
+
+It pairs with digests because they share the surface and the queries. One
+argument for not deferring it further: search sharply speeds up taxonomy
+iteration at the phase 1 checkpoint — "everything classified `other` last week
+containing *airdrop*" is otherwise a hand-written SQLite query.
+
 ## 10. Sequencing
 
 ```text
@@ -741,7 +791,8 @@ PHASE 1.5  vision gates -> downscale + dHash -> cache -> text_ocr; still shadow
               |
               v
 PHASE 2    create destination channels -> resolve -> #unsorted
-           -> lazy media via resolver -> delivery records
+           -> render template (DELIVERY.md) -> lazy media via resolver
+           -> delivery records
               |  gate: #unsorted small enough to read daily
               v
 PHASE 3    6.1 first -> tier 1 -> tier 2 -> clusters -> richness gate
@@ -768,6 +819,7 @@ gray-zone volume.
 | Before phase 1 | The OpenRouter model ids you intend to use, and whether your account exposes embeddings |
 | Before the phase 1 checkpoint | Your own read of `#unsorted`: which categories are missing, which descriptions are too narrow |
 | Before phase 2 | The new destination channels, including `#unsorted` and a `security` channel — today there is only the one firehose chat |
+| Before 5.4 | **The delivery template itself** — the lines, the wording, and the Discord embed layout. [DELIVERY.md](DELIVERY.md) fixes the mechanism and the constraints; what the message actually reads like is yours |
 
 Answered already, recorded here so the plan does not ask twice: the service runs
 under pm2 (`pm2 start inemuri`), the 2026-06-07 backup is the most recent one
@@ -797,8 +849,12 @@ and `security` is a required category (appendix A).
 §11 tracks what is needed **from you**; [../THEFLOW.md](../THEFLOW.md) tracks the
 product-level questions (display language, thresholds, paid tier). This section
 tracks the **engineering** ones: things unanswered in the documents, not merely
-unimplemented. Each is a decision to make or a fact to measure, and the grouping
-says when it starts blocking work.
+unimplemented.
+
+The first two groups are now **settled** and recorded here so the reasoning is
+not re-derived at implementation time; the third is still open. Everything in the
+settled groups is either a field in migration `002` or a rule the code has to
+follow, and both are cheap now and expensive once the corpus has grown.
 
 **Closed here, recorded so it is not reopened:** the gateway stays a **module**,
 not a service. Several consumers is the argument for a module; the criterion for
@@ -808,40 +864,104 @@ The shared quota ledger that a service would have provided is provided by the
 `provider_quota` table instead, which is shared by any process opening the same
 database file.
 
-### Decisions that shape the schema — close before phase 1
+### Schema — settled, lands in migration 002
 
-| # | Question | Why it cannot wait |
-|---|---|---|
-| 13.1 | **Batch claiming.** `Post.takePending()` is a bare `SELECT … WHERE status='pending'` with no lease. What stops the next timer tick from taking rows that are still in flight — an in-process guard plus a non-overlapping timer, or an `enriching` status with a stale-reclaim rule? | The failure mode is paying twice for the same rows. An `enriching` status is a migration and a change to the validated `POST_STATUSES` enum, so it is cheaper before the corpus grows |
-| 13.2 | **Embedding identity.** `embedding` is specified as "Float32Array as a BLOB" and nothing else. Dimension differs per provider (768 / 1536 / 3072), so a fallback or a model change silently splits the corpus into incomparable halves | Otherwise discovered in phase 3, during threshold calibration, with months of vectors already written. Needs `embedding_model` and `embedding_dim` on `posts`, and a tier-2 rule that only compares vectors produced by the same model |
-| 13.3 | **Worker configuration constants.** Batch size, tick interval, the cap on `attempts`, the quota reserve threshold, cache TTL and size cap | `CLAUDE.md` forbids reading `process.env` outside `app.config.js`, and LLM_GATEWAY.md lists only the `LLM_*` variables. Unlisted, they get invented inline in five files |
+**13.1 — batch claiming: no `enriching` status.** The tempting fix makes things
+worse: after a crash, rows stay in `enriching` forever and need a reclaim sweep.
+With plain `pending`, a crash loses nothing — the rows are simply taken again.
+Instead:
 
-### Contracts to write — close before phase 2
+- the tick is a **chained `setTimeout`**, scheduled after the batch resolves.
+  Overlap becomes impossible by construction rather than by a flag, and a slow
+  provider throttles the worker instead of stacking batches;
+- **`attempts` increments at claim time, before the gateway call.** A process
+  killed mid-call (OOM, `kill -9`, a pm2 restart) then counts toward the cap. Left
+  until failure, a row that kills the process is retried forever — and forever
+  means a restart loop;
+- both live in `Post.claimPending(limit)`: one
+  `UPDATE … SET attempts = attempts + 1 WHERE id IN (…) AND status='pending'`,
+  affected rows being the claim result. Swapping in a lease later is one function
+  body, not a change at the call site;
+- `instances: 1`, `exec_mode: "fork"` in `ecosystem.config.cjs` (2.3). pm2 cluster
+  mode would start a second worker and double every AI call in silence.
 
-| # | Question | Why it cannot wait |
-|---|---|---|
-| 13.4 | **What a delivered flow post looks like.** Which text is sent (`text_md` as-is, `text_en`, `summary_uk`), whether a header carries `topic` / `signal_type`, how an unverified OCR entity is marked, how the append block is formatted, where "also reported by N" goes | Three documents impose requirements on this template and none defines it: VISION.md requires unverified entities to be marked on delivery, DEDUPLICATION.md requires an addition block and a full rewrite path, DATA_MODEL.md offers `members_count` for the "also reported" line |
-| 13.5 | **Reaction capture (5.7).** Which GramJS update carries reactions on a channel a user account owns, whether it is readable at all, and the emoji → `good` / `noise` / `wrong_topic` / `missed` mapping | Estimated `M` with no feasibility check behind it. If reactions are not readable, `flow:review` is the only label source and phase 5 changes shape. Worth a capability check of the same kind as 3.1 |
-| 13.6 | **Command surface.** `flow:volume`, `flow:stats`, `flow:export`, `flow:review` — subcommands of `src/cli.js` (which already has `seed` / `list` / `toggle` / `clear`) or standalone scripts? 2.1 names `scripts/estimate-volume.js`, the phase 0.5 exit criteria name `flow:volume` | Two conventions in one plan. Pick one before the first of them is written |
+**13.2 — embedding identity.** `embedding_model` and `embedding_dim` on `posts`
+and on `clusters` (a centroid is a vector with the same problem).
+`embedding_model` is **not** `model_used` — that one is the enrichment model.
+Rules: vectors are **normalized to unit length at write time**, so cosine is a
+plain dot product and a whole class of "forgot to divide" bugs disappears;
+little-endian `Float32Array`, with `buffer.length === embedding_dim * 4` as the
+read-time check; tier 2 filters the window by `embedding_model` and never
+compares across models; where the provider allows an explicit output dimension,
+**pin it in config** rather than inheriting a default that can change under you.
+
+**13.3 — configuration constants.** Listed in
+[LLM_GATEWAY.md](LLM_GATEWAY.md) §Configuration: `ENRICH_TICK_MS`,
+`ENRICH_BATCH_SIZE`, `ENRICH_MAX_ATTEMPTS`, `LLM_CACHE_TTL_MS`,
+`LLM_CACHE_MAX_SIZE`, `LLM_QUOTA_RESERVE`. Tick and batch are **derived from
+measured RPD**, not guessed.
+
+**13.11 — `posts.entities`, found while writing the delivery contract.** Telegram
+formatting travels as MTProto entities with absolute offsets, not as Markdown —
+`parseMode` is unreliable in GramJS for user accounts, which is why the classic
+path passes `formattingEntities` straight through. `FlowIngest` currently stores
+`text_md` and drops `messageData.entities`, so stage 3 would have to re-parse
+Markdown back into entities. One field at ingest, and it is **unrecoverable
+later** without re-fetching from Telegram. See [DELIVERY.md](DELIVERY.md).
+
+### Contracts — mechanism settled, wording open
+
+**13.4 — delivery.** The mechanism is now [DELIVERY.md](DELIVERY.md): a pure
+`render(cluster, posts, { platform })` returning `{ text, entities }`, a **full
+re-render on every edit** rather than string appends, segment composition with
+rebased entity offsets, and corrections delivered as a **new message** because an
+edit produces no notification. The template itself — exact lines, wording, emoji,
+and the Discord embed layout — is filled in at phase 2, when the channels from
+5.1 exist and there is real material to look at.
+
+**13.5 — reactions.** Do a short feasibility probe before 5.7 keeps its `M`:
+subscribe to `UpdateMessageReactions` on your own channel and see whether the
+user client receives it at all. If it does, keep the mapping minimal — 👍
+`good`, 👎 `noise`, ❓ `wrong_topic`. `missed` cannot be expressed as a reaction
+in principle, since there is no post to react to. If it does not, the fallback is
+cheaper than polling history: **a reply carrying a keyword** is an ordinary
+message the client already receives, and `reply_to_msg_id` gives the link to the
+post for free. Either way `flow:review` from phase 1 stays the primary label
+source; reactions are convenience, not a dependency.
+
+**13.6 — command surface.** Everything interactive or database-backed becomes a
+subcommand of `src/cli.js`, which already bootstraps models and a connection and
+already has `seed` / `list` / `toggle` / `clear`:
+
+```bash
+node src/cli.js flow stats | export | review
+```
+
+`scripts/` stays for one-off work that is not part of the daily surface:
+migrations and backfills. **2.1 keeps `scripts/estimate-volume.js`** — it runs
+once, before anything else exists — and the phase 0.5 exit criteria now name the
+script rather than a `flow:volume` command that would never be written.
 
 ### Scope questions — no deadline, but open
 
 | # | Question | State |
 |---|---|---|
-| 13.7 | **History search.** Listed as a gateway consumer with a priority class (LLM_GATEWAY.md) and given an index (`(topic, signal_type, posted_at)` in DATA_MODEL.md), but it has no phase, no task and no specification | Either give it a phase or drop it from the consumer table. A consumer with a quota claim and no owner budgets RPD for work nobody is building |
+| 13.7 | ~~History search has no phase~~ | **Closed.** Specified as §9.1 and placed in phase 5. Two tiers, the first with no AI at all |
 | 13.8 | **AI-assisted screening of the incoming stream.** Distinct from enrichment: cheap triage over everything, potentially including classic sources, in place of or ahead of keyword filtering | Raised, not specified. Whatever it becomes: it runs **worker-side** — stage 1 makes no outbound calls — and it is a gateway consumer at `low` priority, competing for the same RPD as enrichment. Cost it against 2.1 before committing to it |
 | 13.9 | **Retention.** `posts` keeps `raw_text`, `text_en` and an embedding BLOB per row, forever, on a VPS. No pruning, archival or `VACUUM` policy exists | Not urgent at a few hundred posts a day, but it should be a decision rather than an oversight. State a review point — 500k rows, or 2 GB of database |
 | 13.10 | **Stall detection.** If every provider is down for a day, posts accumulate as `pending` and nothing says so; the only signal is running `flow:stats` by hand | The core invariant is that AI *may* fail, so something has to notice: oldest `pending` age above a threshold, printed on a schedule or pushed to a Telegram channel |
 
 ### Documentation debt
 
-Cross-references and statements that contradict the settled decisions, worth one
-cleanup pass: DATA_MODEL.md still describes the Telegram-shaped `posts` table
-that 2.4 replaces and marks `post_feedback` as phase 5 although 2.6 pulls it into
-phase 0.5; DEDUPLICATION.md's dedup-window table predates `security`,
-`giveaway_result` and `stream`; the main `README.md` and `docs/ARCHITECTURE.md`
-still say TheFlow is "planned, not implemented" and refer to phases 1–6.
-**2.4 is not done until DATA_MODEL.md matches the schema it leaves behind.**
+Cleared in this pass: `post_feedback` is no longer marked phase 5, the
+dedup-window table covers `security`, `giveaway_result` and `stream`, VISION.md
+no longer says phase 6, and `README.md` and `docs/ARCHITECTURE.md` no longer call
+TheFlow unimplemented.
+
+**Still outstanding:** DATA_MODEL.md describes the Telegram-shaped `posts` table
+that 2.4 replaces. It is deliberately left until the migration exists rather than
+described ahead of it — which is why **2.4 is not done until DATA_MODEL.md
+matches the schema it leaves behind**.
 
 ## Appendix A — `categories.json` v1, drafted from the real sources
 
