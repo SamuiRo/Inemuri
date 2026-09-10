@@ -1,11 +1,11 @@
 {
   "name": "inemuri",
-  "version": "4.11.0",
+  "version": "4.12.0",
   "description": "Data Control Unit",
   "main": "inemuri.js",
   "type": "module",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "start": "node src/inemuri.js",
     "seed": "node src/cli.js seed",
     "seed:fresh": "node src/cli.js seed --fresh",

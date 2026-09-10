@@ -71,9 +71,10 @@ Inemuri/
 │   │   │   └── MessageRouter.js           # Routes normalized messages to destinations
 │   │   ├── seeders/
 │   │   │   └── Sourceseeder.js            # Imports Sources.json into the database
-│   │   ├── theflow/                       # TheFlow subsystem (Phase 0)
+│   │   ├── theflow/                       # TheFlow subsystem
 │   │   │   ├── RegexStage.js              # Deterministic pre-AI stage: rejection, candidates, text hash
 │   │   │   ├── FlowIngest.js              # Stage 1: regex stage -> idempotent INSERT posts
+│   │   │   ├── EnrichWorker.js            # Stage 2: drains pending posts through the LLM gateway
 │   │   │   └── media/                     # Stage 3 lazy media (seam, not yet wired)
 │   │   │       ├── MediaResolver.js       # Registry: media_ref.kind -> resolver
 │   │   │       ├── TelegramMediaResolver.js  # Re-fetch by media_ref, reuse TelegramMediaDownloader
@@ -86,16 +87,23 @@ Inemuri/
 │   │   │   │   ├── SourceState.js         # Polling checkpoint model
 │   │   │   │   ├── Post.js                # TheFlow: one row per ingested message
 │   │   │   │   ├── Cluster.js             # TheFlow: one row per deduplicated event
-│   │   │   │   └── PostFeedback.js        # TheFlow: a human's label on a post
+│   │   │   │   ├── PostFeedback.js        # TheFlow: a human's label on a post
+│   │   │   │   └── ProviderQuota.js       # LLM gateway: per-provider daily request ledger
 │   │   │   └── sqlite/
 │   │   │       └── sqlite_db.js           # Sequelize SQLite connection singleton
 │   │   └── telegram/
 │   │       └── TelegramClient.js          # Shared GramJS MTProto client singleton
 │   ├── services/
-│   │   ├── ai/                            # TheFlow LLM layer (phase 1, in progress)
+│   │   ├── ai/                            # TheFlow LLM layer (phase 1, shadow mode)
+│   │   │   ├── LLMGateway.js              # enrich/embed: routing, cache, quota, breaker, queue, fallback
+│   │   │   ├── internal.js                # TokenBucket, CircuitBreaker, TtlCache
 │   │   │   ├── schemas.js                 # enrich() response schema + structural/verbatim validation
-│   │   │   └── prompts/
-│   │   │       └── enrich.js              # enrich prompt: taxonomy injection, untrusted block
+│   │   │   ├── prompts/
+│   │   │   │   └── enrich.js              # enrich prompt: taxonomy injection, untrusted block
+│   │   │   └── providers/
+│   │   │       ├── BaseProvider.js        # contract + capabilities() + HTTP error classification
+│   │   │       ├── GeminiProvider.js
+│   │   │       └── OpenAICompatProvider.js  # base-URL parameterized (OpenRouter, Qwen, …)
 │   │   └── crypto/
 │   │       └── CryptoDataService.js       # External crypto market data provider
 │   ├── shared/
@@ -223,6 +231,16 @@ ingestion pipeline.
 (`src/module/theflow/FlowIngest.js`) wired into
 `TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phases 0.5 through
 5 are still specification — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
+
+**Phase 1 (LLM gateway + enrichment, shadow mode) is implemented but dormant.**
+`src/services/ai/` (the gateway, providers, schema and prompt) and
+`src/module/theflow/EnrichWorker.js` are wired into `src/inemuri.js` behind
+`ENRICH_WORKER_ENABLED` and a primary-provider API key — with no key set the
+worker never starts, and `pending` posts simply accumulate. When it runs, it
+drains `pending` → `enriched` (writing `topic` / `signal_type` / `confidence`
+/ `analysis` / `model_used` / `taxonomy_version` / `embedding`), and routing
+still ignores the verdicts (`LLM_SHADOW_MODE`). Provider decisions and RPD
+measurement (ROADMAP §3.1, §11) are still open.
 
 Two design points that shape the remaining work:
 

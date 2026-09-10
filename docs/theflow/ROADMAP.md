@@ -582,6 +582,19 @@ empty. Retrofitting it after you have started trusting the output is worse.
 
 ### 3.5 `LLMGateway` (`L`)
 
+> **Done (v4.12.0).** `src/services/ai/LLMGateway.js` + `internal.js`
+> (`TokenBucket`, `CircuitBreaker` — default threshold 1 per the matrix,
+> `TtlCache`). Capability routing over `order = [LLM_PRIMARY, LLM_FALLBACK]`;
+> per-provider RPM bucket; persistent RPD via `ProviderQuota` (migration 005);
+> per-provider breaker; TTL+size cache keyed on normalized input + taxonomy
+> version; 3-lane priority queue with a concurrency cap; the full fallback
+> matrix (`rate_limit` → retry same; `quota` → mark exhausted + next;
+> `server`/`network` → breaker + next; `bad_response` → one retry + next);
+> tiering separate from fallback; shed below the reserve returns
+> `{ shed: true }`, never `failed`. `embed()` returns `null` when no provider
+> advertises the capability (degrade to tier 1). `test/llm-gateway.test.js` +
+> `test/ai-internal.test.js`.
+
 ```js
 await gateway.enrich(input,  { priority: "critical" })
 await gateway.embed(text,    { priority: "critical" })
@@ -624,8 +637,18 @@ Two distinctions that are cheap to keep and expensive to lose:
 > illustrative set). `routing: []` and `unsorted_destinations` = the current
 > firehose — the correct shadow-mode config until the phase 2 channels exist.
 > Loaded as `CATEGORIES` from `app.config.js`; `test/categories.test.js` pins
-> the shape. **The `EnrichWorker` still needs the gateway (3.5) and the
-> provider decisions (§11) — not started.**
+> the shape.
+>
+> **`EnrichWorker` done (v4.12.0).** `src/module/theflow/EnrichWorker.js`:
+> chained `setTimeout` tick (no overlap), `Post.claimPending(batch)` bumps
+> `attempts` in one statement before the gateway call (§13.1, no `enriching`
+> status), `gateway.enrich` → `gateway.embed(text_en)` → `UPDATE ... enriched`
+> with `model_used` + `taxonomy_version` + embedding BLOB. Shed leaves the post
+> `pending`; a gateway error retries until `ENRICH_MAX_ATTEMPTS` then `failed`
+> with `last_error`; a missing embedding still yields `enriched`. Imports only
+> `posts` + config — no Telegram/Discord/bus. Wired into `src/inemuri.js`
+> behind `ENRICH_WORKER_ENABLED` + a primary-provider key.
+> `test/enrich-worker.test.js`.
 
 Write `categories.json` v1 now, from **appendix A** — which is derived from the
 real channel mix and the existing blacklists, not from the spec's generic

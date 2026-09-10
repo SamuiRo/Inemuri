@@ -11,6 +11,13 @@ import TelegramDestinationAdapter from "./destinations/telegram/TelegramDestinat
 import CronScheduler from "./module/cron/CronScheduler.js";
 import DiscordCommandHandler from "./module/discord/DiscordCommandHandler.js";
 import { CRON_JOBS, COMMANDS } from "./config/cronjobs.js";
+import LLMGateway from "./services/ai/LLMGateway.js";
+import EnrichWorker from "./module/theflow/EnrichWorker.js";
+import {
+  ENRICH_WORKER_ENABLED,
+  LLM_PRIMARY,
+  LLM_PROVIDERS,
+} from "./config/app.config.js";
 
 class Inemuri {
   constructor() {
@@ -32,6 +39,9 @@ class Inemuri {
 
     // Discord Command Handler
     this.commandHandler = null;
+
+    // TheFlow enrichment worker (phase 1, shadow mode)
+    this.enrichWorker = null;
 
     this.setupEventHandlers();
   }
@@ -103,6 +113,23 @@ class Inemuri {
       );
       await this.commandHandler.initialize();
 
+      // 10. TheFlow enrichment worker — drains `pending` posts through the
+      //     LLM gateway. Shadow mode: verdicts land in `posts`, routing
+      //     ignores them (phase 1). Off unless a primary provider key is set.
+      const primaryKey = LLM_PROVIDERS[LLM_PRIMARY]?.apiKey;
+      if (ENRICH_WORKER_ENABLED && primaryKey) {
+        print("Starting TheFlow enrichment worker...");
+        this.enrichWorker = new EnrichWorker({ gateway: new LLMGateway() });
+        this.enrichWorker.start();
+      } else {
+        print(
+          `TheFlow enrichment worker inactive (${
+            !ENRICH_WORKER_ENABLED ? "ENRICH_WORKER_ENABLED=false" : `no ${LLM_PRIMARY} API key`
+          })`,
+          "warning",
+        );
+      }
+
       print("Inemuri started successfully", "success");
       print("System is now routing messages...", "success");
     } catch (error) {
@@ -119,6 +146,12 @@ class Inemuri {
     print("Shutting down Inemuri...", "warning");
 
     try {
+      // Зупиняємо enrichment worker
+      if (this.enrichWorker) {
+        print("Stopping TheFlow enrichment worker...");
+        this.enrichWorker.stop();
+      }
+
       // Зупиняємо cron scheduler
       if (this.cronScheduler) {
         print("Stopping Cron Scheduler...");

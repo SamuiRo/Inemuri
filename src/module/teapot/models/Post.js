@@ -307,4 +307,34 @@ Post.takePending = async function (limit) {
   });
 };
 
+/**
+ * Заявка партії для воркера enrich (ROADMAP §13.1). Бере найстаріші pending,
+ * інкрементує `attempts` ОДНИМ statement-ом ще ДО виклику gateway — краш
+ * посеред виклику тоді рахується в кап, а не ретраїться вічно (а якщо саме
+ * цей рядок і вбив процес — вічно означає restart-loop). Немає статусу
+ * `enriching`: після краху рядки просто беруться знову.
+ *
+ * Виклик обгорнутий так, щоб lease пізніше замінив цю логіку без зміни
+ * call-site.
+ */
+Post.claimPending = async function (limit) {
+  const heads = await this.findAll({
+    where: { status: "pending" },
+    order: [["createdAt", "ASC"]],
+    limit,
+    attributes: ["id"],
+  });
+  if (heads.length === 0) return [];
+
+  const ids = heads.map((r) => r.id);
+  const placeholders = ids.map(() => "?").join(",");
+  await database.sequelize.query(
+    `UPDATE \`posts\` SET \`attempts\` = \`attempts\` + 1, \`updatedAt\` = ? ` +
+      `WHERE \`id\` IN (${placeholders}) AND \`status\` = 'pending'`,
+    { replacements: [new Date().toISOString(), ...ids] },
+  );
+
+  return await this.findAll({ where: { id: ids }, order: [["createdAt", "ASC"]] });
+};
+
 export default Post;

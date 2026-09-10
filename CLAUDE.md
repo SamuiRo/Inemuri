@@ -85,8 +85,11 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   database (SQLite rebuilds the whole table). `database/` is git-ignored except
   `database/migrations/`.
 - Tests are `node --test` suites under `test/` (`*.test.js`, no dependency);
-  run with `npm test`. They cover the pure units only — `RegexStage`,
-  `FlowIngest` helpers, the media resolver. No CI runs them yet.
+  run with `npm test` (`--test-concurrency=1` — some suites hit the real
+  SQLite file and would race in parallel). They cover the pure/unit layers —
+  `RegexStage`, `FlowIngest` helpers, media resolver, the AI schema/prompt,
+  providers, the gateway internals and fallback matrix, the quota ledger and
+  the enrich worker. No CI runs them yet.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
 
