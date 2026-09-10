@@ -69,7 +69,11 @@ Inemuri/
 │   │   │   └── Sourceseeder.js            # Imports Sources.json into the database
 │   │   ├── theflow/                       # TheFlow subsystem (Phase 0)
 │   │   │   ├── RegexStage.js              # Deterministic pre-AI stage: rejection, candidates, text hash
-│   │   │   └── FlowIngest.js              # Stage 1: regex stage -> idempotent INSERT posts
+│   │   │   ├── FlowIngest.js              # Stage 1: regex stage -> idempotent INSERT posts
+│   │   │   └── media/                     # Stage 3 lazy media (seam, not yet wired)
+│   │   │       ├── MediaResolver.js       # Registry: media_ref.kind -> resolver
+│   │   │       ├── TelegramMediaResolver.js  # Re-fetch by media_ref, reuse TelegramMediaDownloader
+│   │   │       └── index.js               # Registers the shipped resolvers
 │   │   ├── teapot/
 │   │   │   ├── config/                    # Reserved area for teapot module config
 │   │   │   ├── models/

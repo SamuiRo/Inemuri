@@ -335,16 +335,23 @@ migration leaves behind** — it is the reference every later phase reads.
 
 ### 2.5 Media resolver seam (`S`)
 
+> **Done (v4.6.0).** `src/module/theflow/media/` — `MediaResolver` singleton
+> registry keyed on `media_ref.kind`, `TelegramMediaResolver`, and `index.js`
+> that registers the Telegram one. Not yet wired into a delivery path (there
+> isn't one until phase 2); phase 2 imports the singleton. `UrlMediaResolver`
+> is one `register("url", …)` line in phase 3.5.
+
 ```js
 // src/module/theflow/media/MediaResolver.js
-register(platform, resolver)
-async resolve(post) -> [{ buffer | path, type, filename }]
+register(kind, resolver)          // kind = media_ref.kind ("telegram" | "url" | …)
+async resolve(post) -> [{ type, buffer, filename, mimeType, fileSize, duration, width, height }]
 ```
 
-`TelegramMediaResolver` re-fetches by `media_ref` through GramJS `getMessages`,
-then reuses `TelegramMediaDownloader`. `UrlMediaResolver` arrives in phase 3.5.
-Half a day now turns phase 3.5 into an adapter instead of a refactor of the
-delivery path.
+`TelegramMediaResolver` re-fetches by `media_ref` through GramJS `getMessages`
+(a 10-wide id window for albums, filtered by `grouped_id`), parses media with
+`TelegramMessageParser.parseMedia`, then reuses `TelegramMediaDownloader` —
+no new download logic. `UrlMediaResolver` arrives in phase 3.5. Half a day now
+turns phase 3.5 into an adapter instead of a refactor of the delivery path.
 
 ### 2.6 Delivery, edit, and feedback plumbing (`S` each)
 
