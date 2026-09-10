@@ -29,10 +29,37 @@ process behind HTTP. It has several consumers, and that is precisely what a
 module is for; an HTTP service would add a server, serialization, auth, a second
 deployment, and a second failure mode while solving nothing that exists today.
 
+**Several consumers is the argument for a module, not against one.** The
+instinct to make it a service comes from noticing that TheFlow enrichment,
+deduplication, vision, and any future screening or search will all call it. Every
+one of those lives in the same Node process today, so a service would mean the
+process talking to itself over HTTP.
+
+What a service would genuinely buy is one shared quota ledger and one shared rate
+limiter across *processes*. That is bought instead by the `provider_quota` table:
+persisted in SQLite, it is already shared by anything that opens the same database
+file, service or not.
+
 Extracting it into its own process becomes worthwhile only when more than one
 *process* needs it — the same criterion that governs extracting TheFlow itself
-(see ARCHITECTURE.md). Until then the boundary is enforced by discipline: the
-gateway imports nothing from Telegram, Discord, or the pipeline.
+(see ARCHITECTURE.md). Concretely, when one of these appears:
+
+- TheFlow is extracted into its own process (ARCHITECTURE.md lists those
+  triggers) **and** the forwarding process also needs AI calls;
+- AI work has to run on a different machine — a second VPS, or a box with a GPU
+  for a local model;
+- something outside Inemuri needs the same providers under the same quota
+  accounting.
+
+Until then the boundary is enforced by discipline: the gateway imports nothing
+from Telegram, Discord, or the pipeline. Because it is already a module behind a
+three-method contract, wrapping it in an HTTP server later is a day of work
+rather than a rewrite — which is the point of deciding it this way round. The
+cheap option now does not foreclose the expensive one later.
+
+If it is ever extracted, the SQLite caveat from ARCHITECTURE.md applies to every
+process that touches the quota ledger: `PRAGMA journal_mode=WAL` and an explicit
+`busy_timeout`.
 
 No new dependencies are required: Gemini and OpenAI-compatible endpoints (which
 is how Qwen is reached) are both plain HTTP and JSON, and `axios` is already in
@@ -154,15 +181,22 @@ quota".
 
 ## Consumers and priority classes
 
-Five consumers share the gateway:
+| Consumer | Uses | Priority | State |
+|---|---|---|---|
+| Enrichment worker | `enrich`, `embed` | `critical` | phase 1 |
+| Deduplication | `embed` | `critical` | phase 3 |
+| Vision stage | `vision` | `normal` | phase 1.5 |
+| Digests | `enrich` | `low` | phase 5 |
+| History search | `embed` | `low` | **unspecified** — ROADMAP §13.7 |
+| AI-assisted screening | `enrich` | `low` | **unspecified** — ROADMAP §13.8 |
 
-| Consumer | Uses | Priority |
-|---|---|---|
-| Enrichment worker | `enrich`, `embed` | `critical` |
-| Deduplication | `embed` | `critical` |
-| Vision stage | `vision` | `normal` |
-| History search | `embed` | `low` |
-| Digests | `enrich` | `low` |
+**Every consumer runs worker-side.** No consumer may be added to the ingestion
+path, whatever it is for: stage 1 makes no outbound network calls, and that
+invariant does not bend for a gateway call. Cheap AI triage of the incoming
+stream is therefore a stage-2 concern that writes its verdict back to `posts`,
+never a filter evaluated while a Telegram update is being handled. This is a
+constraint on the *pipeline*, and packaging does not change it — moving the
+gateway behind HTTP would not make an ingest-time call acceptable.
 
 Every call carries a priority. When remaining quota drops below a reserve
 threshold, the gateway sheds work from the bottom up: digests and search stop

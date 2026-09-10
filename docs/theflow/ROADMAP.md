@@ -409,6 +409,13 @@ explicitly rather than discovered in phase 3:
 - deduplication degrades to tier 1, which still works;
 - `scripts/backfill-embeddings.js` fills the gaps when the provider returns.
 
+Vision is checked in the same pass, and may land on a **third provider**: the
+gateway routes per capability, so a vendor used for nothing but `vision()` is an
+ordinary configuration. Free vision tiers exist and are the right choice while
+the gates are being tuned. Record per candidate: RPD, maximum input resolution
+and bytes, accepted formats, and whether a per-transcription confidence signal
+is returned — see [VISION.md](VISION.md) §"Choosing a vision provider".
+
 Record measured RPD and RPM per model id against the real volume from 2.1.
 
 ### 3.2 Provider layer (`M`)
@@ -575,7 +582,7 @@ disable vision where OCR is noise.
 
 ## 5. Phase 2 — content-based routing
 
-Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) §3.
+Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 — Flow".
 
 | # | Task | Files | Effort |
 |---|---|---|---|
@@ -784,6 +791,57 @@ and `security` is a required category (appendix A).
 - **`npm run migrate:status` on the VPS before every deploy.** Code that assumes
   a column the deployed database lacks fails at runtime in the ingest path — the
   one place that must never stop.
+
+## 13. Open questions still to close
+
+§11 tracks what is needed **from you**; [../THEFLOW.md](../THEFLOW.md) tracks the
+product-level questions (display language, thresholds, paid tier). This section
+tracks the **engineering** ones: things unanswered in the documents, not merely
+unimplemented. Each is a decision to make or a fact to measure, and the grouping
+says when it starts blocking work.
+
+**Closed here, recorded so it is not reopened:** the gateway stays a **module**,
+not a service. Several consumers is the argument for a module; the criterion for
+extraction is a second *process*, and the conditions that would create one are
+now written down in [LLM_GATEWAY.md](LLM_GATEWAY.md) §"A module, not a service".
+The shared quota ledger that a service would have provided is provided by the
+`provider_quota` table instead, which is shared by any process opening the same
+database file.
+
+### Decisions that shape the schema — close before phase 1
+
+| # | Question | Why it cannot wait |
+|---|---|---|
+| 13.1 | **Batch claiming.** `Post.takePending()` is a bare `SELECT … WHERE status='pending'` with no lease. What stops the next timer tick from taking rows that are still in flight — an in-process guard plus a non-overlapping timer, or an `enriching` status with a stale-reclaim rule? | The failure mode is paying twice for the same rows. An `enriching` status is a migration and a change to the validated `POST_STATUSES` enum, so it is cheaper before the corpus grows |
+| 13.2 | **Embedding identity.** `embedding` is specified as "Float32Array as a BLOB" and nothing else. Dimension differs per provider (768 / 1536 / 3072), so a fallback or a model change silently splits the corpus into incomparable halves | Otherwise discovered in phase 3, during threshold calibration, with months of vectors already written. Needs `embedding_model` and `embedding_dim` on `posts`, and a tier-2 rule that only compares vectors produced by the same model |
+| 13.3 | **Worker configuration constants.** Batch size, tick interval, the cap on `attempts`, the quota reserve threshold, cache TTL and size cap | `CLAUDE.md` forbids reading `process.env` outside `app.config.js`, and LLM_GATEWAY.md lists only the `LLM_*` variables. Unlisted, they get invented inline in five files |
+
+### Contracts to write — close before phase 2
+
+| # | Question | Why it cannot wait |
+|---|---|---|
+| 13.4 | **What a delivered flow post looks like.** Which text is sent (`text_md` as-is, `text_en`, `summary_uk`), whether a header carries `topic` / `signal_type`, how an unverified OCR entity is marked, how the append block is formatted, where "also reported by N" goes | Three documents impose requirements on this template and none defines it: VISION.md requires unverified entities to be marked on delivery, DEDUPLICATION.md requires an addition block and a full rewrite path, DATA_MODEL.md offers `members_count` for the "also reported" line |
+| 13.5 | **Reaction capture (5.7).** Which GramJS update carries reactions on a channel a user account owns, whether it is readable at all, and the emoji → `good` / `noise` / `wrong_topic` / `missed` mapping | Estimated `M` with no feasibility check behind it. If reactions are not readable, `flow:review` is the only label source and phase 5 changes shape. Worth a capability check of the same kind as 3.1 |
+| 13.6 | **Command surface.** `flow:volume`, `flow:stats`, `flow:export`, `flow:review` — subcommands of `src/cli.js` (which already has `seed` / `list` / `toggle` / `clear`) or standalone scripts? 2.1 names `scripts/estimate-volume.js`, the phase 0.5 exit criteria name `flow:volume` | Two conventions in one plan. Pick one before the first of them is written |
+
+### Scope questions — no deadline, but open
+
+| # | Question | State |
+|---|---|---|
+| 13.7 | **History search.** Listed as a gateway consumer with a priority class (LLM_GATEWAY.md) and given an index (`(topic, signal_type, posted_at)` in DATA_MODEL.md), but it has no phase, no task and no specification | Either give it a phase or drop it from the consumer table. A consumer with a quota claim and no owner budgets RPD for work nobody is building |
+| 13.8 | **AI-assisted screening of the incoming stream.** Distinct from enrichment: cheap triage over everything, potentially including classic sources, in place of or ahead of keyword filtering | Raised, not specified. Whatever it becomes: it runs **worker-side** — stage 1 makes no outbound calls — and it is a gateway consumer at `low` priority, competing for the same RPD as enrichment. Cost it against 2.1 before committing to it |
+| 13.9 | **Retention.** `posts` keeps `raw_text`, `text_en` and an embedding BLOB per row, forever, on a VPS. No pruning, archival or `VACUUM` policy exists | Not urgent at a few hundred posts a day, but it should be a decision rather than an oversight. State a review point — 500k rows, or 2 GB of database |
+| 13.10 | **Stall detection.** If every provider is down for a day, posts accumulate as `pending` and nothing says so; the only signal is running `flow:stats` by hand | The core invariant is that AI *may* fail, so something has to notice: oldest `pending` age above a threshold, printed on a schedule or pushed to a Telegram channel |
+
+### Documentation debt
+
+Cross-references and statements that contradict the settled decisions, worth one
+cleanup pass: DATA_MODEL.md still describes the Telegram-shaped `posts` table
+that 2.4 replaces and marks `post_feedback` as phase 5 although 2.6 pulls it into
+phase 0.5; DEDUPLICATION.md's dedup-window table predates `security`,
+`giveaway_result` and `stream`; the main `README.md` and `docs/ARCHITECTURE.md`
+still say TheFlow is "planned, not implemented" and refer to phases 1–6.
+**2.4 is not done until DATA_MODEL.md matches the schema it leaves behind.**
 
 ## Appendix A — `categories.json` v1, drafted from the real sources
 

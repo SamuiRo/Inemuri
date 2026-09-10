@@ -135,14 +135,39 @@ Treat OCR output strictly as data:
 The stakes here are low (public channels, no credentials in the loop), but the
 mitigation costs nothing.
 
+## Choosing a vision provider
+
+Vision does not have to come from the same vendor as text and embeddings. The
+gateway routes per capability (LLM_GATEWAY.md), so a provider used for nothing
+but `vision()` is an ordinary configuration rather than a special case. That
+matters here because free vision tiers exist, and their limits behave differently
+from text limits.
+
+Three things to establish before enabling vision on any source — this belongs to
+the capability check in [ROADMAP.md](ROADMAP.md) §3.1:
+
+- **RPD is the binding limit**, as it is for text, and on most free tiers an
+  image request draws on the same daily allowance as a text one. A single channel
+  posting 40 screenshots a day can consume a free tier by itself, which is the
+  whole reason the gates below the source flag exist.
+- **Input limits per image** — maximum resolution, maximum bytes, accepted
+  formats. These set the downscale target, which is the main lever on cost.
+- **Whether a per-transcription confidence signal is returned.** Where it is, low
+  confidence is treated as "unreadable" rather than as text — see the hazards
+  above.
+
+A free tier is the right choice while the gates are being tuned. Once vision is
+load-bearing for a source, the honest options are a paid tier or turning it off
+for that source; the gates are what keep that decision cheap.
+
 ## Effect on the LLM Gateway
 
 Vision adds a third capability alongside `enrich()` and `embed()`, and this is
 where it stops being a local change.
 
-The gateway now serves five consumers — the enrichment worker, deduplication,
-the vision stage, history search, and digests — and **they all draw on the same
-daily provider quota**. Without shared accounting, vision quietly consumes the
+The gateway now serves several consumers — the enrichment worker, deduplication,
+the vision stage, digests, and whatever search or screening is added later — and
+**they all draw on the same daily provider quota**. Without shared accounting, vision quietly consumes the
 daily limit and enrichment of ordinary posts starts failing, which presents as
 "classification broke" rather than "vision ate the quota".
 
@@ -172,12 +197,26 @@ vision on it.
 
 ## Phasing
 
-Vision is **phase 6**, after the text pipeline is settled. Building it earlier
-means tuning OCR quality and classification quality at the same time, with no
-way to tell which one is producing a bad result.
+Vision is **phase 1.5**, straight after the gateway and before routing. It was
+originally placed last, to avoid tuning OCR quality and classification quality at
+the same time with no way to tell which one produced a bad result. Two things
+answered that concern:
 
-The one thing worth doing early, during phase 0, is recording `has_media` and
-the image hash for incoming posts. That costs nothing and produces the data
-needed to answer a question you will have later: how many posts are actually
-image-only, and on which channels. That number decides whether vision is worth
-building at all.
+- vision is **required**, not optional — on screenshot-heavy channels it is the
+  difference between a source being processed and a source being invisible;
+- `text_ocr` is stored separately from `text_en`, so a bad verdict can be traced
+  to the transcription or to the classification by reading the row. The schema
+  answers the question the ordering was meant to answer.
+
+Vision stays in shadow mode alongside classification until phase 2, so nothing is
+routed on a transcription that has not been read by eye first.
+
+The part done early, in phase 0, is recording `has_media`. The per-source share
+of image-only posts is what decides which channels get `vision.enabled`, and it
+is read out of `flow:stats`.
+
+`image_hash` is **not** written at ingest, contrary to an earlier revision of this
+document: a perceptual hash needs the image bytes, and fetching them would break
+the no-outbound-calls invariant of stage 1. It is filled by
+`scripts/backfill-image-hash.js` and, from phase 1.5 onward, by the vision stage
+itself as a side effect of gate 3.

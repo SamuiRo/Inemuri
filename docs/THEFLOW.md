@@ -61,7 +61,7 @@ Existing sources are untouched until explicitly switched over.
 | AI providers | Gateway with primary plus fallback | Free tiers have no SLA. The pipeline only ever sees `enrich()` and `embed()` |
 | Taxonomy | Two closed axes: topic and signal type | Models choose more accurately from short lists, and the result is a routing matrix rather than two dozen separate destination mappings |
 | Deduplication | Three tiers, LLM only in the gray zone | "Is this similar to these 50 posts?" cannot be asked of an LLM directly: expensive, non-deterministic, does not scale |
-| Gateway packaging | A module with a clean contract, not an HTTP service | Several in-process consumers is exactly what a module is for. A separate process would add a server, serialization, auth, and a second failure mode while solving nothing that exists today |
+| Gateway packaging | A module with a clean contract, not an HTTP service | Several in-process consumers is exactly what a module is for — that is the argument for a module, not against one. A separate process would add a server, serialization, auth, and a second failure mode while solving nothing that exists today. The criterion for extraction is a second *process*, and the conditions that would create one are listed in [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) |
 | Screenshots | Vision transcribes text only, never classifies | The transcription merges into the same text field and the existing pipeline runs unchanged. Classifying from images directly would create a second pipeline with its own reliability and tuning |
 
 ## Pipeline
@@ -194,7 +194,7 @@ Originally placed last, to avoid tuning transcription quality and classification
 quality simultaneously with no way to tell which one produced a bad result. It
 moved to 1.5 because vision is required, not optional, and because storing
 `text_ocr` separately from `text_en` answers the same question the ordering was
-meant to answer — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3.
+meant to answer — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §4.
 
 `has_media` is already recorded at ingest, and `image_hash` is filled by
 `scripts/backfill-image-hash.js`. Their per-source ratio is what decides which
@@ -204,7 +204,7 @@ channels get `vision.enabled`.
 
 - **Scraping Twitter / X.** Twitter is a consumer of the output (material to
   publish), not a source. Reddit and open news feeds **are** planned as sources —
-  see [theflow/ROADMAP.md](theflow/ROADMAP.md) §6.
+  see [theflow/ROADMAP.md](theflow/ROADMAP.md) §7.
 - **Publishing anywhere externally.** TheFlow delivers to your own channels;
   what happens next is your decision.
 - **Replacing classic forwarding.** Both modes coexist permanently.
@@ -222,3 +222,9 @@ channels get `vision.enabled`.
 | Similarity thresholds | Can only be tuned on real data. This is the direct argument for phase 0 |
 | Deduplication window | Differs per category: a promo code is current for hours, market analysis for days |
 | Moving to a paid tier | Free tiers are fine while tuning. Thanks to the gateway, switching later is an adapter swap rather than a pipeline rewrite |
+| Vision provider | May be a **third** provider, separate from text and embeddings — the gateway routes per capability. Free vision tiers exist and suit the tuning period. Limits are established in [theflow/ROADMAP.md](theflow/ROADMAP.md) §3.1 |
+| AI-assisted screening | Raised, not specified: cheap AI triage of the incoming stream, potentially covering classic sources too. It is a gateway consumer like any other and runs worker-side — ingestion makes no outbound calls. See [theflow/ROADMAP.md](theflow/ROADMAP.md) §13.8 |
+
+The **engineering** open questions — batch claiming, embedding identity, the
+delivery template, retention, stall detection — are tracked separately in
+[theflow/ROADMAP.md](theflow/ROADMAP.md) §13.

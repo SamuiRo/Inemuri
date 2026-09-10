@@ -133,7 +133,7 @@ They later become few-shot examples for the prompt.
 
 > **Superseded from phase 0.5 onward.** A migration runner
 > (`database/migrations/` plus `npm run migrate`) is the first task of phase 0.5 —
-> see [ROADMAP.md](ROADMAP.md) §1.1. The section below describes the one-off
+> see [ROADMAP.md](ROADMAP.md) §2.2. The section below describes the one-off
 > script that established the phase 0 schema; migration `001` adopts it.
 
 **At the time of phase 0 the project had no migrations, and `sequelize.sync()`
