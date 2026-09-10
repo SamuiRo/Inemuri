@@ -213,6 +213,14 @@ Drop the `sequelize-cli` dependency.
 
 ### 2.3 Deploy the current code to the VPS (`M`)
 
+> **Partly done (v4.9.1).** [`ecosystem.config.cjs`](../../ecosystem.config.cjs)
+> and [`docs/DEPLOYMENT.md`](../DEPLOYMENT.md) are written — the deploy order,
+> the stop-before-migrate rule, rollback, and the pm2 config with its `.cjs` /
+> `cwd` / `fork` gotchas. **The actual deploy is the operator's**: set
+> `ecosystem.config.cjs` → `cwd` to the VPS checkout path, then run the
+> procedure. Nothing else in phase 0.5 is verifiable against production until
+> that is done.
+
 The VPS is several versions behind, on pre-TheFlow code. Nothing else in this
 plan can be verified against production until that is closed, and there is no
 deployment documentation in the repository at all.

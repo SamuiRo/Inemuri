@@ -412,6 +412,7 @@ extraction, vision) are still specification.
 ## Additional documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): project structure and runtime architecture
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): pm2 deploy and schema-migration procedure
 - [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 implemented, later phases specified)
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
 - [docs/USE_EMBED.md](docs/USE_EMBED.md): media and Discord embed behavior

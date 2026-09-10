@@ -13,6 +13,7 @@ Inemuri/
 ├── README.md                              # Short project description
 ├── LICENSE                                # Project license
 ├── SourceBuilder.html                     # Local UI helper for building source configs
+├── ecosystem.config.cjs                   # pm2 process definition (see docs/DEPLOYMENT.md)
 ├── database/
 │   ├── pot.sqlite                         # Runtime SQLite database (git-ignored)
 │   └── migrations/                        # NNN-name.js schema migrations (npm run migrate)
