@@ -20,13 +20,6 @@
             "replacement": "",
             "is_regex": false,
             "comment": "Видаляє декоративні лінії"
-          },
-          {
-            "pattern": "",
-            "replacement": "",
-            "is_regex": true,
-            "flags": "gi",
-            "comment": ""
           }
         ]
       },
@@ -47,22 +40,8 @@
       "channel_name": "Test 2 ",
       "is_active": true,
       "text_replacements": {
-        "enabled": true,
-        "patterns": [
-          {
-            "pattern": "\\[Sponsored\\].*?\\[/Sponsored\\]",
-            "replacement": "",
-            "is_regex": true,
-            "flags": "gis",
-            "comment": "Видаляє рекламні блоки"
-          },
-          {
-            "pattern": "@techchannel",
-            "replacement": "",
-            "is_regex": false,
-            "comment": "Видаляє згадки каналу"
-          }
-        ]
+        "enabled": false,
+        "patterns": []
       },
       "filters": {
         "enabled": false,

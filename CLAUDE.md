@@ -100,4 +100,6 @@ npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations
 npm test             # node --test suites under test/
 node src/cli.js list # list configured sources
+node src/cli.js flow stats     # TheFlow corpus stats (per source + total)
+node src/cli.js flow export    # sanitized JSONL sample of the corpus
 ```

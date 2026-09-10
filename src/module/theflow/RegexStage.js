@@ -46,8 +46,12 @@ export class RegexStage {
   /**
    * @param {object} input
    * @param {string} input.text       Plain text ПІСЛЯ text_replacements.
-   * @param {Set<string>|null} input.blacklist  Скомпільований blacklist джерела
-   *                                            (вже в нижньому регістрі).
+   * @param {Set<string>|null} input.blacklist  Скомпільований blacklist джерела.
+   *   MessageFilter кладе сюди слова у нижньому регістрі, якщо
+   *   case_sensitive=false, і як є — якщо true.
+   * @param {boolean} [input.caseSensitive=false]  Має збігатися з тим, як
+   *   зібрано blacklist: інакше haystack і слова в різному регістрі й
+   *   blacklist тихо перестає ловити.
    * @returns {{
    *   status: 'ok'|'skipped_blacklist'|'skipped_empty'|'skipped_noise',
    *   normalizedText: string,
@@ -55,7 +59,7 @@ export class RegexStage {
    *   candidates: object
    * }}
    */
-  evaluate({ text, blacklist }) {
+  evaluate({ text, blacklist, caseSensitive = false }) {
     const raw = typeof text === "string" ? text : "";
     const normalizedText = RegexStage.normalize(raw);
     const textHash = normalizedText ? RegexStage.hash(normalizedText) : null;
@@ -70,7 +74,7 @@ export class RegexStage {
 
     // 2. Blacklist джерела (whitelist для flow-джерел вимкнено — див. ARCHITECTURE.md)
     if (blacklist && blacklist.size > 0) {
-      const haystack = raw.toLowerCase();
+      const haystack = caseSensitive ? raw : raw.toLowerCase();
       for (const word of blacklist) {
         if (haystack.includes(word)) {
           return { ...result, status: "skipped_blacklist" };

@@ -45,13 +45,15 @@ export class FlowIngest {
    * @param {object} args.messageData         Нормалізований messageData.
    * @param {string} args.text                Plain text ПІСЛЯ text_replacements.
    * @param {Set<string>|null} args.blacklist Скомпільований blacklist джерела.
+   * @param {boolean} [args.caseSensitive=false] Регістрозалежність blacklist —
+   *   те саме значення, з яким MessageFilter зібрав Set.
    * @returns {Promise<{ created: boolean, post: object, status: string }>}
    */
-  async ingest({ source, messageData, text, blacklist }) {
+  async ingest({ source, messageData, text, blacklist, caseSensitive = false }) {
     const channelId = String(messageData.channelId);
 
     // 1. Regex-стадія (чиста, без I/O)
-    const stage = this._regex.evaluate({ text, blacklist });
+    const stage = this._regex.evaluate({ text, blacklist, caseSensitive });
 
     // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин.
     //    Кросканальний і внутрішньоканальний: та сама подія з іншим

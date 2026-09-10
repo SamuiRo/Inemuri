@@ -30,6 +30,38 @@ test("skipped_blacklist — case-insensitive substring match", () => {
   assert.equal(r.status, "skipped_blacklist");
 });
 
+test("blacklist — caseSensitive must match how the Set was compiled", () => {
+  // case_sensitive=false: MessageFilter lowercases the words, RegexStage
+  // lowercases the haystack -> a mixed-case hit still matches.
+  assert.equal(
+    stage.evaluate({
+      text: "Big STREAM starts now, come watch it live",
+      blacklist: new Set(["stream"]),
+      caseSensitive: false,
+    }).status,
+    "skipped_blacklist",
+  );
+  // case_sensitive=true: the word keeps its case and so does the haystack.
+  assert.equal(
+    stage.evaluate({
+      text: "Big STREAM starts now, come watch it live",
+      blacklist: new Set(["STREAM"]),
+      caseSensitive: true,
+    }).status,
+    "skipped_blacklist",
+  );
+  // case_sensitive=true with a wrong-case word -> no match (the latent bug
+  // this guards: RegexStage must NOT force-lowercase here).
+  assert.equal(
+    stage.evaluate({
+      text: "Big STREAM starts now, come watch it live",
+      blacklist: new Set(["stream"]),
+      caseSensitive: true,
+    }).status,
+    "ok",
+  );
+});
+
 test("blacklist does not fire when empty, null, or not matched", () => {
   const text = "Genuine content that should pass through cleanly";
   assert.equal(stage.evaluate({ text, blacklist: null }).status, "ok");

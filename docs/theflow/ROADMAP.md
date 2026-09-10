@@ -416,6 +416,25 @@ instead of silently corrupting the corpus.
 
 ### 2.8 `flow:stats`, `flow:export`, and hardening (`M`)
 
+> **Done (v4.9.0).**
+> - `node src/cli.js flow stats` — corpus rate, then TOTAL and per-source:
+>   status histogram, `skipped_repost` share, `raw_text` length (avg / max /
+>   buckets), `has_media && len < 200` share, `candidates.*` non-empty rate
+>   with samples. Aggregated in JS from one lean query; degrades to a notice
+>   on an empty corpus.
+> - `node src/cli.js flow export [--out f] [--limit n] [--status a,b]` —
+>   JSONL, one row per line, sanitized: no `channel_id` / `message_id` /
+>   `external_id` / `media_ref` / `entities` / enrichment fields; keeps
+>   content, `candidates`, `text_hash`, source name.
+> - Hardening: `caseSensitive` threaded `MessageFilter → FlowIngest →
+>   RegexStage.evaluate()` — the blacklist no longer silently misses when a
+>   source sets `case_sensitive: true` (test added). `Sources.sample.json`
+>   stripped of the `[Sponsored]…` / `@techchannel` no-op pair and the
+>   empty-pattern replacement.
+> - **Operator step left:** the same no-op replacements are copy-pasted across
+>   ~12 sources in the live `src/config/sources.json` (git-ignored) and its VPS
+>   copy — drop them there by hand, like the pilot config in 2.9.
+
 `flow:stats` (runs on the VPS) — per source and total: posts per day, histogram
 over `status`, share of `skipped_repost`, length distribution of `raw_text`,
 share of `has_media = true AND length(raw_text) < 200` (which decides vision per
