@@ -14,7 +14,9 @@ Inemuri/
 ├── LICENSE                                # Project license
 ├── SourceBuilder.html                     # Local UI helper for building source configs
 ├── database/
-│   └── pot.sqlite                         # Runtime SQLite database
+│   ├── pot.sqlite                         # Runtime SQLite database (git-ignored)
+│   └── migrations/                        # NNN-name.js schema migrations (npm run migrate)
+├── test/                                  # node --test suites (npm test)
 ├── docs/
 │   ├── ARCHITECTURE.md                    # High-level architecture map
 │   ├── DETAILED_OPTIMIZATION_EXPLANATION.md # Notes about performance-related changes

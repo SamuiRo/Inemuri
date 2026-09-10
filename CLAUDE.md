@@ -84,7 +84,9 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   explicit `ALTER TABLE` — never `sync({ alter: true })` against a real
   database (SQLite rebuilds the whole table). `database/` is git-ignored except
   `database/migrations/`.
-- There are no tests and no CI. `npm test` is a placeholder that exits 1.
+- Tests are `node --test` suites under `test/` (`*.test.js`, no dependency);
+  run with `npm test`. They cover the pure units only — `RegexStage`,
+  `FlowIngest` helpers, the media resolver. No CI runs them yet.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
 
@@ -96,5 +98,6 @@ npm run seed         # seed sources from src/config/Sources.json
 npm run seed:fresh   # clear all sources and reseed
 npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations
+npm test             # node --test suites under test/
 node src/cli.js list # list configured sources
 ```

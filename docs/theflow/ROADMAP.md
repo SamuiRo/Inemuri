@@ -386,6 +386,17 @@ turns phase 3.5 into an adapter instead of a refactor of the delivery path.
 
 ### 2.7 Test harness (`M`)
 
+> **Done (v4.8.0).** `npm test` = `node --test` (bare discovery of
+> `test/*.test.js`, no dependency, `.gitignore` no longer excludes `/test`).
+> Suites so far — everything pure that exists today:
+> `test/regex-stage.test.js` (all four rejection paths, the rejection order,
+> the five candidate extractors, normalize/hash), `test/flow-ingest-helpers.test.js`
+> (`_serializeEntities`, `_buildMediaRef`, `_hasRealMedia`, `_toDate`),
+> `test/media-resolver.test.js` (registry dispatch, `TelegramMediaResolver`
+> single/album with injected fakes). 23 tests, `npm test` exits 0. The
+> phase-1 units (schema/verbatim validation, cosine/`richness`, resolve,
+> `render`, quota ledger) get their suites as they land.
+
 `npm test` exits 1. That was tolerable while the codebase was I/O glue; it stops
 being tolerable at phase 1.
 
