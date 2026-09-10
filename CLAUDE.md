@@ -105,4 +105,5 @@ npm test             # node --test suites under test/
 node src/cli.js list # list configured sources
 node src/cli.js flow stats     # TheFlow corpus stats (per source + total)
 node src/cli.js flow export    # sanitized JSONL sample of the corpus
+node src/cli.js flow review    # label enriched posts into post_feedback
 ```

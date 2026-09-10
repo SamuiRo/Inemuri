@@ -687,6 +687,14 @@ timer -> Post.takePending(batch)
 
 ### 3.7 `flow:review` (`S`)
 
+> **Done (v4.13.0).** `node src/cli.js flow review [--limit n] [--topic t]`.
+> Walks `enriched` posts that have no `post_feedback` row yet, shows
+> `raw_text` / `text_en` / `topic` / `signal_type` / `confidence` /
+> `model_used` / `taxonomy_version`, and takes a one-key verdict
+> (`g` good / `n` noise / `w` wrong_topic — with an optional note / `s` skip /
+> `q` quit) into `post_feedback`. Input is read through readline's async
+> iterator, so it also works with `flow review < answers.txt`.
+
 Shows an enriched post — `raw_text`, `text_en`, `topic`, `signal_type`,
 `confidence`, `model_used` — and takes a one-key verdict into `post_feedback`.
 It makes shadow mode productive instead of a week of squinting at SQLite, and it

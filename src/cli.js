@@ -1,9 +1,10 @@
 import fs from "fs/promises";
+import readline from "node:readline/promises";
 
 import { Command } from "commander";
 import database from "./module/teapot/sqlite/sqlite_db.js";
 import SourceSeeder from "./module/seeders/Sourceseeder.js";
-import { Source, Post } from "./module/teapot/models/index.js";
+import { Source, Post, PostFeedback } from "./module/teapot/models/index.js";
 import { print } from "./shared/utils.js";
 
 const program = new Command();
@@ -343,6 +344,96 @@ flow
         process.stdout.write(out);
       }
 
+      await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+function truncateForReview(text, max = 400) {
+  const s = String(text ?? "");
+  return s.length <= max ? s : s.slice(0, max - 1) + "…";
+}
+
+flow
+  .command("review")
+  .description("Review enriched posts, write one-key labels to post_feedback")
+  .option("--limit <n>", "max posts this session", "50")
+  .option("--topic <t>", "only this topic")
+  .action(async (options) => {
+    try {
+      await database.connect();
+
+      const limit = Math.max(1, Number(options.limit) || 50);
+      const labelled = new Set(
+        (await PostFeedback.findAll({ attributes: ["post_id"] }))
+          .map((r) => r.post_id)
+          .filter((id) => id != null),
+      );
+
+      const where = { status: "enriched" };
+      if (options.topic) where.topic = options.topic;
+      const queue = (await Post.findAll({ where, order: [["createdAt", "ASC"]] }))
+        .filter((p) => !labelled.has(p.id))
+        .slice(0, limit);
+
+      if (queue.length === 0) {
+        print("No unreviewed enriched posts.", "success");
+        await database.disconnect();
+        return;
+      }
+
+      print(
+        `${queue.length} post(s) to review. Keys: [g]ood  [n]oise  [w]rong-topic  [s]kip  [q]uit`,
+        "system",
+      );
+      // Pull one line per prompt via readline's async iterator — this yields
+      // buffered lines one at a time (piped `flow review < answers.txt`) and
+      // live lines as typed (a TTY), and returns null cleanly at EOF.
+      const rl = readline.createInterface({ input: process.stdin });
+      const lines = rl[Symbol.asyncIterator]();
+      const ask = async (q) => {
+        process.stdout.write(q);
+        const { value, done } = await lines.next();
+        return done ? null : value;
+      };
+      const VERDICT = { g: "good", n: "noise", w: "wrong_topic" };
+
+      let written = 0;
+      for (const p of queue) {
+        print("", "info");
+        print(
+          `#${p.id}  ${p.topic}/${p.signal_type}  confidence=${p.confidence}  ` +
+            `model=${p.model_used}  taxv=${p.taxonomy_version}`,
+          "system",
+        );
+        print(`raw: ${truncateForReview(p.raw_text)}`);
+        print(`en : ${truncateForReview(p.text_en)}`);
+
+        const raw = await ask("> ");
+        if (raw === null) break; // EOF
+        const key = raw.trim().toLowerCase();
+        if (key === "q") break;
+        if (key === "s" || key === "") continue;
+
+        const verdict = VERDICT[key];
+        if (!verdict) {
+          print("unknown key — skipped", "warning");
+          continue;
+        }
+        let note = null;
+        if (verdict !== "good") {
+          const n = await ask("note (optional): ");
+          note = n && n.trim() ? n.trim() : null;
+        }
+        await PostFeedback.create({ post_id: p.id, verdict, note });
+        written += 1;
+        print(`recorded: ${verdict}`, "success");
+      }
+
+      rl.close();
+      print(`\nDone — ${written} label(s) written.`, "success");
       await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
