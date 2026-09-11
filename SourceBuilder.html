@@ -170,6 +170,25 @@
     border-radius: 20px; padding: 3px 10px 3px 12px; font-size: 0.75rem; color: var(--text2);
   }
   .tag.blacklist { background: var(--red-dim); border-color: rgba(255,94,122,0.2); color: var(--red); }
+  .tag.topic { cursor: pointer; user-select: none; transition: all 0.15s; }
+  .tag.topic:hover { border-color: var(--border2); color: var(--text); }
+  .tag.topic.on { background: var(--accent-dim); border-color: var(--accent); color: var(--accent2); }
+
+  /* THEFLOW */
+  .flow-badge {
+    font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    color: var(--accent2); border-radius: 20px; padding: 1px 7px; flex-shrink: 0;
+  }
+  .notice {
+    font-size: 0.72rem; line-height: 1.6; color: var(--text2);
+    background: var(--bg); border: 1px solid var(--border);
+    border-left: 2px solid var(--accent); border-radius: var(--radius);
+    padding: 8px 11px;
+  }
+  .notice.warn { border-left-color: var(--yellow); }
+  .notice b { color: var(--text); font-weight: 600; }
+  .flow-off { opacity: 0.45; pointer-events: none; }
   .tag.keyword { background: var(--green-dim); border-color: rgba(61,214,140,0.2); color: var(--green); }
   .tag .remove { cursor: pointer; color: inherit; opacity: 0.5; line-height: 1; font-size: 1rem; }
   .tag .remove:hover { opacity: 1; }
@@ -311,7 +330,43 @@
 let sources = [];
 let uid = 0;
 
-const PLATFORMS = ['telegram', 'discord', 'twitter', 'slack', 'reddit'];
+// Рівно ті, що приймає SourceSeeder.validateSource(). Reddit/news — фаза 3.5
+// дорожньої карти TheFlow; додавати сюди їх разом з адаптером, не раніше.
+const PLATFORMS = ['telegram', 'discord'];
+
+// Дзеркалить src/config/categories.json (version 1). Порожній вибір = null =
+// всі топіки. Тримати синхронним при бампі версії таксономії.
+const FLOW_TOPICS = ['steam', 'airdrop', 'crypto', 'tools', 'other'];
+
+// Дзеркалить FLOW_DEFAULTS у src/module/teapot/models/Source.js.
+const FLOW_DEFAULTS = {
+  enabled: false,
+  topics: null,
+  min_confidence: 0.6,
+  dedup_window_hours: null,
+  vision: { enabled: false, text_threshold: 200, max_images_per_post: 2 },
+};
+
+function defaultFlow() {
+  return { ...FLOW_DEFAULTS, vision: { ...FLOW_DEFAULTS.vision } };
+}
+
+/** Повний flow-конфіг із підставленими дефолтами — як getFlowConfig() у моделі. */
+function flowOf(src) {
+  const raw = (src && typeof src.flow === 'object' && src.flow) ? src.flow : {};
+  return { ...FLOW_DEFAULTS, ...raw, vision: { ...FLOW_DEFAULTS.vision, ...(raw.vision || {}) } };
+}
+
+/** Чи це недоторканий дефолт — такий блок не варто писати в JSON. */
+function isDefaultFlow(flow) {
+  return flow.enabled === false
+    && flow.topics === null
+    && Number(flow.min_confidence) === FLOW_DEFAULTS.min_confidence
+    && (flow.dedup_window_hours === null || flow.dedup_window_hours === undefined)
+    && flow.vision.enabled === false
+    && Number(flow.vision.text_threshold) === FLOW_DEFAULTS.vision.text_threshold
+    && Number(flow.vision.max_images_per_post) === FLOW_DEFAULTS.vision.max_images_per_post;
+}
 
 function genId() { return ++uid; }
 
@@ -326,7 +381,8 @@ function addSource(data = null) {
     mode: 'listener',
     text_replacements: { enabled: true, patterns: [] },
     filters: { enabled: true, keywords: [], blacklist: [], case_sensitive: false },
-    destinations: { telegram: [], discord: [] }
+    destinations: { telegram: [], discord: [] },
+    flow: defaultFlow()
   };
   sources.push(src);
   renderAll();
@@ -384,6 +440,7 @@ function buildCard(src) {
         <div class="card-subtitle">${escH(src.channel_id || 'no id')}</div>
       </div>
       <span style="font-size:0.62rem;color:var(--text3);background:var(--bg4);border:1px solid var(--border);border-radius:20px;padding:1px 8px;flex-shrink:0">${src.mode||'listener'}</span>
+      ${flowOf(src).enabled ? `<span class="flow-badge">flow${flowOf(src).vision.enabled ? ' + vision' : ''}</span>` : ''}
       <span class="status-dot ${src.is_active ? '' : 'off'}"></span>
       <button class="btn btn-danger btn-sm btn-icon" onclick="event.stopPropagation();removeSource(${src._id})" title="Remove">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
@@ -408,6 +465,8 @@ function buildCardBody(src) {
       <div class="field-group">
         <label>Platform</label>
         <select onchange="setField(${id},'platform',this.value)">
+          ${PLATFORMS.includes(src.platform) ? '' :
+            `<option value="${escH(src.platform||'')}" selected>${escH(src.platform||'(unset)')} — rejected by seeder</option>`}
           ${PLATFORMS.map(p => `<option value="${p}" ${src.platform===p?'selected':''}>${p}</option>`).join('')}
         </select>
       </div>
@@ -448,6 +507,13 @@ function buildCardBody(src) {
     <div>
       <div class="section-title">Filters</div>
       <div class="section-block">
+        ${flowOf(src).enabled ? `
+        <div class="notice warn">
+          TheFlow увімкнено — <b>keywords (whitelist) ігноруються</b>, працює лише
+          blacklist. Що релевантне, вирішує модель; whitelist різав би те, чого
+          вона ще не бачила. Blacklist лишається і дає статус
+          <b>skipped_blacklist</b>.
+        </div>` : ''}
         <div class="toggle-row">
           <div class="toggle ${src.filters?.enabled?'on':''}" onclick="toggleFilters(${id})" id="toggle-filters-${id}"></div>
           <span class="toggle-label">Enabled</span>
@@ -517,6 +583,98 @@ function buildCardBody(src) {
               </div>`).join('')}
           </div>
           <button class="btn btn-ghost btn-sm" style="margin-top:6px;width:100%" onclick="addDestination(${id},'discord')">＋ Discord destination</button>
+        </div>
+      </div>
+    </div>
+
+    ${buildFlowSection(src)}
+  `;
+}
+
+/**
+ * TheFlow — docs/theflow/DATA_MODEL.md §sources.flow.
+ * Форма дзеркалить FLOW_DEFAULTS у моделі Source; порожній dedup_window_hours
+ * означає null (успадкувати з категорії), порожній набір топіків — null (усі).
+ */
+function buildFlowSection(src) {
+  const id = src._id;
+  const f = flowOf(src);
+  const topics = Array.isArray(f.topics) ? f.topics : [];
+
+  return `
+    <div>
+      <div class="section-title">TheFlow</div>
+      <div class="section-block">
+        <div class="toggle-row">
+          <div class="toggle ${f.enabled?'on':''}" onclick="toggleFlow(${id})" id="toggle-flow-${id}"></div>
+          <span class="toggle-label">Enabled</span>
+        </div>
+
+        ${f.enabled ? `
+        <div class="notice">
+          Фаза 1 — <b>shadow mode</b>. Пости цього джерела йдуть у таблицю
+          <b>posts</b>, збагачуються моделлю і там лишаються: routing за
+          вердиктами з'явиться у фазі 2. Поки TheFlow увімкнено,
+          <b>destinations вище не використовуються</b> — джерело перестає
+          форвардитись класично.
+        </div>` : `
+        <div class="notice">
+          Вимкнено — джерело йде класичним форвардингом у destinations вище.
+          Увімкнення перемикає його на конвеєр TheFlow.
+        </div>`}
+
+        <div class="${f.enabled ? '' : 'flow-off'}">
+          <div style="margin-bottom:10px">
+            <label style="margin-bottom:6px;display:block">Topics — порожньо = всі</label>
+            <div class="tags-area" id="flow-topics-${id}">
+              ${FLOW_TOPICS.map(t => `
+                <span class="tag topic ${topics.includes(t)?'on':''}" onclick="toggleFlowTopic(${id},'${t}')">${t}</span>`).join('')}
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label>Min confidence</label>
+              <input type="text" inputmode="decimal" placeholder="0.6"
+                     value="${f.min_confidence ?? ''}"
+                     oninput="setFlowNumber(${id},'min_confidence',this.value,{min:0,max:1})">
+            </div>
+            <div class="field-group">
+              <label>Dedup window (h) — порожньо = з категорії</label>
+              <input type="text" inputmode="numeric" placeholder="inherit"
+                     value="${f.dedup_window_hours ?? ''}"
+                     oninput="setFlowNumber(${id},'dedup_window_hours',this.value,{min:0,integer:true,nullable:true})">
+            </div>
+          </div>
+
+          <div style="margin-top:12px">
+            <div class="toggle-row">
+              <div class="toggle ${f.vision.enabled?'on':''}" onclick="toggleFlowVision(${id})" id="toggle-vision-${id}"></div>
+              <span class="toggle-label">Vision (OCR скріншотів)</span>
+            </div>
+            ${f.vision.enabled ? `
+            <div class="notice warn" style="margin-top:8px">
+              Фаза 1.5, <b>ще не реалізована</b> — <code>LLMGateway.vision()</code>
+              зараз кидає помилку. Прапорець можна виставити наперед, але до
+              фази 1.5 він ні на що не впливає. Вмикати варто лише там, де
+              <code>flow stats</code> показує високу частку
+              «has_media &amp; len &lt; 200».
+            </div>` : ''}
+            <div class="field-row ${f.vision.enabled ? '' : 'flow-off'}" style="margin-top:8px">
+              <div class="field-group">
+                <label>Text threshold</label>
+                <input type="text" inputmode="numeric" placeholder="200"
+                       value="${f.vision.text_threshold ?? ''}"
+                       oninput="setFlowNumber(${id},'vision.text_threshold',this.value,{min:0,integer:true})">
+              </div>
+              <div class="field-group">
+                <label>Max images / post</label>
+                <input type="text" inputmode="numeric" placeholder="2"
+                       value="${f.vision.max_images_per_post ?? ''}"
+                       oninput="setFlowNumber(${id},'vision.max_images_per_post',this.value,{min:0,integer:true})">
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -614,6 +772,69 @@ function toggleReplacements(id) {
   if (!src.text_replacements) src.text_replacements = {};
   src.text_replacements.enabled = !src.text_replacements.enabled;
   updateToggle('toggle-repl-' + id, src.text_replacements.enabled);
+  updateOutput();
+}
+
+// ── TheFlow ────────────────────────────────────────────────────────
+// Топіки/чекбокси міняють видимі блоки (notice, disabled-стан), тому тут
+// повний re-render картки, а не точкове updateToggle().
+
+function ensureFlow(src) {
+  if (!src.flow || typeof src.flow !== 'object') src.flow = defaultFlow();
+  if (!src.flow.vision || typeof src.flow.vision !== 'object') {
+    src.flow.vision = { ...FLOW_DEFAULTS.vision };
+  }
+  return src.flow;
+}
+
+function toggleFlow(id) {
+  const src = getSrc(id);
+  const flow = ensureFlow(src);
+  flow.enabled = !flow.enabled;
+  refreshCard(id);
+}
+
+function toggleFlowVision(id) {
+  const src = getSrc(id);
+  const flow = ensureFlow(src);
+  flow.vision.enabled = !flow.vision.enabled;
+  refreshCard(id);
+}
+
+function toggleFlowTopic(id, topic) {
+  const src = getSrc(id);
+  const flow = ensureFlow(src);
+  const list = Array.isArray(flow.topics) ? flow.topics.slice() : [];
+  const at = list.indexOf(topic);
+  if (at === -1) list.push(topic); else list.splice(at, 1);
+  // Порожній вибір = null = всі топіки. Не [] — модель читає null.
+  flow.topics = list.length ? list : null;
+  refreshCard(id);
+}
+
+/**
+ * Числове поле flow. Порожній рядок → null, якщо поле nullable, інакше
+ * значення не чіпаємо (щоб очищення поля не писало 0 у конфіг).
+ * Пише лише валідне число — рядок у JSON тут гірший за відсутність правки.
+ */
+function setFlowNumber(id, path, raw, opts = {}) {
+  const src = getSrc(id);
+  const flow = ensureFlow(src);
+  const [head, tail] = path.split('.');
+  const target = tail ? flow[head] : flow;
+  const key = tail || head;
+
+  const text = String(raw).trim();
+  if (text === '') {
+    if (opts.nullable) { target[key] = null; updateOutput(); }
+    return;
+  }
+  let n = Number(text.replace(',', '.'));
+  if (!Number.isFinite(n)) return;
+  if (opts.integer) n = Math.round(n);
+  if (opts.min !== undefined && n < opts.min) n = opts.min;
+  if (opts.max !== undefined && n > opts.max) n = opts.max;
+  target[key] = n;
   updateOutput();
 }
 
@@ -760,6 +981,27 @@ function buildJSON() {
         if (clean.destinations[k].length === 0) delete clean.destinations[k];
       });
       if (Object.keys(clean.destinations).length === 0) clean.destinations = {};
+    }
+    // flow: недоторканий дефолт не пишемо — джерела класичного форвардингу
+    // лишаються такими ж чистими, як були. Модель усе одно підставить
+    // дефолти (Source.getFlowConfig), тож відсутній блок = вимкнений TheFlow.
+    if ('flow' in clean) {
+      const f = flowOf(clean);
+      if (isDefaultFlow(f)) {
+        delete clean.flow;
+      } else {
+        clean.flow = {
+          enabled: Boolean(f.enabled),
+          topics: Array.isArray(f.topics) && f.topics.length ? f.topics : null,
+          min_confidence: Number(f.min_confidence),
+          dedup_window_hours: f.dedup_window_hours == null ? null : Number(f.dedup_window_hours),
+          vision: {
+            enabled: Boolean(f.vision.enabled),
+            text_threshold: Number(f.vision.text_threshold),
+            max_images_per_post: Number(f.vision.max_images_per_post),
+          },
+        };
+      }
     }
     // clean patterns
     if (clean.text_replacements?.patterns) {

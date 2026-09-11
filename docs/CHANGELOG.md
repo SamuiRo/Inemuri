@@ -7,6 +7,37 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.14.0] - 2026-09-11
+
+### Added
+- `SourceBuilder.html` — a **TheFlow section** per source, so enabling the
+  pilot (ROADMAP §2.9) no longer requires hand-editing `sources.json`:
+  `enabled`, `topics` (chips over the five `categories.json` v1 topics; none
+  selected = `null` = all), `min_confidence`, `dedup_window_hours` (empty =
+  `null` = inherit from the category), and the `vision` sub-object
+  (`enabled`, `text_threshold`, `max_images_per_post`). A `flow` / `flow +
+  vision` badge on the collapsed card header shows which sources are on
+  without expanding them.
+- Two notices the editor can state and a JSON file cannot. In **Filters**,
+  when flow is on: keywords (whitelist) are ignored for flow sources, only
+  the blacklist applies. In **TheFlow**: phase 1 is shadow mode, so the
+  source stops forwarding classically and its `destinations` go unused; and
+  the vision toggle is phase 1.5, not yet implemented.
+
+### Fixed
+- The platform dropdown offered `twitter`, `slack` and `reddit`, which
+  `SourceSeeder.validateSource()` rejects — the failure only surfaced at
+  `npm run seed`. It now offers `telegram` and `discord` only. A source
+  imported with some other platform keeps its value verbatim (nothing is
+  silently rewritten) and is shown in the dropdown labelled
+  `— rejected by seeder`.
+
+### Notes
+- A `flow` block that is untouched default is omitted from the output, so
+  classic sources stay exactly as clean as they were. Verified by round trip:
+  importing a mixed file and exporting it returns a classic source
+  byte-identical and an enabled `flow` block unchanged.
+
 ## [4.13.2] - 2026-09-11
 
 An audit of every TheFlow `Done` claim against the tree. The claims held; three

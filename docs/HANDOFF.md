@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.13.2`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.14.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -30,11 +30,10 @@ implemented" as "the code exists and its units pass", not as "it works against
 a live provider"; the first real run is still ahead and is what the next steps
 below are for.
 
-`SourceBuilder.html` (the source-config editor) is current for the classic
-fields and safely preserves an existing `flow` block on import → export, but it
-has **no UI for `flow`** and offers platforms the seeder rejects — see
-[ROADMAP.md](theflow/ROADMAP.md) §2.9. Enabling the pilot is a hand edit of
-`src/config/sources.json`.
+`SourceBuilder.html` (the source-config editor, opened straight from the
+filesystem — no build step) covers the whole source shape as of `v4.14.0`,
+`flow` and `vision` included. Enabling the pilot is: import the live
+`src/config/sources.json`, switch the chosen sources on, export, reseed.
 
 ## Next steps
 

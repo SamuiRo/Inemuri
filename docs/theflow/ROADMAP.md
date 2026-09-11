@@ -476,16 +476,17 @@ channel turns out to be listener-mode, switch it to `both` rather than
 
 Do **not** include Source M until the stale checkpoint from 1.2 is explained.
 
-**Edit `src/config/sources.json` by hand for this.** `SourceBuilder.html` — the
-source-config editor at the repo root — predates TheFlow (April) and has no UI
-for the `flow` block. It is not *dangerous*: `buildJSON()` spreads each source
-object, so an existing `flow` block survives an import → export round trip
-untouched. But it cannot create or toggle one, and its platform dropdown offers
-`twitter` / `slack` / `reddit`, which `SourceSeeder.validateSource()` rejects —
-only `telegram` and `discord` seed. Giving it a `flow` section (the toggle,
-`topics`, `min_confidence`, `dedup_window_hours`, and the `vision` sub-object)
-is a worthwhile `S`, and the right moment is here, when the pilot is being
-turned on.
+> **Editor ready (v4.14.0).** `SourceBuilder.html` now has a TheFlow section
+> per source — the toggle, `topics` chips, `min_confidence`,
+> `dedup_window_hours`, and the `vision` sub-object — plus the two warnings a
+> JSON file cannot give you (flow sources ignore the whitelist; phase 1 shadow
+> mode means `destinations` go unused). Its platform dropdown no longer offers
+> the three values the seeder rejects. An untouched default `flow` block is
+> omitted from the output, so classic sources stay clean.
+
+Import the live `src/config/sources.json` into the editor, switch the pilot
+sources on, export, and reseed. The remaining work here is **operator
+judgement, not code**: which channels, and reading what comes out.
 
 ### Phase 0.5 exit criteria
 
