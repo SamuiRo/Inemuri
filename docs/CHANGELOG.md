@@ -1,0 +1,214 @@
+> **Role:** Per-version record of what shipped and why · **Audience:** Anyone deciding whether a change affects them, or tracing when a behavior changed
+
+This changelog starts at `v4.3.1`. Earlier versions (`v1.0.0` through `v4.3.0`)
+predate it — see `git log` for that history, and
+[docs/theflow/ROADMAP.md](theflow/ROADMAP.md) §0–1 for the state TheFlow was
+in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
+(patch = docs/tests/cleanup, minor = new capability, major = a large body of
+work closes out) — see `CLAUDE.md` § Versioning.
+
+## [4.13.0] - 2026-09-10
+
+### Added
+- `node src/cli.js flow review [--limit n] [--topic t]` — walks `enriched`
+  posts with no `post_feedback` row, shows the verdict, takes a one-key label
+  (`g` good / `n` noise / `w` wrong_topic + optional note / `s` skip / `q`
+  quit) into `post_feedback`. Input via readline's async iterator, so
+  `flow review < answers.txt` works too. (ROADMAP §3.7 — closes Phase 1's
+  buildable scope.)
+
+## [4.12.0] - 2026-09-10
+
+### Added
+- `src/services/ai/LLMGateway.js` + `internal.js` (`TokenBucket`,
+  `CircuitBreaker`, `TtlCache`): `enrich()` / `embed()` behind a 3-lane
+  priority queue with a concurrency cap. Capability routing over
+  `[LLM_PRIMARY, LLM_FALLBACK]`, a per-provider RPM bucket, the persistent RPD
+  ledger, a per-provider circuit breaker (opens on the first server/network
+  failure, half-opens after a cool-off), a cache keyed on normalized input
+  plus taxonomy version, the full fallback matrix from `LLM_GATEWAY.md`
+  (`rate_limit` retries the same provider; `quota` marks it exhausted and
+  moves on; `server`/`network` trips the breaker; `bad_response` retries once
+  then moves on), tiering kept distinct from fallback, and priority shedding
+  near the quota reserve (`{ shed: true }`, never `failed`). `embed()` returns
+  `null` when no provider advertises the capability — dedup degrades to tier 1.
+- `src/module/theflow/EnrichWorker.js`: a chained `setTimeout` tick (batches
+  cannot overlap), `Post.claimPending()` bumping `attempts` in one statement
+  before the gateway call (ROADMAP §13.1 — no `enriching` status, a crash
+  mid-call still counts toward the retry cap), `enrich()` → `embed()` →
+  `UPDATE ... status='enriched'` with `model_used`, `taxonomy_version`, and the
+  embedding BLOB. A shed response leaves the post `pending`; a gateway error
+  retries up to `ENRICH_MAX_ATTEMPTS` then marks `failed` with `last_error`. A
+  missing embedding still yields `enriched`. Imports only `posts` and config —
+  no Telegram/Discord/event-bus dependency.
+- Wired into `src/inemuri.js` behind `ENRICH_WORKER_ENABLED` and a primary
+  provider API key; dormant (no-op) without one. `.env.example` documents the
+  `LLM_*` variables.
+
+### Changed
+- `npm test` now runs `node --test --test-concurrency=1` — DB-backed suites
+  hit the one SQLite file and were racing under the runner's default
+  parallelism.
+
+## [4.11.0] - 2026-09-10
+
+### Added
+- `app.config.js`: `LLM_*` gateway constants and `LLM_PROVIDERS` (per-provider
+  key/model-ids/base URL/RPD/RPM, read from env — Gemini has working
+  defaults, OpenRouter's model ids are `null` until chosen).
+- Migration `005-provider-quota` + `ProviderQuota` model: a persistent
+  per-`(provider, day_utc)` request counter with `exhausted_at`, so the LLM
+  gateway's daily-quota accounting survives a process restart.
+- `src/services/ai/providers/`: `BaseProvider` (the `complete()` /
+  `embed()` / `vision()` contract, `capabilities()` derived from config, and
+  HTTP error classification into `rate_limit` / `quota` / `server` /
+  `network`), `GeminiProvider` (Generative Language API, structured output,
+  unit-normalized embeddings), `OpenAICompatProvider` (base-URL parameterized
+  chat-completions + embeddings, covering OpenRouter and similar APIs;
+  `embed()` throws when no embed model is configured — the OpenRouter case
+  from §3.1).
+
+## [4.10.0] - 2026-09-10
+
+### Added
+- `src/config/categories.json` v1 — the TheFlow taxonomy drafted against the
+  real 14 sources (ROADMAP appendix A): topics `steam / airdrop / crypto /
+  tools / other`, 11 signals including `security` / `giveaway_result` /
+  `stream`, `routing: []` with `unsorted_destinations` pointing at the current
+  single firehose (the correct shadow-mode configuration). Exposed as
+  `CATEGORIES` from `app.config.js`.
+- `src/services/ai/schemas.js` — `enrichResponseSchema()` for provider
+  structured output, `validateStructural()` (closed-enum `topic` /
+  `signal_type`, typed fields), `validateVerbatim()` (strips promo codes and
+  tickers not present in `raw_text`; deliberately leaves `entities.project`
+  alone — see the note below).
+- `src/services/ai/prompts/enrich.js` — `buildEnrichPrompt()`: taxonomy
+  descriptions injected into the system prompt, `text_en` produced first,
+  `temperature: 0`, and the source text (plus OCR text, once that exists)
+  wrapped in a per-call nonced `<<<UNTRUSTED …>>>` block the model is told to
+  treat as data, never instructions.
+
+### Fixed
+- `docs/theflow/TAXONOMY.md`'s example JSON put `dedup_window_hours` on each
+  **topic**; `DEDUPLICATION.md`'s table keys it by **signal** (a `promo_code`
+  is stale in hours regardless of topic, `analysis` in days). The shipped
+  `categories.json` follows `DEDUPLICATION.md`; `TAXONOMY.md` now says so
+  explicitly instead of silently disagreeing with the real file.
+
+### Note
+- Verbatim validation only strips literal quotes — `extracted.promo_codes[].code`
+  and `entities.tickers[]`. `entities.project` is intentionally not checked:
+  a project name is legitimately transliterated or translated away from the
+  source spelling, and rejecting a real one would cost more than an
+  occasional wrong one the reader sees in context.
+
+## [4.9.1] - 2026-09-10
+
+### Added
+- `docs/DEPLOYMENT.md` and `ecosystem.config.cjs` for the pm2 VPS deploy
+  (ROADMAP §2.3). The actual deploy is an operator step, not automated here.
+
+## [4.9.0] - 2026-09-10
+
+### Added
+- `node src/cli.js flow stats` — per-source and total corpus stats: status
+  histogram, `skipped_repost` share, `raw_text` length distribution, the
+  `has_media && length(raw_text) < 200` vision-candidate share, and how often
+  each `candidates.*` list is non-empty, with samples.
+- `node src/cli.js flow export [--out f] [--limit n] [--status a,b]` —
+  sanitized JSONL sample (no `channel_id` / `message_id` / `external_id` /
+  `media_ref` / `entities`) for local prompt work.
+
+### Fixed
+- `caseSensitive` is now threaded `MessageFilter → FlowIngest →
+  RegexStage.evaluate()`. Previously `RegexStage` always lowercased its
+  blacklist comparison, so a source with `filters.case_sensitive: true` had a
+  blacklist that silently stopped matching (latent — every source currently
+  has `case_sensitive: false`, so nothing broke in production, but the bug
+  was live).
+- `Sources.sample.json` stripped of the copy-pasted `[Sponsored]…`/`@techchannel`
+  no-op replacement pair and an empty-pattern replacement — junk config that
+  was propagating into every new source built from the sample.
+
+## [4.8.0] - 2026-09-10
+
+### Added
+- A real test harness: `npm test` runs `node --test` (bare discovery of
+  `test/*.test.js`, no new dependency). Initial suites cover `RegexStage`
+  (the four rejection paths, their order, the five candidate extractors),
+  `FlowIngest`'s static helpers, and the media resolver.
+- `.gitignore` no longer excludes `/test`.
+
+## [4.7.0] - 2026-09-10
+
+### Added
+- `BaseDestinationAdapter.describeSent()` and `MessageRouter.sendToDestination()`
+  now return `{ platform, channel_id, message_id, sent_at }` instead of a
+  boolean; `routeMessage()` collects these into `delivered[]` and adds it to
+  the `message.routed` event. Needed so a later TheFlow delivery stage can
+  edit a message it already sent.
+- `BaseDestinationAdapter.capabilities()` (`{ edit: false }` by default) and
+  an `editMessage()` that throws unless a subclass overrides it.
+  `DiscordDestination.editMessage()` implemented (it did not exist before);
+  Telegram's now accepts a string or a raw GramJS edit payload.
+- `post_feedback` table, `PostFeedback` model, migration `004-post-feedback`.
+
+### Changed
+- Classic (non-TheFlow) forwarding is unaffected — `sendToDestination`'s
+  richer return value is additive, and nothing in the classic path reads it.
+
+## [4.6.0] - 2026-09-10
+
+### Added
+- `src/module/theflow/media/`: `MediaResolver` (a registry keyed on
+  `media_ref.kind`) and `TelegramMediaResolver` (re-fetches by `media_ref`
+  through GramJS, handling albums with a 10-wide id window filtered by
+  `grouped_id`, then reuses the existing `TelegramMediaDownloader`). Not yet
+  wired into a delivery path — there isn't one until Phase 2 — but ready for
+  it to import.
+
+## [4.5.0] - 2026-09-10
+
+### Added
+- `posts` gained `platform`, `external_id`, `external_url`, `title`,
+  `author`, `media_ref`, `entities`, `embedding_model`, `embedding_dim`
+  (migration `002-generalize-sources`), and `source_states` gained `cursor`
+  (migration `003-source-cursor`) — the schema work needed before a
+  non-Telegram source (Reddit, RSS) can exist.
+- Post identity moved from `UNIQUE(channel_id, message_id)` to
+  `UNIQUE(source_id, external_id)`; `FlowIngest` and `Post.ingest` updated to
+  match. `scripts/backfill-image-hash.js` now resolves media through
+  `media_ref` instead of the legacy Telegram-only columns.
+
+### Changed
+- `posts.message_id` keeps its `NOT NULL` and is still written for Telegram
+  rows rather than becoming nullable — nothing reads it any more, and a later
+  migration drops the column outright once a non-Telegram adapter exists.
+  Chosen so every migration in this set stays a plain `ADD COLUMN` / index
+  change with no SQLite table rebuild.
+
+## [4.4.0] - 2026-09-10
+
+### Added
+- A hand-rolled migration runner: `npm run migrate` / `npm run migrate:status`,
+  a `schema_migrations` ledger table, one backup per run into
+  `database/backups/`, and a refusal to run under `NODE_ENV=development`.
+  `database/migrations/001-theflow-phase0.js` wraps the original one-off
+  script — it creates the Phase 0 schema on a fresh database and adopts it on
+  one that already has it.
+
+### Removed
+- `scripts/migrate-theflow-phase0.js` and the unused `sequelize-cli`
+  dependency (its migrations are CJS and don't fit this project's ESM setup).
+
+### Changed
+- `.gitignore`: `database/` is ignored except `database/migrations/`, which
+  must be version-controlled.
+
+## [4.3.1] - 2026-09-10
+
+### Added
+- `scripts/estimate-volume.js` — one-pass messages/day estimate per Telegram
+  source, comparing the current last-message id against each source's
+  `source_states` checkpoint and its own baseline date. Answers "how much
+  traffic will reach the AI" before any provider is chosen (ROADMAP §2.1).

@@ -9,8 +9,11 @@ configured sources, normalizes into a shared event pipeline, filters, and routes
 to destinations. Currently Telegram ingestion, Telegram and Discord delivery,
 and cron jobs.
 
-Start with [README.md](README.md) for behavior and configuration, and
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo map and runtime flow.
+Start with [docs/HANDOFF.md](docs/HANDOFF.md) for current state and next
+steps, [README.md](README.md) for behavior and configuration, and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the repo map and runtime
+flow. [docs/CHANGELOG.md](docs/CHANGELOG.md) has the per-version record of
+what shipped and why.
 
 ## Naming
 
@@ -18,8 +21,11 @@ Start with [README.md](README.md) for behavior and configuration, and
 
 **TheFlow is a subsystem of Inemuri**, not a separate product or a peer system.
 It is the part responsible for producing a stream of validated, categorized,
-deduplicated posts. It is specified but **not implemented** — see
-[docs/THEFLOW.md](docs/THEFLOW.md) and `docs/theflow/`.
+deduplicated posts. Phase 0 (persistence) and Phase 1 (LLM gateway and
+enrichment, shadow mode, dormant without a provider key) are **implemented**;
+later phases are still specification — see [docs/THEFLOW.md](docs/THEFLOW.md)
+and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
+per-task status).
 
 Never describe TheFlow as standing alongside or on top of Inemuri; it is inside it.
 

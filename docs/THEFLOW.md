@@ -1,8 +1,12 @@
 # TheFlow
 
-> **Status:** Phase 0 (persistence without AI) is implemented. Phases 1–6 are
-> still specification only. This file is the entry point; detailed specs live in
-> `docs/theflow/`.
+> **Status:** Phase 0 (persistence without AI) is implemented. Phase 1 (LLM
+> gateway and enrichment, shadow mode) is implemented but **dormant** — it
+> only runs once a primary provider API key is configured. Phase 1.5 and
+> phases 2–5 are still specification only. This file is the entry point;
+> detailed specs and the per-task status live in `docs/theflow/`, in
+> particular [ROADMAP.md](theflow/ROADMAP.md) §2–3 and
+> [CHANGELOG.md](CHANGELOG.md).
 
 ## What TheFlow is
 
@@ -148,10 +152,18 @@ outbound network calls" invariant. `has_media` is recorded at ingest;
 `image_hash` is filled by a separate pass — `scripts/backfill-image-hash.js`
 (dHash via `sharp`, rate-limited, resumable).
 
-### Phase 1 — gateway plus enrichment in shadow mode
+### Phase 1 — gateway plus enrichment in shadow mode ✅ implemented, dormant
 
-`LLMGateway` with one provider, `categories.json`, the enrichment worker.
-Verdicts are written to `posts`, but **routing ignores them**.
+`LLMGateway` (provider registry, RPM/RPD limits, cache, circuit breaker,
+priority queue, fallback matrix), `categories.json` v1, and the enrichment
+worker are all built — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3 for the
+full breakdown per task. Verdicts are written to `posts`, but **routing
+ignores them**, and the worker itself does not start without a primary
+provider API key in `.env`.
+
+**Still open before this phase is actually running:** the provider decisions
+in §11/§3.1 — which Gemini and OpenRouter model ids, whether the OpenRouter
+account exposes embeddings, a vision provider, and measured RPD/RPM.
 
 Exit gate: a week of comparing verdicts against your own judgment before
 enabling enforcement. Without it there is no basis for trusting the

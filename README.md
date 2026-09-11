@@ -404,16 +404,28 @@ source with `"flow": { "enabled": true }` in `Sources.json`, then
 `npm run migrate` once. Classic forwarding is unchanged and stays
 available per source; sources without `flow.enabled` behave exactly as before.
 
-Phases 1–6 (LLM gateway, enrichment, content routing, deduplication, entity
-extraction, vision) are still specification.
+**Phase 1 (LLM gateway and enrichment, shadow mode) is implemented but
+dormant.** The provider layer, `LLMGateway`, `categories.json` v1, and the
+enrichment worker all exist and are wired into `src/inemuri.js` — but the
+worker only starts once a primary provider API key is set in `.env`; without
+one, `pending` posts simply accumulate and nothing else changes. Even running,
+routing still ignores its verdicts (`LLM_SHADOW_MODE`). See
+[docs/theflow/ROADMAP.md](docs/theflow/ROADMAP.md) §3 for what's built versus
+what still needs live provider decisions.
 
-- [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases, Phase 0 status
+Phase 1.5 and phases 2–5 (vision, content routing, deduplication, entity
+extraction, digests) are still specification.
+
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped
+- [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases, current status
 
 ## Additional documentation
 
+- [docs/HANDOFF.md](docs/HANDOFF.md): current state and next steps — start here
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped and why
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): project structure and runtime architecture
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): pm2 deploy and schema-migration procedure
-- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 implemented, later phases specified)
+- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 and Phase 1 implemented, later phases specified)
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
 - [docs/USE_EMBED.md](docs/USE_EMBED.md): media and Discord embed behavior
 - [docs/DETAILED_OPTIMIZATION_EXPLANATION.md](docs/DETAILED_OPTIMIZATION_EXPLANATION.md): optimization notes
