@@ -238,9 +238,10 @@ ingestion pipeline.
 `ENRICH_WORKER_ENABLED` and a primary-provider API key — with no key set the
 worker never starts, and `pending` posts simply accumulate. When it runs, it
 drains `pending` → `enriched` (writing `topic` / `signal_type` / `confidence`
-/ `analysis` / `model_used` / `taxonomy_version` / `embedding`), and routing
-still ignores the verdicts (`LLM_SHADOW_MODE`). Provider decisions and RPD
-measurement (ROADMAP §3.1, §11) are still open.
+/ `analysis` / `model_used` / `taxonomy_version` / `embedding`), and nothing
+reads the verdicts — in phase 1 shadow mode is structural, not a flag: the
+routing consumer that would act on a verdict does not exist until phase 2.
+Provider decisions and RPD measurement (ROADMAP §3.1, §11) are still open.
 
 Two design points that shape the remaining work:
 

@@ -2,8 +2,10 @@
 
 ## Current state
 
-`v4.13.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
-enrichment, shadow mode) are both **implemented**. Phase 1 is **dormant**:
+`v4.13.2`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+enrichment, shadow mode) are both **implemented in code, and have never yet
+run on real data** — the corpus is empty, no source is flow-enabled, and no
+provider key is set. Phase 1 is **dormant**:
 `src/module/theflow/EnrichWorker.js` only starts when a primary provider API
 key is set in `.env` (`ENRICH_WORKER_ENABLED` + `LLM_PROVIDERS[LLM_PRIMARY].apiKey`
 in `src/config/app.config.js`); without one, flow-enabled sources ingest into
@@ -18,6 +20,21 @@ status (every finished task there carries a `> **Done (vX.Y.Z).**` note).
 The dev copy's database and its own live `src/config/sources.json` (14
 sources, none yet flow-enabled) are git-ignored — only what's under
 `database/migrations/` is version-controlled.
+
+Audited against the code on 2026-09-11: all five migrations are applied on the
+dev database, `npm test` is 80 green, and every `Done` note in
+[theflow/ROADMAP.md](theflow/ROADMAP.md) matches what is actually in the tree.
+What the docs cannot show is that `posts`, `post_feedback` and `provider_quota`
+are all **empty** — nothing has flowed through the pipeline yet. Treat "Phase 1
+implemented" as "the code exists and its units pass", not as "it works against
+a live provider"; the first real run is still ahead and is what the next steps
+below are for.
+
+`SourceBuilder.html` (the source-config editor) is current for the classic
+fields and safely preserves an existing `flow` block on import → export, but it
+has **no UI for `flow`** and offers platforms the seeder rejects — see
+[ROADMAP.md](theflow/ROADMAP.md) §2.9. Enabling the pilot is a hand edit of
+`src/config/sources.json`.
 
 ## Next steps
 

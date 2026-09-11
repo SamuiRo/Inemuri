@@ -249,7 +249,6 @@ export const LLM_TIER_UP   = process.env.LLM_TIER_UP   || null;
 export const LLM_TIER_UP_BELOW = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
 export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
 export const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 30_000);
-export const LLM_SHADOW_MODE = process.env.LLM_SHADOW_MODE === "true";
 
 // Cache and shedding. Plain constants, mirroring DEDUP_TTL_MS / DEDUP_MAX_SIZE.
 export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;
@@ -272,8 +271,13 @@ to discover it through `429`s.
 Provider keys go in `.env` like every other secret. `.env.example` is updated
 alongside phase 1.
 
-`LLM_SHADOW_MODE=true` means verdicts are written to the database but routing
-ignores them. This is the default mode during phase 1.
+**There is no shadow-mode flag in phase 1**, and this document previously
+specified one. Shadow mode is what the structure *is* while the gateway and the
+enrichment worker exist and the routing consumer does not: verdicts are written
+to `posts` and nobody reads them. A settable flag whose only possible value is
+its default is a switch an operator can flip with no effect — worse than no
+switch, because it implies a capability that isn't there. `LLM_SHADOW_MODE`
+arrives in phase 2, together with the routing code it will gate (ROADMAP §5).
 
 ## Module layout
 

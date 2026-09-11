@@ -68,8 +68,10 @@ export const LLM_TIER_UP        = process.env.LLM_TIER_UP  || null; // силь�
 export const LLM_TIER_UP_BELOW  = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
 export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
 export const LLM_TIMEOUT_MS     = Number(process.env.LLM_TIMEOUT_MS || 30_000);
-// Verdicts пишуться в БД, але routing їх ігнорує. Дефолт фази 1.
-export const LLM_SHADOW_MODE    = process.env.LLM_SHADOW_MODE !== "false";
+// Прапорця shadow mode тут немає навмисно. У фазі 1 shadow — це властивість
+// структури, а не конфігу: вердикти пише EnrichWorker, а читача вердиктів
+// (routing) ще не існує. Перемикач з'явиться разом із ним у фазі 2, і саме
+// тоді він щось вимикатиме. Див. ROADMAP §3.6, §5.
 
 // Кеш і shedding — прості константи, дзеркалять DEDUP_TTL_MS / DEDUP_MAX_SIZE.
 export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;

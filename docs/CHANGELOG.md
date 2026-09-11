@@ -7,6 +7,43 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.13.2] - 2026-09-11
+
+An audit of every TheFlow `Done` claim against the tree. The claims held; three
+things around them did not.
+
+### Removed
+- `LLM_SHADOW_MODE` from `src/config/app.config.js` and `.env.example`. It was
+  exported, documented as a settable env var, and **read by nothing** — a
+  switch an operator could flip expecting routing to change, with no reader on
+  the other end. In phase 1 shadow mode is structural, not configurable: the
+  worker writes verdicts and no consumer of them exists. The flag comes back
+  with the routing consumer in phase 2, when it will actually gate something.
+
+### Fixed
+- `docs/theflow/ROADMAP.md` §3.6 said the worker is wired behind
+  `LLM_SHADOW_MODE`; the real gate is `ENRICH_WORKER_ENABLED` plus a primary
+  provider API key. (§3.6's `Done` note already said so — the spec text above
+  it did not.)
+- §3.2 (provider layer) was the one finished task with no `> **Done (vX.Y.Z).**`
+  note, which read as "not started" next to its neighbours. It shipped in
+  `v4.11.0`; the note now records what is in the tree, including
+  `classifyHttpError()`'s 429 split and the injectable axios seam the test
+  suites depend on.
+- `docs/HANDOFF.md` claimed `v4.13.0` while `package.json` said `4.13.1`.
+- `docs/ARCHITECTURE.md` and `docs/theflow/LLM_GATEWAY.md` both still described
+  the flag — `LLM_GATEWAY.md` §Configuration was in fact where it was specified
+  in the first place, so it now records why phase 1 deliberately has none.
+
+### Added
+- ROADMAP §2.9 now records that `SourceBuilder.html` has no `flow` UI (it does
+  preserve an existing `flow` block on round trip, and its platform dropdown
+  offers three values the seeder rejects), so the pilot is a hand edit of
+  `sources.json` until that is closed.
+- HANDOFF now states plainly that Phase 0.5 and Phase 1 are implemented **but
+  have never run on real data** — `posts`, `post_feedback` and `provider_quota`
+  are empty. "Implemented" was true and kept being read as "working".
+
 ## [4.13.0] - 2026-09-10
 
 ### Added

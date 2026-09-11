@@ -476,6 +476,17 @@ channel turns out to be listener-mode, switch it to `both` rather than
 
 Do **not** include Source M until the stale checkpoint from 1.2 is explained.
 
+**Edit `src/config/sources.json` by hand for this.** `SourceBuilder.html` — the
+source-config editor at the repo root — predates TheFlow (April) and has no UI
+for the `flow` block. It is not *dangerous*: `buildJSON()` spreads each source
+object, so an existing `flow` block survives an import → export round trip
+untouched. But it cannot create or toggle one, and its platform dropdown offers
+`twitter` / `slack` / `reddit`, which `SourceSeeder.validateSource()` rejects —
+only `telegram` and `discord` seed. Giving it a `flow` section (the toggle,
+`topics`, `min_confidence`, `dedup_window_hours`, and the `vision` sub-object)
+is a worthwhile `S`, and the right moment is here, when the pilot is being
+turned on.
+
 ### Phase 0.5 exit criteria
 
 - VPS running current code, `npm run migrate:status` clean, classic forwarding
@@ -517,6 +528,23 @@ is returned — see [VISION.md](VISION.md) §"Choosing a vision provider".
 Record measured RPD and RPM per model id against the real volume from 2.1.
 
 ### 3.2 Provider layer (`M`)
+
+> **Done (v4.11.0).** `src/services/ai/providers/` — `BaseProvider`
+> (`complete()` / `embed()` / `vision()` + `capabilities()`, and
+> `classifyHttpError()`, the shared mapper that turns an HTTP failure into the
+> `kind` the gateway's fallback matrix branches on: `rate_limit` / `quota`
+> (a 429 is split by body text — `daily|per day|quota exceeded|
+> resource_exhausted` means the day is gone, anything else is a rate limit) /
+> `server` / `network` / `bad_response`), `GeminiProvider`
+> (`:generateContent` + `:embedContent`, `responseSchema` for structured
+> output) and `OpenAICompatProvider` (base-URL parameterized, `embed()` only
+> when `embedModel` is configured). `capabilities()` is derived from the API
+> key plus the configured model ids, so an unconfigured capability simply is
+> not advertised and the gateway routes around it. The HTTP client is `axios`,
+> injectable through the constructor's third argument (that seam is what lets
+> the gateway and worker suites run against fakes), with the per-call timeout
+> passed as an axios request option.
+> `test/ai-providers.test.js` covers it.
 
 ```text
 src/services/ai/providers/
@@ -683,7 +711,10 @@ timer -> Post.takePending(batch)
 - The worker imports only `posts` and `LLMGateway` — never Telegram, Discord, or
   the event bus. That boundary keeps a later extraction into its own process
   cheap.
-- Wired into `src/inemuri.js` behind `LLM_SHADOW_MODE`, default true.
+- Wired into `src/inemuri.js` behind `ENRICH_WORKER_ENABLED` plus a primary-
+  provider API key. There is no `LLM_SHADOW_MODE` flag: in phase 1 shadow mode
+  is structural — the worker writes verdicts and no reader of them exists yet.
+  The switch belongs with the routing consumer, in phase 2.
 
 ### 3.7 `flow:review` (`S`)
 
