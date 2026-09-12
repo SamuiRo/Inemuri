@@ -4,7 +4,7 @@
 
 This replaces the retired `USE_EMBED.md`, which described an opt-in embed API
 (`useEmbed: true`, a caller-supplied `embed` object) that the code does not
-have. Every symbol below was checked against the tree at `v4.19.0`.
+have. Every symbol below was checked against the tree at `v4.20.0`.
 
 Media crosses **three independent stages**, and each drops things for its own
 reasons. When a file does not arrive, the question is always *which stage*.
@@ -48,9 +48,9 @@ Two details that matter downstream:
 
 - **A photo is always reported as `image/jpeg`.** `parseMedia()` sets it
   unconditionally and returns early — Telegram photos carry no document, so
-  there is no MIME type to read. This is why `photo.defaultExtension: "png"` in
-  `DiscordDestination` almost never applies in practice: the MIME lookup
-  resolves first and yields `.jpg`.
+  there is no MIME type to read. `photo.defaultExtension` was `"png"` until
+  `v4.20.0`, which was unreachable for Telegram photos and actively misleading:
+  the MIME lookup runs first and yields `.jpg`. It now says `jpg`.
 - `mimeType`, `fileSize` and `filename` come from the document when there is
   one, and are simply absent for photos.
 
@@ -64,11 +64,31 @@ downloads only types listed in `DOWNLOADABLE_MEDIA_TYPES`
 export const DOWNLOADABLE_MEDIA_TYPES = ["photo", "video", "document", "animation"];
 ```
 
-Anything else is skipped silently — `_downloadMany` does a bare `continue`, and
-`_downloadOne` returns `null`. **`audio` and `video_note` parse correctly but
-are never downloaded**, and neither is `webpage` / `location` / `contact` /
-`poll`. If an audio file "disappears", this is the stage that dropped it, and
-the fix is one entry in this array.
+Anything else is skipped — **and, since `v4.20.0`, the skip is logged** with
+the type, the effective list, and what to do about it. It used to be a bare
+`continue` with no output at all, which made this the one place in the pipeline
+where media vanished without a trace.
+
+`audio`, `video_note`, `webpage`, `location`, `contact` and `poll` are all
+outside the global list. That is deliberate for the last four (there is nothing
+to download) and a choice for the first two.
+
+**A source can opt into more.** `sources.extra_media_types` (a JSON array) is
+added to the global list for that source only:
+
+```json
+{ "channel_name": "Podcast", "extra_media_types": ["audio"] }
+```
+
+`Source.getDownloadableMediaTypes(global)` merges and de-duplicates; `NULL`,
+an empty array, or anything malformed means "global list only".
+
+The field is **additive, never a substitute**, on purpose: a full per-source
+list invites omitting `photo` by accident and silently losing every image on
+that source. It can only ever add.
+
+`video_note` stays out of the global list by decision — round video messages
+are not worth forwarding — but a source that wants them can name it.
 
 The result is `messageData.downloadedMedia`, an array of
 `{ type, data, filename, mimeType, fileSize, duration, width, height }` —
@@ -100,7 +120,7 @@ in both the channel and the log.
 
 | `type` | Allowed extensions | Default | `canEmbed` |
 |---|---|---|---|
-| `photo` | jpg, jpeg, png, gif, webp | png | **yes** |
+| `photo` | jpg, jpeg, png, gif, webp | jpg | **yes** |
 | `animation` | gif | gif | **yes** |
 | `video` | mp4, mov, webm, mkv | mp4 | no |
 | `document` | pdf, doc, docx, txt, zip | file | no |
@@ -110,8 +130,10 @@ in both the channel and the log.
 check is attached to `payload.files` regardless — a video is delivered, it just
 does not become the embed's picture.
 
-Note `audio` is listed here but never reaches this stage, because stage 2 does
-not download it. The two lists are not kept in sync by anything.
+`audio` is listed here but only reaches this stage on a source whose
+`extra_media_types` names it. The two lists are still not kept in sync by
+anything: an entry here without the corresponding download permission is inert,
+and a downloaded type with no entry here sends as `attachment<i>.bin`.
 
 ### File size
 
@@ -151,8 +173,8 @@ than loudly:
    attributes do not already. Photos and documents are already covered; a new
    *document attribute* is a `switch` case.
 2. **`DOWNLOADABLE_MEDIA_TYPES`** in `app.config.js` — otherwise it parses and
-   is never downloaded. This is the step most easily missed, because nothing
-   logs it.
+   is never downloaded. Add it here if every source should get the type; leave
+   it out and use a source's `extra_media_types` if only some should.
 3. **`supportedMediaTypes`** in `DiscordDestination` — extensions,
    `defaultExtension`, and whether it can be an embed image. Without an entry
    the file still sends, as `attachment<i>.bin`.

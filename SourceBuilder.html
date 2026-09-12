@@ -336,6 +336,11 @@ const PLATFORMS = ['telegram', 'discord'];
 
 // Дзеркалить src/config/categories.json (version 1). Порожній вибір = null =
 // всі топіки. Тримати синхронним при бампі версії таксономії.
+// Типи медіа поза глобальним DOWNLOADABLE_MEDIA_TYPES (photo/video/
+// document/animation). video_note свідомо тут: кружечки за замовчуванням
+// не качаються, але джерело може їх увімкнути.
+const EXTRA_MEDIA_TYPES = ['audio', 'video_note'];
+
 const FLOW_TOPICS = ['steam', 'airdrop', 'crypto', 'tools', 'other'];
 
 // Дзеркалить FLOW_DEFAULTS у src/module/teapot/models/Source.js.
@@ -605,6 +610,22 @@ function buildCardBody(src) {
       </div>
     </div>
 
+    <div>
+      <div class="section-title">Extra media</div>
+      <div class="section-block">
+        <div class="notice">
+          Завжди качаються <b>photo, video, document, animation</b>. Тут — що
+          додати саме для цього джерела. Решта типів парситься, але не
+          завантажується (у логах видно як <b>Skipping …</b>).
+        </div>
+        <div class="tags-area">
+          ${EXTRA_MEDIA_TYPES.map((t) => `
+            <span class="tag topic ${(src.extra_media_types||[]).includes(t)?'on':''}"
+                  onclick="toggleExtraMedia(${id},'${t}')">${t}</span>`).join('')}
+        </div>
+      </div>
+    </div>
+
     ${buildFlowSection(src)}
   `;
 }
@@ -774,6 +795,17 @@ function setPollInterval(id, raw) {
   if (!Number.isFinite(n) || n <= 0) return;
   src.poll_interval_min = n;
   updateOutput();
+}
+
+/** Додатковий тип медіа. Порожній набір -> null («лише глобальні»). */
+function toggleExtraMedia(id, type) {
+  const src = getSrc(id);
+  if (!src) return;
+  const list = Array.isArray(src.extra_media_types) ? src.extra_media_types.slice() : [];
+  const at = list.indexOf(type);
+  if (at === -1) list.push(type); else list.splice(at, 1);
+  src.extra_media_types = list.length ? list : null;
+  refreshCard(id);
 }
 
 function toggleActive(id) {
@@ -1012,6 +1044,10 @@ function buildJSON() {
         if (clean.destinations[k].length === 0) delete clean.destinations[k];
       });
       if (Object.keys(clean.destinations).length === 0) clean.destinations = {};
+    }
+    // extra_media_types: null = лише глобальні, у файл не пишемо
+    if (!Array.isArray(clean.extra_media_types) || clean.extra_media_types.length === 0) {
+      delete clean.extra_media_types;
     }
     // poll_interval_min: null = глобальний дефолт, у файл не пишемо
     if (clean.poll_interval_min === null || clean.poll_interval_min === undefined) {

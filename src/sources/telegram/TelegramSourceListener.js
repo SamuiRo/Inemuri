@@ -14,6 +14,7 @@ import {
   POLLING_TICK_MS,
   POLLING_MAX_PER_TICK,
   POLLING_MAX_DRAIN_PAGES,
+  DOWNLOADABLE_MEDIA_TYPES,
 } from "../../config/app.config.js";
 
 import TelegramMessageParser  from "./TelegramMessageParser.js";
@@ -575,7 +576,10 @@ class TelegramSourceListener extends BaseSourceAdapter {
         `[${this.platform.toUpperCase()}] Downloading media for message ${messageData.messageId}...`,
         "debug",
       );
-      const downloaded = await this._downloader.download(messageData);
+      const downloaded = await this._downloader.download(
+        messageData,
+        source?.getDownloadableMediaTypes?.(DOWNLOADABLE_MEDIA_TYPES) ?? null,
+      );
       if (downloaded) {
         messageData.downloadedMedia = downloaded;
         print(

@@ -48,6 +48,16 @@ export const Source = database.sequelize.define("Source", {
     defaultValue: null,
     comment: 'Інтервал полінгу цього джерела (хв). NULL = глобальний дефолт'
   },
+  // Типи медіа, які качати ДОДАТКОВО до глобального DOWNLOADABLE_MEDIA_TYPES.
+  // NULL = лише глобальний список. Додавальне, не перевизначення: повний
+  // список легко задати без "photo" і тихо втратити всі зображення.
+  // Див. getDownloadableMediaTypes() і docs/media.md.
+  extra_media_types: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Додаткові типи медіа для завантаження (напр. ["audio"])'
+  },
   // Препроцесинг тексту перед фільтрацією
   text_replacements: {
     type: DataTypes.JSON,
@@ -285,6 +295,23 @@ Source.prototype.getAllDestinations = function() {
 Source.prototype.getPollIntervalMin = function(globalDefaultMin) {
   const raw = Number(this.poll_interval_min);
   return Number.isFinite(raw) && raw > 0 ? raw : globalDefaultMin;
+};
+
+/**
+ * Повний список типів медіа для завантаження з цього джерела.
+ *
+ * Глобальний список передається аргументом, щоб модель не тягнула
+ * app.config.js. Порожній / некоректний `extra_media_types` не ламає базу:
+ * повертаємо глобальний список як є.
+ */
+Source.prototype.getDownloadableMediaTypes = function(globalTypes) {
+  const base = Array.isArray(globalTypes) ? globalTypes : [];
+  let extra = this.extra_media_types;
+  if (typeof extra === "string") {
+    try { extra = JSON.parse(extra); } catch { extra = null; }
+  }
+  if (!Array.isArray(extra) || extra.length === 0) return base;
+  return [...new Set([...base, ...extra.filter((t) => typeof t === "string" && t)])];
 };
 
 // ==================== TheFlow ====================

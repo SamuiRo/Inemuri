@@ -27,6 +27,18 @@ function normalizePollInterval(raw) {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
+/**
+ * Додаткові типи медіа. Порожнє / не масив -> NULL («лише глобальні»).
+ * Значення не валідуємо проти списку відомих типів навмисно: невідомий тип
+ * просто ніколи не збігається з media.type, тобто нічого не ламає, а жорстка
+ * перевірка зламала б сід при додаванні нового типу в парсер.
+ */
+function normalizeExtraMediaTypes(raw) {
+  if (!Array.isArray(raw)) return null;
+  const cleaned = [...new Set(raw.filter((t) => typeof t === "string" && t.trim() !== ""))];
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 function mergeFlow(flow) {
   if (!flow || typeof flow !== "object") return { ...FLOW_DEFAULT };
   return {
@@ -86,6 +98,8 @@ class SourceSeeder {
         mode: sourceData.mode ?? "listener",
         // NULL = глобальний POLLING_INTERVAL_MIN (див. Source.getPollIntervalMin)
         poll_interval_min: normalizePollInterval(sourceData.poll_interval_min),
+        // NULL = лише глобальний DOWNLOADABLE_MEDIA_TYPES
+        extra_media_types: normalizeExtraMediaTypes(sourceData.extra_media_types),
         text_replacements: sourceData.text_replacements || {
           enabled: false,
           patterns: [],

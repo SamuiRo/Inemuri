@@ -35,7 +35,12 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     this.supportedMediaTypes = {
       photo: {
         extensions:       ["jpg", "jpeg", "png", "gif", "webp"],
-        defaultExtension: "png",
+        // jpg, а не png: TelegramMessageParser.parseMedia() беззастережно
+        // ставить фото mimeType "image/jpeg" (у Telegram-фото немає документа,
+        // тож MIME читати нізвідки), а _getFilename() дивиться на MIME ПЕРЕД
+        // дефолтом. Тобто "png" тут був недосяжною гілкою, яка ще й вводила в
+        // оману — див. docs/media.md.
+        defaultExtension: "jpg",
         canEmbed:         true,   // можна вставити в embed.image
       },
       video: {

@@ -215,6 +215,7 @@ Example:
 | `is_active` | Enables or disables the source. |
 | `mode` | `listener`, `polling`, or `both`. |
 | `poll_interval_min` | Optional. How often to poll this source, in minutes. Omit it to use the global `POLLING_INTERVAL_MIN`. Ignored for `listener`. |
+| `extra_media_types` | Optional. Media types to download for this source in addition to the global `DOWNLOADABLE_MEDIA_TYPES`, e.g. `["audio"]`. Additive only. |
 | `text_replacements` | Preprocessing rules applied before filters. |
 | `filters` | Keyword/blacklist rules. |
 | `destinations` | Target Telegram/Discord destination IDs. |

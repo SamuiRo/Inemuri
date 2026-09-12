@@ -7,6 +7,42 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.20.0] - 2026-09-12
+
+Both findings from the `v4.19.0` doc rewrite, acted on.
+
+### Added
+- `sources.extra_media_types` (migration `007`, JSON, plain `ADD COLUMN`).
+  Media types to download for one source **in addition** to the global
+  `DOWNLOADABLE_MEDIA_TYPES`, so `audio` can be kept where it is worth keeping
+  without forwarding every voice message everywhere.
+
+  Additive rather than a full per-source override, deliberately: a replacement
+  list invites omitting `photo` by accident and silently losing every image on
+  that source. `Source.getDownloadableMediaTypes(global)` merges and
+  de-duplicates, and treats `NULL`, an empty array, a JSON string and anything
+  malformed as "global list only".
+
+  `video_note` stays out of the global list by decision — round video messages
+  are not worth forwarding — but a source can name it.
+- The chips for it in `SourceBuilder.html`. Verified in-browser: a mixed config
+  round-trips byte-identically and an empty selection never reaches the file.
+- `test/media-types.test.js` — 10 cases over the getter (including the
+  string-column and garbage paths) and the downloader honouring a per-call list
+  for both albums and single media.
+
+### Fixed
+- **Skipping a non-downloadable media type is no longer silent.** It was a bare
+  `continue` in `_downloadMany` and a `return null` in `_downloadOne` with no
+  log line at all — the one place in the pipeline where media vanished without
+  a trace, leaving nothing to diagnose. The skip now logs the type, the
+  effective list, and that `extra_media_types` is the fix.
+- `photo.defaultExtension` was `"png"`, which was unreachable and misleading.
+  `parseMedia()` sets `mimeType: "image/jpeg"` unconditionally for photos and
+  `_getFilename()` consults the MIME type *before* the default, so Telegram
+  photos always land as `.jpg`. The field now says `jpg` and carries a comment
+  explaining why.
+
 ## [4.19.0] - 2026-09-12
 
 ### Added
