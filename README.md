@@ -217,7 +217,7 @@ Example:
 | `poll_interval_min` | Optional. How often to poll this source, in minutes. Omit it to use the global `POLLING_INTERVAL_MIN`. Ignored for `listener`. |
 | `extra_media_types` | Optional. Media types to download for this source in addition to the global `DOWNLOADABLE_MEDIA_TYPES`, e.g. `["audio"]`. Additive only. |
 | `text_replacements` | Preprocessing rules applied before filters. |
-| `filters` | Keyword/blacklist rules. |
+| `filters` | Keyword/blacklist rules, plus the optional `reject_shouty` rule. |
 | `destinations` | Target Telegram/Discord destination IDs. |
 
 ### Source modes
@@ -225,6 +225,34 @@ Example:
 - `listener`: listens for MTProto updates only
 - `polling`: periodically fetches messages from the source
 - `both`: combines listener and polling, with deduplication support
+
+### Rejecting shouty posts
+
+`filters.reject_shouty` drops short all-caps posts — the ritual
+`ВСЕМ СПАСИБО. СПОКОЙНОЙ НОЧИ.` or a daily countdown, which change wording
+every time and so have no stable substring a blacklist could match.
+
+```json
+"filters": {
+  "enabled": true, "keywords": [], "blacklist": [], "case_sensitive": false,
+  "reject_shouty": { "max_length": 120, "min_caps_ratio": 0.8 }
+}
+```
+
+Omit it (or pass `null`) to leave the rule off, which is the default; pass
+`true` for the defaults shown above. Those thresholds were measured against
+real posts, where ritual posts scored 1.00 and the most shouty *useful* post
+0.21 — a wide margin. `min_caps_ratio` counts uppercase among letters only, so
+digits, emoji and punctuation do not dilute it, and it works for Cyrillic.
+
+The rule is **per source and off by default** because it cannot be safe
+globally: a bare promo code (`PS3QWS3ACGDK`) is 100% caps and 12 characters,
+exactly the shape it targets. Promo-like tokens are therefore excluded inside
+the check as well, so a code survives even on a source where the rule is on —
+configuration alone is not relied on for that.
+
+A flow-enabled source records rejected posts as `skipped_shouty` rather than
+discarding them, so `flow stats` can show how much the rule is catching.
 
 ### Polling schedule
 

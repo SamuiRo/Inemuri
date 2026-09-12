@@ -543,6 +543,31 @@ function buildCardBody(src) {
           <div class="toggle ${src.filters?.case_sensitive?'on':''}" onclick="toggleCaseSensitive(${id})" id="toggle-cs-${id}" style="margin-left:12px"></div>
           <span class="toggle-label">Case sensitive</span>
         </div>
+        <div class="toggle-row">
+          <div class="toggle ${src.filters?.reject_shouty?'on':''}" onclick="toggleShouty(${id})" id="toggle-shouty-${id}"></div>
+          <span class="toggle-label">Reject shouty (короткий капс)</span>
+        </div>
+        ${src.filters?.reject_shouty ? `
+        <div class="field-row">
+          <div class="field-group">
+            <label>Max length</label>
+            <input type="text" inputmode="numeric" placeholder="120"
+                   value="${src.filters.reject_shouty.max_length ?? ''}"
+                   oninput="setShouty(${id},'max_length',this.value)">
+          </div>
+          <div class="field-group">
+            <label>Min caps ratio (0–1)</label>
+            <input type="text" inputmode="decimal" placeholder="0.8"
+                   value="${src.filters.reject_shouty.min_caps_ratio ?? ''}"
+                   oninput="setShouty(${id},'min_caps_ratio',this.value)">
+          </div>
+        </div>
+        <div class="notice">
+          Відсікає короткі пости суцільним капсом — ритуальні «ВСЕМ СПАСИБО.
+          СПОКОЙНОЙ НОЧИ.» чи щоденні відліки, для яких немає сталого підрядка.
+          <b>Промокоди виключені окремо</b>, тож голий код капсом виживе.
+          Довгий пост, що починається капсом, теж не підпадає.
+        </div>` : ''}
         <div>
           <label style="margin-bottom:6px;display:block">Keywords (whitelist)</label>
           <div class="tags-area" id="kw-${id}">
@@ -822,6 +847,29 @@ function toggleFilters(id) {
   updateOutput();
 }
 
+const SHOUTY_DEFAULTS = { max_length: 120, min_caps_ratio: 0.8 };
+
+/** Тогл reject_shouty. Увімкнення ставить перевірені дефолти. */
+function toggleShouty(id) {
+  const src = getSrc(id);
+  if (!src.filters) src.filters = { keywords: [], blacklist: [], enabled: true, case_sensitive: false };
+  src.filters.reject_shouty = src.filters.reject_shouty ? null : { ...SHOUTY_DEFAULTS };
+  refreshCard(id);
+}
+
+/** Поріг reject_shouty. Порожньо/сміття — не пишемо, щоб не зламати правило. */
+function setShouty(id, field, raw) {
+  const src = getSrc(id);
+  if (!src.filters?.reject_shouty) return;
+  const text = String(raw).trim();
+  if (text === '') return;
+  const n = Number(text.replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return;
+  if (field === 'min_caps_ratio' && n > 1) return;
+  src.filters.reject_shouty[field] = field === 'max_length' ? Math.round(n) : n;
+  updateOutput();
+}
+
 function toggleCaseSensitive(id) {
   const src = getSrc(id);
   if (!src.filters) src.filters = {};
@@ -1044,6 +1092,11 @@ function buildJSON() {
         if (clean.destinations[k].length === 0) delete clean.destinations[k];
       });
       if (Object.keys(clean.destinations).length === 0) clean.destinations = {};
+    }
+    // filters.reject_shouty: null = вимкнено, у файл не пишемо
+    if (clean.filters && !clean.filters.reject_shouty) {
+      clean.filters = { ...clean.filters };
+      delete clean.filters.reject_shouty;
     }
     // extra_media_types: null = лише глобальні, у файл не пишемо
     if (!Array.isArray(clean.extra_media_types) || clean.extra_media_types.length === 0) {

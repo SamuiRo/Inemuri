@@ -7,6 +7,49 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.21.0] - 2026-09-12
+
+### Added
+- `filters.reject_shouty` — an opt-in per-source rule dropping short all-caps
+  posts. It exists for ritual posts (`ВСЕМ СПАСИБО. СПОКОЙНОЙ НОЧИ.`, daily
+  countdowns) whose wording changes every time, so a blacklist has no stable
+  substring to match. Lives inside the existing `filters` JSON, so **no
+  migration**.
+
+  Thresholds default to 120 characters and 0.8 caps, measured against real
+  posts: ritual posts scored 1.00 while the most shouty *useful* post scored
+  0.21. `capsRatio()` counts uppercase among letters only — digits, emoji and
+  punctuation have no case and would dilute it — and works for Cyrillic.
+
+  **Promo codes are excluded inside the check, not just by configuration.** A
+  bare code such as `PS3QWS3ACGDK` is 100% caps and 12 characters: exactly the
+  shape the rule targets, and the most expensive possible false positive, since
+  a promo channel would lose the code itself. `isShouty()` refuses any text
+  containing a promo-like token, so a code survives even where the rule is on.
+- `src/shared/text.js` — `capsRatio`, `isShouty`, `compileShouty`, and
+  `PROMO_RE` / `isPromoLike` moved out of `RegexStage`. Dependency-free on
+  purpose, unlike `shared/utils.js` (chalk, sharp, gradient), so both
+  `MessageFilter` and `RegexStage` can import it. One definition means the
+  classic path and flow ingest cannot drift apart in judging the same text.
+- `skipped_shouty` in `POST_STATUSES`. A flow source records the post with a
+  reason instead of discarding it, so `flow stats` can show what the rule
+  catches. No migration: `posts.status` is `STRING`, not an `ENUM`, for exactly
+  this reason.
+- The toggle and both thresholds in `SourceBuilder.html`. Verified in-browser:
+  round-trips byte-identically, `null` never reaches the file, and a ratio
+  above 1, zero and non-numeric input are all refused.
+- `test/shouty.test.js` — 19 cases, including the promo-code guard, that a long
+  post starting in caps is never shouty, that earlier rejections still take
+  precedence, and that a rejected post keeps its hash and candidates.
+
+### Changed
+- `RegexStage.evaluate()` takes `rejectShouty` and applies it **last**, after
+  the empty, blacklist and noise checks — it is the most expensive of them and
+  the earlier reasons are more specific.
+- `MessageFilter` applies the rule after the blacklist and before keywords: an
+  empty whitelist passes everything, so placing it later would leave it nothing
+  to act on.
+
 ## [4.20.0] - 2026-09-12
 
 Both findings from the `v4.19.0` doc rewrite, acted on.

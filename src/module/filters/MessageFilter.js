@@ -1,4 +1,5 @@
 import { print } from "../../shared/utils.js";
+import { compileShouty, isShouty } from "../../shared/text.js";
 
 /**
  * Ефективний фільтр повідомлень з кешуванням
@@ -78,7 +79,10 @@ class MessageFilter {
         ? new Set(caseSensitive 
             ? filters.blacklist 
             : filters.blacklist.map(b => b.toLowerCase()))
-        : null
+        : null,
+      // Короткий крик (ритуальні пости капсом). null = вимкнено.
+      // Опційно і на джерело: глобально таке правило зарізало б промокоди.
+      rejectShouty: compileShouty(filters.reject_shouty)
     };
 
     // Кешуємо
@@ -187,7 +191,14 @@ class MessageFilter {
       }
     }
 
-    // ПРІОРИТЕТ 2: Перевіряємо keywords
+    // ПРІОРИТЕТ 2: Короткий крик — службовий пост капсом.
+    // Перед keywords: якщо whitelist порожній, keywords пропускають усе, і
+    // правило просто не мало б куди спрацювати.
+    if (compiledFilter.rejectShouty && isShouty(processedText, compiledFilter.rejectShouty)) {
+      return false;
+    }
+
+    // ПРІОРИТЕТ 3: Перевіряємо keywords
     if (compiledFilter.keywords) {
       for (const word of compiledFilter.keywords) {
         if (text.includes(word)) {

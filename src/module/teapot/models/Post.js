@@ -25,6 +25,7 @@ export const POST_STATUSES = [
   "skipped_blacklist",  // відсіяний regex-стадією: blacklist джерела
   "skipped_empty",      // порожній або коротший за поріг після replacements
   "skipped_noise",      // тільки емодзі / тільки посилання / службовий текст
+  "skipped_shouty",     // короткий пост капсом (ритуальні/службові), опційно на джерело
   "skipped_repost",     // точний хеш-збіг у вікні останніх N годин
   "failed",             // спроби вичерпані; рядок лишається для розбору
 ];

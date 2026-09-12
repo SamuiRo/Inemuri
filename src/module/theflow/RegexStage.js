@@ -1,12 +1,14 @@
 import crypto from "crypto";
 
+import { PROMO_RE, isPromoLike, isShouty } from "../../shared/text.js";
+
 /**
  * TheFlow — regex-стадія (перед AI).
  *
  * Детермінована й безкоштовна. Три ролі (docs/theflow/ARCHITECTURE.md):
  *   1. Rejection — пост не доходить до AI (skipped_blacklist / skipped_empty /
- *      skipped_noise). skipped_repost вирішується не тут, а у FlowIngest —
- *      бо потребує запиту до вікна в БД.
+ *      skipped_noise / skipped_shouty). skipped_repost вирішується не тут, а
+ *      у FlowIngest — бо потребує запиту до вікна в БД.
  *   2. Candidate extraction — regex не вирішує, ЩО це; лише знаходить, що
  *      *схоже* на сутність, і віддає моделі список на підтвердження.
  *   3. Дешева дедуплікація — хеш нормалізованого тексту (порівняння з вікном
@@ -24,8 +26,9 @@ const EMOJI = new RegExp(
 const URL_RE = /\bhttps?:\/\/[^\s<>()[\]]+/gi;
 const TRAILING_PUNCT = /[.,;:!?)\]}'"»]+$/;
 
-// Кандидати
-const PROMO_RE = /\b[A-Z0-9]{5,20}\b/g;                       // потім фільтр: є цифра І літера
+// Кандидати. PROMO_RE та isPromoLike живуть у shared/text.js: те саме
+// визначення використовує isShouty(), щоб класичний фільтр і flow не
+// розійшлися в оцінці того самого тексту.
 const TICKER_RE = /\$[A-Z]{2,10}\b/g;
 const DATE_ISO_RE = /\b\d{4}-\d{2}-\d{2}\b/g;
 const DATE_DMY_RE = /\b\d{1,2}\.\d{1,2}(?:\.\d{2,4})?\b/g;
@@ -52,14 +55,16 @@ export class RegexStage {
    * @param {boolean} [input.caseSensitive=false]  Має збігатися з тим, як
    *   зібрано blacklist: інакше haystack і слова в різному регістрі й
    *   blacklist тихо перестає ловити.
+   * @param {{max_length: number, min_caps_ratio: number}|null} [input.rejectShouty]
+   *   Скомпільований `filters.reject_shouty` джерела, або null — вимкнено.
    * @returns {{
-   *   status: 'ok'|'skipped_blacklist'|'skipped_empty'|'skipped_noise',
+   *   status: 'ok'|'skipped_blacklist'|'skipped_empty'|'skipped_noise'|'skipped_shouty',
    *   normalizedText: string,
    *   textHash: string|null,
    *   candidates: object
    * }}
    */
-  evaluate({ text, blacklist, caseSensitive = false }) {
+  evaluate({ text, blacklist, caseSensitive = false, rejectShouty = null }) {
     const raw = typeof text === "string" ? text : "";
     const normalizedText = RegexStage.normalize(raw);
     const textHash = normalizedText ? RegexStage.hash(normalizedText) : null;
@@ -92,6 +97,14 @@ export class RegexStage {
       .replace(/[^\p{L}\p{N}]+/gu, "");
     if (stripped.length < 2) {
       return { ...result, status: "skipped_noise" };
+    }
+
+    // 4. Короткий крик — службовий пост капсом. Опційно, на джерело: на
+    //    каналі промокодів це правило зарізало б самі коди, тож глобально
+    //    його вмикати не можна (isShouty() ще й виключає промо-подібні
+    //    токени окремо — конфігурації тут довіряти мало).
+    if (rejectShouty && isShouty(raw, rejectShouty)) {
+      return { ...result, status: "skipped_shouty" };
     }
 
     return { ...result, status: "ok" };
@@ -136,25 +149,6 @@ export class RegexStage {
 
     return { promo_codes, tickers, urls, dates, amounts };
   }
-}
-
-/**
- * Чи схожий токен на промокод. Дві форми, бо емітенти різні:
- *
- *   1. Є і цифра, і літера — `BONUS50`, `PS3QWS3ACGDK`. Найнадійніша ознака.
- *   2. Суцільні літери довжиною >= 10 — `ABCDEFGHJKMN`.
- *      Частина ігрових емітентів видає коди без жодної цифри, і правило (1)
- *      їх мовчки пропускало.
- *
- * Поріг 10 — компроміс: короткі капсові слова (`STEAM`, `CSGO`, `GIVEAWAY`)
- * відсікаються, довгі англійські (`ANNOUNCEMENT`, `CONGRATULATIONS`) — ні.
- * Це прийнятно: кандидати — підказка моделі, а не рішення. Хибний кандидат
- * коштує токенів, пропущений код коштує самого коду. Кирилиця під `[A-Z]`
- * не потрапляє взагалі, а канали тут переважно кирилічні.
- */
-function isPromoLike(c) {
-  if (/[0-9]/.test(c) && /[A-Z]/.test(c)) return true;
-  return /^[A-Z]{10,20}$/.test(c);
 }
 
 function uniqCap(arr) {

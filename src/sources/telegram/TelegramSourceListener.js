@@ -533,6 +533,7 @@ class TelegramSourceListener extends BaseSourceAdapter {
         text,
         blacklist: compiledFilter?.blacklist ?? null,
         caseSensitive: compiledFilter?.caseSensitive ?? false,
+        rejectShouty:  compiledFilter?.rejectShouty ?? null,
       });
 
       if (created) {
