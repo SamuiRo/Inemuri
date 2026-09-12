@@ -20,12 +20,12 @@ Inemuri/
 ├── test/                                  # node --test suites (npm test)
 ├── docs/
 │   ├── ARCHITECTURE.md                    # High-level architecture map
-│   ├── DETAILED_OPTIMIZATION_EXPLANATION.md # Notes about performance-related changes
-│   ├── INEMURI_DOCS.txt                   # General project notes
-│   ├── THEFLOW.md                         # TheFlow spec — Phase 0 implemented, 1+ specified
-│   ├── USE_EMBED.md                       # Discord embed usage notes
-│   ├── description.txt                    # Supporting documentation text
+│   ├── HANDOFF.md                         # Current state and next steps — read first
+│   ├── CHANGELOG.md                       # Per-version record of what shipped and why
+│   ├── DEPLOYMENT.md                      # pm2 deploy and migration procedure
+│   ├── THEFLOW.md                         # TheFlow spec — Phase 0/1 implemented, 1.5+ specified
 │   ├── text_replacements.md               # Text preprocessing and replacement rules
+│   ├── .archive/                          # Retired docs, git-ignored — do not cite
 │   └── theflow/                           # TheFlow detailed specs
 │       ├── ARCHITECTURE.md                # Pipeline stages, pre-AI regex stage, invariants
 │       ├── DATA_MODEL.md                  # posts / clusters tables, migration order

@@ -310,7 +310,9 @@ Current flow includes:
 - Discord file-size checks
 - optional Discord embed formatting for supported image types
 
-See [docs/USE_EMBED.md](docs/USE_EMBED.md) for notes about embed behavior and media handling.
+Which media types are downloaded is set by `DOWNLOADABLE_MEDIA_TYPES` in
+`src/config/app.config.js`; which of them Discord may place in an embed is set
+by `supportedMediaTypes` (`canEmbed`) in `src/destinations/discord/DiscordDestination.js`.
 
 ## Data storage
 
@@ -427,8 +429,8 @@ extraction, digests) are still specification.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): pm2 deploy and schema-migration procedure
 - [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 and Phase 1 implemented, later phases specified)
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
-- [docs/USE_EMBED.md](docs/USE_EMBED.md): media and Discord embed behavior
-- [docs/DETAILED_OPTIMIZATION_EXPLANATION.md](docs/DETAILED_OPTIMIZATION_EXPLANATION.md): optimization notes
+- [docs/HANDOFF.md](docs/HANDOFF.md): current state and next steps
+- [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped and why
 
 ## License
 

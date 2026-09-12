@@ -7,6 +7,38 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.16.0] - 2026-09-12
+
+### Removed
+- Four superseded Ukrainian documents left the repository into the new
+  git-ignored `docs/.archive/`: `INEMURI_DOCS.txt`, `description.txt`,
+  `USE_EMBED.md` and `DETAILED_OPTIMIZATION_EXPLANATION.md`. They are still on
+  disk for reference; they are no longer part of the project.
+
+  Translating them was rejected. Three are not merely old but wrong — they
+  describe a Google Sheets config provider, a Rule Engine, and tables
+  `messages` / `deliveries` / `sources_config` / `routing_rules` that do not
+  exist — and a translated wrong document is worse than none, because it reads
+  as current. `CLAUDE.md` was pointing new sessions straight at them.
+
+  `docs/.archive/README.md` records what each one claimed and why it went, so
+  the reasoning survives the deletion. `USE_EMBED.md` is flagged there as the
+  one worth rewriting rather than discarding: its `DiscordDestination` details
+  are still accurate.
+
+### Changed
+- `docs/` is now English-only, with no migration backlog. `CLAUDE.md` says so
+  and tells future sessions not to read or cite `docs/.archive/`.
+- Inbound links repaired rather than dropped. `README.md`'s embed section now
+  names the two places that actually decide media behaviour
+  (`DOWNLOADABLE_MEDIA_TYPES` in `app.config.js`, `supportedMediaTypes` /
+  `canEmbed` in `DiscordDestination.js`) instead of pointing at a retired file,
+  and its document index lists `HANDOFF.md` and `CHANGELOG.md`, which were
+  missing. `ARCHITECTURE.md`'s directory tree matches what `docs/` now holds.
+- `docs/HANDOFF.md` replaces its "Known documentation debt" section with the
+  outcome. One item stays open: `categories.json` is tracked while carrying
+  real channel ids, mixing shared taxonomy with deployment-specific routing.
+
 ## [4.15.1] - 2026-09-12
 
 ### Changed

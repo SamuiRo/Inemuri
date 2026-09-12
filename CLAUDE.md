@@ -32,15 +32,15 @@ Never describe TheFlow as standing alongside or on top of Inemuri; it is inside 
 ## Documentation
 
 - **All documentation is written in English.** This applies to `README.md`,
-  everything under `docs/`, and this file.
-- Some older documents in `docs/` are still in Ukrainian
-  (`text_replacements.md`, `USE_EMBED.md`, `DETAILED_OPTIMIZATION_EXPLANATION.md`,
-  `INEMURI_DOCS.txt`, `description.txt`). They are being migrated; write anything
-  new or rewritten in English.
+  everything under `docs/`, and this file. Everything under `docs/` is now in
+  English; there is no migration backlog left.
 - Code comments in existing files are Ukrainian. Match the surrounding file
   rather than mixing languages within one file.
-- Older notes in `docs/` describe a Google Sheets based configuration. That is
-  historical; the current implementation is JSON config files plus SQLite.
+- `docs/.archive/` is git-ignored and holds retired documents. **Do not read it
+  for current behaviour and do not cite it** — most of it describes a design
+  that was never built (a Google Sheets config provider, a Rule Engine, tables
+  that do not exist). `docs/.archive/README.md` records why each was retired.
+  The current configuration is JSON config files plus SQLite.
 
 ## Versioning
 

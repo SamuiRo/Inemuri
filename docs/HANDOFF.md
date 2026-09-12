@@ -35,32 +35,23 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 `flow` and `vision` included. Enabling the pilot is: import the live
 `src/config/sources.json`, switch the chosen sources on, export, reseed.
 
-## Known documentation debt
+## Documentation
 
-Three Ukrainian documents under `docs/` are not just untranslated, they are
-wrong, and `CLAUDE.md` points new sessions at them:
+Everything under `docs/` is English. Four superseded Ukrainian documents were
+retired on 2026-09-12 into `docs/.archive/`, which is git-ignored — they are on
+disk for reference and out of the repository. `docs/.archive/README.md` records
+why each one went. **Do not cite them:** three describe a design that was never
+built (a Google Sheets config provider, a Rule Engine, tables that do not
+exist). The fourth, `USE_EMBED.md`, is the one worth rewriting rather than
+discarding — its `DiscordDestination` details are still correct, but it points
+at `parseMedia()` and `downloadableMediaTypes` in places they no longer live.
 
-- `INEMURI_DOCS.txt` and `description.txt` describe a system that was never
-  built — a Google Sheets config provider, a Rule Engine, and tables
-  `messages` / `deliveries` / `sources_config` / `routing_rules` (the real
-  ones are `sources`, `source_states`, `posts`, `clusters`, `post_feedback`,
-  `provider_quota`, `schema_migrations`). They also use a different project
-  name. Deleting them and dropping the links loses nothing that
-  `ARCHITECTURE.md` does not already say correctly, in English.
-- `USE_EMBED.md` points at code that has moved: `parseMedia()` now lives in
-  `TelegramMessageParser`, and the listener's `downloadableMediaTypes` is now
-  `DOWNLOADABLE_MEDIA_TYPES` in `app.config.js`. It needs rewriting against
-  the current structure, not translating.
-
-`DETAILED_OPTIMIZATION_EXPLANATION.md` is a retrospective and still accurate;
-it is a candidate for `docs/archive/`.
-
-`src/config/categories.json` is tracked by git and carries real channel ids in
-`unsorted_destinations`. It mixes taxonomy (shared, tests depend on it) with
-routing targets (deployment-specific). The repo already has the pattern for
-the latter — `sources.sample.json` tracked, `sources.json` ignored — so the
-two belong apart. Touching it affects phase 2 routing, so it is a decision,
-not a cleanup.
+One item of debt remains: `src/config/categories.json` is tracked by git and
+carries real channel ids in `unsorted_destinations`. It mixes taxonomy (shared,
+tests depend on it) with routing targets (deployment-specific). The repo already
+has the pattern for the latter — `sources.sample.json` tracked,
+`sources.json` ignored — so the two belong apart. Touching it affects phase 2
+routing, so it is a decision, not a cleanup.
 
 ## Next steps
 
