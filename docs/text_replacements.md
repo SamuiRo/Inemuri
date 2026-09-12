@@ -1,30 +1,42 @@
-# Text Replacements - Документація
+> **Role:** Reference for the `text_replacements` preprocessing feature · **Audience:** Anyone configuring a source
 
-## Огляд
+# Text replacements
 
-Text Replacements - це механізм препроцесингу тексту повідомлень **перед** застосуванням фільтрів. Використовується для видалення футерів, шапок, повторюваних елементів та іншого "шуму", який може містити ключові слова та помилково тригерити whitelist або blacklist.
+## Overview
 
-## Архітектура
+Text replacements are a preprocessing step applied to a message's text
+**before** any filter runs. They exist to strip footers, headers, repeated
+boilerplate and other noise — the kind of text that carries keywords and
+would otherwise trigger a whitelist or a blacklist by accident.
+
+## Where it sits
 
 ```
-Вхідне повідомлення
+Incoming message
        ↓
-  Препроцесинг (text_replacements)
+  Preprocessing (text_replacements)
        ↓
-  Фільтрація (keywords/blacklist)
+  Filtering (keywords / blacklist)
        ↓
-  Доставка до destinations
+  Delivery to destinations   ──or──  ingest into TheFlow
 ```
 
-### Важливі особливості:
+Three properties worth knowing:
 
-1. **Послідовність виконання**: Replacements → Filters
-2. **Кешування**: Всі regex patterns компілюються один раз при старті
-3. **Продуктивність**: O(1) lookup з кешу + O(n) для кожного pattern
+1. **Order is fixed.** Replacements always run before filters, never after.
+2. **Patterns compile once.** Every regex is compiled at startup and cached.
+3. **Cost.** An O(1) cache lookup per message, plus one pass per pattern.
 
-## Конфігурація
+For a TheFlow-enabled source the branch after preprocessing differs — the
+post is written to `posts` instead of being forwarded — but preprocessing
+itself is identical, and `posts.raw_text` stores the text **after**
+replacements. That matters: it is the text the model sees and the text
+verbatim validation checks against. See
+[theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md).
 
-### Структура в `Source` моделі:
+## Configuration
+
+Shape in the `Source` model:
 
 ```javascript
 {
@@ -32,30 +44,33 @@ Text Replacements - це механізм препроцесингу текст�
     "enabled": true,
     "patterns": [
       {
-        "pattern": "текст або regex",
-        "replacement": "текст заміни (або пусто для видалення)",
-        "is_regex": true/false,
-        "flags": "gi" // опціонально, для regex
+        "pattern": "text or regex",
+        "replacement": "text to substitute (empty to delete)",
+        "is_regex": true,
+        "flags": "gi"
       }
     ]
   }
 }
 ```
 
-### Параметри:
+| Field | Type | Meaning |
+|---|---|---|
+| `enabled` | boolean | Turn preprocessing on or off for this source |
+| `patterns` | array | The rules, applied in order |
+| `pattern` | string | Literal text, or a regular expression |
+| `replacement` | string | Text to substitute; empty string deletes |
+| `is_regex` | boolean | Treat `pattern` as a regular expression |
+| `flags` | string | Regex flags (`g`, `i`, `s`, `m`, `u`) |
+| `comment` | string | Free-text note. Ignored at runtime, read by humans |
 
-| Параметр | Тип | Опис |
-|----------|-----|------|
-| `enabled` | boolean | Увімкнути/вимкнути препроцесинг |
-| `patterns` | array | Масив правил заміни |
-| `pattern` | string | Текст або regex для пошуку |
-| `replacement` | string | Текст заміни (пусто = видалення) |
-| `is_regex` | boolean | Чи є pattern регулярним виразом |
-| `flags` | string | Прапорці для regex (g, i, s, m) |
+Supplying `flags` implies `is_regex` — `MessageFilter.compileReplacements()`
+treats a pattern as a regex when either is present. A regex that fails to
+compile is logged and skipped; the rest of the patterns still apply.
 
-## Приклади використання
+## Examples
 
-### 1. Видалення простого футера
+### 1. Delete a decorative separator
 
 ```json
 {
@@ -65,50 +80,46 @@ Text Replacements - це механізм препроцесингу текст�
 }
 ```
 
-**До:**
+**Before:**
 ```
-Нова гра у Steam!
+New game on Steam!
 ━━━━━━━━━━━━━━━
-📢 Канал: @gamechannel
+📢 Channel: @gamechannel
 ```
 
-**Після:**
+**After:**
 ```
-Нова гра у Steam!
+New game on Steam!
 
 
-📢 Канал: @gamechannel
+📢 Channel: @gamechannel
 ```
 
----
-
-### 2. Видалення рядка з посиланням на канал
+### 2. Delete a line that links back to the channel
 
 ```json
 {
-  "pattern": "📢 Канал:.*?\\n",
+  "pattern": "📢 Channel:.*?\\n",
   "replacement": "",
   "is_regex": true,
   "flags": "gi"
 }
 ```
 
-**До:**
+**Before:**
 ```
-Нова гра у Steam!
-📢 Канал: @gamechannel
-Знижка 50%!
-```
-
-**Після:**
-```
-Нова гра у Steam!
-Знижка 50%!
+New game on Steam!
+📢 Channel: @gamechannel
+50% off!
 ```
 
----
+**After:**
+```
+New game on Steam!
+50% off!
+```
 
-### 3. Видалення блоку між маркерами
+### 3. Delete a block between markers
 
 ```json
 {
@@ -119,28 +130,26 @@ Text Replacements - це механізм препроцесингу текст�
 }
 ```
 
-**Примітка**: Прапорець `s` дозволяє `.` співпадати з `\n`
+The `s` flag is what lets `.` match a newline, so the pattern can span lines.
 
-**До:**
+**Before:**
 ```
-Нова гра у Steam!
+New game on Steam!
 🎮 FOOTER:
-Реклама
-Підписуйтесь
+Advertisement
+Subscribe
 END FOOTER
-Знижка!
+Discount!
 ```
 
-**Після:**
+**After:**
 ```
-Нова гра у Steam!
+New game on Steam!
 
-Знижка!
+Discount!
 ```
 
----
-
-### 4. Заміна тексту (не видалення)
+### 4. Substitute rather than delete
 
 ```json
 {
@@ -150,19 +159,9 @@ END FOOTER
 }
 ```
 
-**До:**
-```
-Нова гра від @gamechannel
-```
+`New game from @gamechannel` becomes `New game from [CHANNEL]`.
 
-**Після:**
-```
-Нова гра від [CHANNEL]
-```
-
----
-
-### 5. Видалення всіх згадок (@mentions)
+### 5. Strip every @mention
 
 ```json
 {
@@ -173,19 +172,11 @@ END FOOTER
 }
 ```
 
-**До:**
-```
-Check @channel1 and @channel2 for updates
-```
+`Check @channel1 and @channel2 for updates` becomes
+`Check  and  for updates` — note the doubled spaces. Replace with a single
+space instead of an empty string if that matters downstream.
 
-**Після:**
-```
-Check  and  for updates
-```
-
----
-
-### 6. Видалення URL
+### 6. Strip URLs
 
 ```json
 {
@@ -196,19 +187,30 @@ Check  and  for updates
 }
 ```
 
-**До:**
-```
-Дивись тут: https://example.com/game
-Ще тут: http://steam.com
+Be careful with this one on a TheFlow source: `candidates.urls` is extracted
+from `raw_text`, so stripping URLs here removes them from the model's input
+as well.
+
+### 7. Strip a reaction-prompt footer
+
+A common shape is a run of lines like `<emoji> - <text>` inviting reactions.
+Requiring **two or more consecutive** such lines keeps the pattern from
+eating a single emoji-led line that is genuine content:
+
+```json
+{
+  "pattern": "(?:\\n[ \\t]*[\\p{Extended_Pictographic}\\uFE0F]+[ \\t]*[-\\u2013\\u2014][ \\t]*[^\\n]*){2,}",
+  "replacement": "",
+  "is_regex": true,
+  "flags": "gu",
+  "comment": "Reaction-prompt footer, two lines or more"
+}
 ```
 
-**Після:**
-```
-Дивись тут: 
-Ще тут: 
-```
+The `u` flag is required for `\p{...}`. The character class covers the hyphen,
+en dash and em dash, because channels are inconsistent about which they use.
 
-## Повний приклад конфігурації
+## Full source example
 
 ```json
 {
@@ -223,28 +225,28 @@ Check  and  for updates
         "pattern": "━━━━━━━━━━━━━━━",
         "replacement": "",
         "is_regex": false,
-        "comment": "Видалення декоративних ліній"
+        "comment": "Decorative separators"
       },
       {
-        "pattern": "📢 Канал:.*?\\n",
+        "pattern": "📢 Channel:.*?\\n",
         "replacement": "",
         "is_regex": true,
         "flags": "gi",
-        "comment": "Видалення посилань на канал"
+        "comment": "Back-links to the source channel"
       },
       {
         "pattern": "\\[AD\\].*?\\[/AD\\]",
         "replacement": "",
         "is_regex": true,
         "flags": "gis",
-        "comment": "Видалення рекламних блоків"
+        "comment": "Marked advertising blocks"
       },
       {
         "pattern": "@\\w+",
         "replacement": "",
         "is_regex": true,
         "flags": "g",
-        "comment": "Видалення всіх @mentions"
+        "comment": "All @mentions"
       }
     ]
   },
@@ -261,240 +263,158 @@ Check  and  for updates
 }
 ```
 
-## Regex Patterns - Корисні шаблони
+## Useful patterns
 
-### Багаторядковий текст
-
-```javascript
-{
-  "pattern": "START.*?END",
-  "flags": "gis"  // 's' дозволяє '.' співпадати з '\n'
-}
-```
-
-### Емодзі
+**Text spanning several lines** — the `s` flag makes `.` match `\n`:
 
 ```javascript
-{
-  "pattern": "[\\u{1F300}-\\u{1F9FF}]",
-  "flags": "gu"  // 'u' для Unicode
-}
+{ "pattern": "START.*?END", "flags": "gis" }
 ```
 
-### Телефони
+**Emoji** — the `u` flag is required:
 
 ```javascript
-{
-  "pattern": "\\+?\\d{1,3}[\\s-]?\\(?\\d{1,4}\\)?[\\s-]?\\d{1,4}[\\s-]?\\d{1,9}",
-  "flags": "g"
-}
+{ "pattern": "[\\u{1F300}-\\u{1F9FF}]", "flags": "gu" }
 ```
 
-### Email
+**Phone numbers:**
 
 ```javascript
-{
-  "pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b",
-  "flags": "g"
-}
+{ "pattern": "\\+?\\d{1,3}[\\s-]?\\(?\\d{1,4}\\)?[\\s-]?\\d{1,4}[\\s-]?\\d{1,9}", "flags": "g" }
 ```
 
-## Best Practices
+**Email addresses:**
 
-### ✅ Правильно:
+```javascript
+{ "pattern": "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "flags": "g" }
+```
+
+## Practice
+
+**Write a `comment` on every non-obvious pattern.** A regex with no
+explanation is unmaintainable six months later, and the field costs nothing
+at runtime.
+
+**Never use a pattern that can match everything.** `".*"` with an empty
+replacement deletes the whole message; the post then fails
+`THEFLOW_MIN_TEXT_LENGTH` and is stored as `skipped_empty`, which looks like
+a source problem rather than a config problem.
+
+**Order matters**, because patterns apply in sequence. Remove large blocks
+first, then small elements — the reverse can leave a block's delimiters
+behind after their contents are gone:
 
 ```json
 {
   "patterns": [
-    {
-      "pattern": "FOOTER:.*?END",
-      "replacement": "",
-      "is_regex": true,
-      "flags": "gis",
-      "comment": "Пояснення навіщо це правило"
-    }
+    { "pattern": "\\[AD\\].*?\\[/AD\\]", "replacement": "", "is_regex": true, "flags": "gis" },
+    { "pattern": "@\\w+",                "replacement": "", "is_regex": true, "flags": "g" }
   ]
 }
 ```
 
-### ❌ Неправильно:
+**Prefer a literal over a regex** when the text is fixed — `is_regex: false`
+uses `String.replaceAll()`, which is faster and cannot backtrack.
 
-```json
-{
-  "patterns": [
-    {
-      "pattern": ".*",  // ❌ Видалить весь текст!
-      "replacement": ""
-    }
-  ]
-}
-```
+**Keep the list short.** Five to ten patterns per source is a reasonable
+ceiling; past that, the thing being removed is usually better handled by a
+blacklist entry or, for a TheFlow source, by the model.
 
-### Порядок patterns має значення
+## Testing a pattern
 
-Patterns застосовуються послідовно, тому:
-
-```json
-{
-  "patterns": [
-    // 1. Спочатку видаляємо великі блоки
-    {
-      "pattern": "\\[AD\\].*?\\[/AD\\]",
-      "replacement": "",
-      "is_regex": true,
-      "flags": "gis"
-    },
-    // 2. Потім видаляємо дрібні елементи
-    {
-      "pattern": "@\\w+",
-      "replacement": "",
-      "is_regex": true,
-      "flags": "g"
-    }
-  ]
-}
-```
-
-## Продуктивність
-
-### Оптимізації в MessageFilter:
-
-1. **Компіляція при старті**: Всі regex компілюються один раз
-2. **Кешування**: Результати зберігаються в Map
-3. **Мінімум викликів**: Один lookup на повідомлення
-
-### Рекомендації:
-
-- Використовуйте `is_regex: false` для простих рядків (швидше)
-- Уникайте складних regex з backtracking
-- Обмежте кількість patterns до 5-10 на source
-
-## Тестування
-
-### Приклад тестування replacements:
+Run it through the real `MessageFilter` rather than a hand-rolled copy —
+compilation has its own behaviour around flags and invalid patterns:
 
 ```javascript
-import messageFilter from './module/filters/MessageFilter.js';
+import messageFilter from "./src/module/filters/MessageFilter.js";
 
-const source = {
-  id: 1,
-  text_replacements: {
-    enabled: true,
-    patterns: [
-      {
-        pattern: "━━━━━━",
-        replacement: "",
-        is_regex: false
-      }
-    ]
-  }
-};
+const compiled = messageFilter.compileReplacements(1, {
+  enabled: true,
+  patterns: [{ pattern: "━━━━━━", replacement: "", is_regex: false }],
+});
 
-const compiled = messageFilter.compileReplacements(source.id, source.text_replacements);
-const result = messageFilter.preprocessText(compiled, "Test ━━━━━━ Footer");
-console.log(result); // "Test  Footer"
+console.log(messageFilter.preprocessText(compiled, "Test ━━━━━━ Footer"));
+// "Test  Footer"
 ```
 
-### Детальна перевірка:
+`checkMessageDetailed()` reports both the original and the processed text,
+which is what you want when a message is being filtered and it is not
+obvious whether the replacement or the filter is responsible:
 
 ```javascript
 const detailed = messageFilter.checkMessageDetailed(source, "Test ━━━━━━ game");
-console.log(detailed);
-// {
-//   passed: true/false,
-//   reason: "...",
-//   originalText: "Test ━━━━━━ game",
-//   processedText: "Test  game"
-// }
+// { passed, reason, originalText, processedText }
 ```
 
-## Міграція бази даних
+## Schema changes
 
-Після додавання нового поля `text_replacements`, база даних автоматично оновиться через `database.sync()`.
+`text_replacements` is a JSON column on `sources` and needs no migration to
+change its contents — it is configuration, not schema.
 
-Для існуючих джерел значення за замовчуванням:
+Adding or altering a **column** is different: apply it as a numbered
+migration under `database/migrations/` and run `npm run migrate`. Do not rely
+on `sync({ alter: true })` against a database that holds real data — SQLite
+rebuilds the whole table. See `CLAUDE.md` § Operational cautions.
 
-```javascript
-{
-  enabled: false,
-  patterns: []
-}
-```
+Sources seeded before the column existed have `text_replacements` as `null`;
+`Source.prototype.preprocessText()` treats that as disabled and returns the
+text unchanged.
 
 ## Troubleshooting
 
-### Проблема: Фільтри не працюють після додавання replacements
-
-**Рішення**: Очистіть кеш:
+**Filters behave as though the old configuration is still in place.**
+Compiled patterns are cached per source id. Clear the cache and reload:
 
 ```javascript
-messageFilter.clearCache();
+messageFilter.clearCache();          // or clearCache(sourceId)
 await telegramListener.reloadWhitelist();
 ```
 
-### Проблема: Regex pattern не компілюється
-
-**Рішення**: Перевірте валідність regex:
-
-```javascript
-try {
-  new RegExp(pattern, flags);
-} catch (error) {
-  console.error('Invalid regex:', pattern);
-}
-```
-
-### Проблема: Весь текст видаляється
-
-**Рішення**: Перевірте pattern - можливо він занадто широкий:
+**A pattern seems to be ignored.** It probably failed to compile — an invalid
+regex is logged by `compileReplacements()` and dropped, and the remaining
+patterns still run, so the symptom is one rule silently missing rather than
+an error. Check it in isolation:
 
 ```javascript
-// ❌ Погано
-"pattern": ".*"
-
-// ✅ Добре
-"pattern": "FOOTER:.*?END FOOTER"
+try { new RegExp(pattern, flags); }
+catch (error) { console.error("Invalid regex:", pattern, error.message); }
 ```
+
+**The whole message disappears.** The pattern is too broad. Narrow it to the
+block you actually mean:
+
+```javascript
+".*"                    // wrong: matches everything
+"FOOTER:.*?END FOOTER"  // right: bounded, non-greedy
+```
+
+**Backslashes vanish.** In JSON, `\d` must be written `\\d`. A pattern that
+works in a JavaScript regex literal needs every backslash doubled when it
+moves into a config file.
 
 ## API
 
-### MessageFilter методи:
+`MessageFilter`:
 
 ```javascript
-// Компіляція replacements
-compileReplacements(sourceId, textReplacements)
-
-// Препроцесинг тексту
-preprocessText(compiledReplacements, messageText)
-
-// Швидка перевірка з препроцесингом
+compileReplacements(sourceId, textReplacements)   // compile and cache
+preprocessText(compiledReplacements, messageText) // apply replacements
 checkMessageFast(compiledReplacements, compiledFilter, messageText)
-
-// Детальна перевірка з інформацією
-checkMessageDetailed(source, messageText)
-
-// Очистка кешу
+checkMessageDetailed(source, messageText)         // with diagnostics
 clearCache(sourceId = null)
-
-// Статистика
 getCacheStats()
 ```
 
-### Source методи:
+`Source`:
 
 ```javascript
-// Препроцесинг тексту
-source.preprocessText(messageText)
-
-// Перевірка фільтрів (з автоматичним препроцесингом)
-source.passesFilter(messageText)
+source.preprocessText(messageText)  // replacements only
+source.passesFilter(messageText)    // replacements, then filters
 ```
 
-## Changelog
+## History
 
-### v1.0.0
-- ✅ Додано `text_replacements` поле в Source модель
-- ✅ Додано підтримку regex та simple string patterns
-- ✅ Додано кешування скомпільованих patterns
-- ✅ Інтеграція в TelegramSourceListener
-- ✅ Препроцесинг перед фільтрацією
+Initial version added the `text_replacements` column to the `Source` model,
+support for both literal and regex patterns, caching of compiled patterns,
+integration into `TelegramSourceListener`, and the guarantee that
+preprocessing runs before filtering.

@@ -7,6 +7,34 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.14.3] - 2026-09-12
+
+### Changed
+- `docs/text_replacements.md` rewritten in English. It is the detailed
+  reference `README.md` points at twice, so it was the Ukrainian document
+  with the most readers. Every API it documents was re-checked against the
+  code first — `compileReplacements`, `preprocessText`, `checkMessageFast`,
+  `checkMessageDetailed`, `clearCache`, `getCacheStats`,
+  `Source.preprocessText`, `Source.passesFilter` all still exist and behave
+  as described.
+
+  Corrections made while translating, rather than carried over:
+  - The "database migration" section said a new field lands automatically via
+    `database.sync()`. That contradicts the migration discipline in
+    `CLAUDE.md`: `sync({ alter: true })` rebuilds the whole table in SQLite.
+    It now says configuration needs no migration and a schema change is a
+    numbered migration.
+  - Added what the old text left implicit: supplying `flags` implies
+    `is_regex`; an invalid regex is logged and dropped while the other
+    patterns still run; `is_regex: false` uses `String.replaceAll()`;
+    backslashes must be doubled in JSON.
+  - Added the TheFlow interaction, which did not exist when the document was
+    written: `posts.raw_text` stores text *after* replacements, so it is what
+    the model sees and what verbatim validation checks against — and
+    stripping URLs also strips them from `candidates.urls`.
+  - Added a reaction-footer pattern as a worked example, including why it
+    requires two consecutive lines.
+
 ## [4.14.2] - 2026-09-12
 
 ### Fixed
