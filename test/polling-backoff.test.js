@@ -68,14 +68,20 @@ test("floodWaitSeconds — rejects everything that is not a positive wait", () =
 
 // ── _runPollingCycle ──────────────────────────────────────────────────
 
-/** Слухач із підставленими каналами, без мережі й без БД. */
-function makeListener(channels) {
+/**
+ * Слухач із підставленими каналами, без мережі й без БД.
+ * Усі канали одразу due — планувальник опитує лише те, чий час настав.
+ */
+function makeListener(channels, { everyMs = 300_000 } = {}) {
   const events = [];
   const listener = new TelegramSourceListener({ emit: (n, p) => events.push([n, p]) });
   listener.isListening = true;
+  const now = Date.now();
   for (const ch of channels) {
     listener.stateCache.set(ch.id, { last_message_id: 1, advance: async () => {} });
     listener.sourcesCache.set(ch.channel_id, ch);
+    listener.pollDueAt.set(ch.id, now);
+    listener.pollEveryMs.set(ch.id, everyMs);
   }
   listener._getSourceById = (id) => channels.find((c) => c.id === id) ?? null;
   return { listener, events };

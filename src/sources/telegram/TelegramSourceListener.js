@@ -6,10 +6,14 @@ import telegramClient from "../../module/telegram/TelegramClient.js";
 import BaseSourceAdapter from "../base/BaseSourceAdapter.js";
 import messageFilter from "../../module/filters/MessageFilter.js";
 import {
+  POLLING_INTERVAL_MIN,
   POLLING_INTERVAL_MS,
   POLLING_FETCH_LIMIT,
   POLLING_CHANNEL_DELAY_MS,
   POLLING_FLOOD_MARGIN_MS,
+  POLLING_TICK_MS,
+  POLLING_MAX_PER_TICK,
+  POLLING_MAX_DRAIN_PAGES,
 } from "../../config/app.config.js";
 
 import TelegramMessageParser  from "./TelegramMessageParser.js";
@@ -35,8 +39,11 @@ class TelegramSourceListener extends BaseSourceAdapter {
     // ── Polling ───────────────────────────────────────────────────
     this.stateCache        = new Map(); // source_id  -> SourceState
     this.channelToSourceId = new Map(); // channel_id -> source_id
-    this.pollingTimer      = null;      // глобальний таймер циклу
+    this.pollingTimer      = null;      // один таймер-тік, не N на джерело
     this.isPolling         = false;     // захист від паралельних циклів
+    this.pollDueAt         = new Map(); // source_id -> коли опитувати (ms epoch)
+    this.pollEveryMs       = new Map(); // source_id -> власний інтервал (ms)
+    this.pollPhased        = new Set(); // кому зсув фази вже застосовано
 
     // ── Допоміжні модулі ──────────────────────────────────────────
     this._parser      = TelegramMessageParser;   // singleton, без стану
@@ -114,6 +121,9 @@ class TelegramSourceListener extends BaseSourceAdapter {
     this.replacementsCache.clear();
     this.stateCache.clear();
     this.channelToSourceId.clear();
+    this.pollDueAt.clear();
+    this.pollEveryMs.clear();
+    this.pollPhased.clear();
 
     this.isListening = false;
     print(`${this.platform} listener stopped`);
@@ -155,11 +165,70 @@ class TelegramSourceListener extends BaseSourceAdapter {
       }
     }
 
+    // Розклад: коли кожне джерело опитувати наступного разу.
+    // Детермінований зсув фази — див. _phaseOffsetMs.
+    const now = Date.now();
+    for (const source of sources) {
+      const everyMs = source.getPollIntervalMin(POLLING_INTERVAL_MIN) * 60_000;
+      // Перший тік: усе due одразу. Наздогін після простою — бажаний, а
+      // стелю на тік і паузу 500 мс ніхто не скасовував, тож він обмежений.
+      this.pollDueAt.set(source.id, now);
+      this.pollEveryMs.set(source.id, everyMs);
+    }
+
+    const intervals = sources
+      .map((s) => s.getPollIntervalMin(POLLING_INTERVAL_MIN))
+      .sort((a, b) => a - b);
     print(
-      `[POLLING] Initialized ${sources.length} channel(s), interval: ${POLLING_INTERVAL_MS / 1000}s, delay between channels: ${POLLING_CHANNEL_DELAY_MS}ms`,
+      `[POLLING] Initialized ${sources.length} channel(s), tick ${POLLING_TICK_MS / 1000}s, ` +
+        `intervals ${intervals[0]}..${intervals[intervals.length - 1]}min, ` +
+        `max ${POLLING_MAX_PER_TICK}/tick, ${POLLING_CHANNEL_DELAY_MS}ms between channels`,
     );
 
-    this._scheduleNextPoll();
+    this._scheduleNextPoll(0);
+  }
+
+  /**
+   * Детермінований зсув фази для джерела, у межах [0, everyMs).
+   *
+   * Без нього кілька джерел з однаковим інтервалом назавжди залишаються
+   * синхронними: виставлені разом — стають due разом, і «раз на добу» для
+   * шести каналів означає шість запитів в одну секунду щодоби. Зсув від
+   * id джерела, а не від Math.random, щоб розклад відтворювався після
+   * рестарту, а не перетасовувався щоразу.
+   */
+  static _phaseOffsetMs(sourceId, everyMs) {
+    if (!Number.isFinite(everyMs) || everyMs <= 0) return 0;
+    // FNV-1a над рядком id: дешево, без залежностей, добре розсіює малі числа.
+    let hash = 0x811c9dc5;
+    for (const ch of String(sourceId)) {
+      hash ^= ch.charCodeAt(0);
+      hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash % Math.floor(everyMs);
+  }
+
+  /** Джерела, чий час настав, найпрострочені першими, не більше стелі. */
+  _dueSources(now = Date.now()) {
+    const due = [];
+    for (const [sourceId, dueAt] of this.pollDueAt) {
+      if (dueAt <= now) due.push([sourceId, dueAt]);
+    }
+    // Найдовше очікуване — першим: інакше джерело з коротким інтервалом
+    // може вічно витісняти те, що чекає з минулого тіку.
+    due.sort((a, b) => a[1] - b[1]);
+    return due.slice(0, POLLING_MAX_PER_TICK).map(([sourceId]) => sourceId);
+  }
+
+  /** Наступний час опитування для джерела, з рознесенням фази. */
+  _rescheduleSource(sourceId, now = Date.now()) {
+    const everyMs = this.pollEveryMs.get(sourceId) ?? POLLING_INTERVAL_MS;
+    const offset = TelegramSourceListener._phaseOffsetMs(sourceId, everyMs);
+    // Зсув застосовуємо один раз, при першому перепланувані: далі він уже
+    // «вшитий» у dueAt і інтервал лишається рівним.
+    const base = this.pollPhased.has(sourceId) ? everyMs : everyMs + offset;
+    this.pollPhased.add(sourceId);
+    this.pollDueAt.set(sourceId, now + base);
   }
 
   /**
@@ -183,10 +252,10 @@ class TelegramSourceListener extends BaseSourceAdapter {
     return /flood/i.test(label) ? seconds : null;
   }
 
-  _scheduleNextPoll(delayMs = POLLING_INTERVAL_MS) {
+  _scheduleNextPoll(delayMs = POLLING_TICK_MS) {
     this.pollingTimer = setTimeout(async () => {
       const backoffMs = await this._runPollingCycle();
-      if (this.isListening) this._scheduleNextPoll(backoffMs ?? POLLING_INTERVAL_MS);
+      if (this.isListening) this._scheduleNextPoll(backoffMs ?? POLLING_TICK_MS);
     }, delayMs);
   }
 
@@ -202,20 +271,33 @@ class TelegramSourceListener extends BaseSourceAdapter {
     }
 
     this.isPolling = true;
-    print(`[POLLING] Starting poll cycle for ${this.stateCache.size} channel(s)`, "debug");
+    print(`[POLLING] Tick: ${this.pollDueAt.size} channel(s) scheduled`, "debug");
 
     try {
+      const due = this._dueSources();
+      if (due.length === 0) {
+        print("[POLLING] Nothing due this tick", "debug");
+        return null;
+      }
+
       let isFirst = true;
-      for (const [sourceId, state] of this.stateCache) {
+      for (const sourceId of due) {
         // Пауза перед кожним каналом крім першого
         if (!isFirst) await sleep(POLLING_CHANNEL_DELAY_MS);
         isFirst = false;
 
         const source = this._getSourceById(sourceId);
-        if (!source) continue;
+        const state = this.stateCache.get(sourceId);
+        if (!source || !state) {
+          // Джерело зникло з кешу (деактивоване, перезаряджений whitelist) —
+          // прибираємо з розкладу, інакше воно due назавжди.
+          this.pollDueAt.delete(sourceId);
+          continue;
+        }
 
         try {
           await this._pollChannel(source, state);
+          this._rescheduleSource(sourceId);
         } catch (error) {
           const floodSeconds = TelegramSourceListener.floodWaitSeconds(error);
           if (floodSeconds !== null) {
@@ -238,6 +320,9 @@ class TelegramSourceListener extends BaseSourceAdapter {
             return waitMs;
           }
 
+          // Звичайна помилка: джерело все одно переплановуємо, інакше воно
+          // лишиться due і буде повторюватись кожен тік.
+          this._rescheduleSource(sourceId);
           print(`[POLLING] Error polling "${source.channel_name}": ${error.message}`, "error");
           this.eventBus.emit("error.occurred", {
             source:  this.platform,
@@ -248,41 +333,69 @@ class TelegramSourceListener extends BaseSourceAdapter {
         }
       }
 
-      print("[POLLING] Poll cycle complete", "debug");
+      print(`[POLLING] Tick complete: ${due.length} channel(s)`, "debug");
       return null;
     } finally {
       this.isPolling = false;
     }
   }
 
+  /**
+   * Забирає нові повідомлення каналу, за потреби кількома сторінками.
+   *
+   * Наздогін сторінками потрібен саме через пер-джерельні інтервали: канал з
+   * інтервалом «раз на добу» і `POLLING_FETCH_LIMIT` 50 інакше відстає
+   * назавжди — за тік він забирає 50 повідомлень, а за добу їх приходить
+   * більше. Стеля `POLLING_MAX_DRAIN_PAGES` тримає один тік обмеженим: решта
+   * добереться наступного разу.
+   */
   async _pollChannel(source, state) {
-    const lastId = state.last_message_id ?? 0;
+    for (let page = 0; page < POLLING_MAX_DRAIN_PAGES; page++) {
+      const lastId = state.last_message_id ?? 0;
 
-    const messages = await this.client.getMessages(source.channel_id, {
-      limit:    POLLING_FETCH_LIMIT,
-      offsetId: lastId,
-      reverse:  true,
-    });
+      const messages = await this.client.getMessages(source.channel_id, {
+        limit:    POLLING_FETCH_LIMIT,
+        offsetId: lastId,
+        reverse:  true,
+      });
 
-    if (!messages?.length) {
-      print(`[POLLING] No new messages in "${source.channel_name}"`, "debug");
-      return;
-    }
-
-    const sorted = [...messages].sort((a, b) => a.id - b.id);
-    print(`[POLLING] "${source.channel_name}": ${sorted.length} new message(s) since id=${lastId}`);
-
-    for (const msg of sorted) {
-      if (source.mode === "both" && this._dedup.has(source.channel_id, msg.id)) {
-        print(`[POLLING] Skipping duplicate msg_id=${msg.id} (handled by listener)`, "debug");
-        await state.advance(msg.id);
-        continue;
+      if (!messages?.length) {
+        if (page === 0) {
+          print(`[POLLING] No new messages in "${source.channel_name}"`, "debug");
+        }
+        return;
       }
 
-      const messageData = this._parser.parseRaw(msg, source.channel_id, this.platform);
-      await this._routeIncoming(messageData);
-      await state.advance(msg.id);
+      const sorted = [...messages].sort((a, b) => a.id - b.id);
+      print(
+        `[POLLING] "${source.channel_name}": ${sorted.length} new message(s) since id=${lastId}` +
+          (page > 0 ? ` (catch-up page ${page + 1})` : ""),
+      );
+
+      for (const msg of sorted) {
+        if (source.mode === "both" && this._dedup.has(source.channel_id, msg.id)) {
+          print(`[POLLING] Skipping duplicate msg_id=${msg.id} (handled by listener)`, "debug");
+          await state.advance(msg.id);
+          continue;
+        }
+
+        const messageData = this._parser.parseRaw(msg, source.channel_id, this.platform);
+        await this._routeIncoming(messageData);
+        await state.advance(msg.id);
+      }
+
+      // Неповна сторінка — канал вичерпано, більше нічого немає.
+      if (sorted.length < POLLING_FETCH_LIMIT) return;
+
+      print(`[POLLING] "${source.channel_name}": page full, continuing catch-up`, "debug");
+      await sleep(POLLING_CHANNEL_DELAY_MS);
     }
+
+    print(
+      `[POLLING] "${source.channel_name}": drain cap (${POLLING_MAX_DRAIN_PAGES} pages) reached — ` +
+        `resuming next tick`,
+      "warning",
+    );
   }
 
   // ================================================================

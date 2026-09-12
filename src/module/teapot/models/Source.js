@@ -39,6 +39,15 @@ export const Source = database.sequelize.define("Source", {
     defaultValue: 'listener',
     comment: 'Режим отримання повідомлень'
   },
+  // Як часто опитувати це джерело, у хвилинах. NULL = глобальний дефолт
+  // (POLLING_INTERVAL_MIN). Дає розвести тихі канали на раз на добу, а
+  // активні — на хвилини, не чіпаючи решту. Див. getPollIntervalMin().
+  poll_interval_min: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Інтервал полінгу цього джерела (хв). NULL = глобальний дефолт'
+  },
   // Препроцесинг тексту перед фільтрацією
   text_replacements: {
     type: DataTypes.JSON,
@@ -261,6 +270,21 @@ Source.prototype.getDestinations = function(platform) {
  */
 Source.prototype.getAllDestinations = function() {
   return this.destinations || { telegram: [], discord: [] };
+};
+
+// ==================== Полінг ====================
+
+/**
+ * Інтервал полінгу цього джерела у хвилинах.
+ *
+ * NULL у колонці означає «як усі» — глобальний дефолт передається аргументом,
+ * щоб модель не тягнула app.config.js (і щоб це було чистою функцією у тесті).
+ * Нечисле, нуль і відʼємне трактуються як NULL: краще опитати за дефолтом,
+ * ніж вирішити, що інтервал нульовий, і піти в тугий цикл.
+ */
+Source.prototype.getPollIntervalMin = function(globalDefaultMin) {
+  const raw = Number(this.poll_interval_min);
+  return Number.isFinite(raw) && raw > 0 ? raw : globalDefaultMin;
 };
 
 // ==================== TheFlow ====================

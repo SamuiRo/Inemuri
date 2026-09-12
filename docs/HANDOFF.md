@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.17.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.18.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -22,7 +22,7 @@ sources, none yet flow-enabled) are git-ignored — only what's under
 `database/migrations/` is version-controlled.
 
 Audited against the code on 2026-09-11: all five migrations are applied on the
-dev database, `npm test` is 92 green, and every `Done` note in
+dev database, `npm test` is 119 green, and every `Done` note in
 [theflow/ROADMAP.md](theflow/ROADMAP.md) matches what is actually in the tree.
 What the docs cannot show is that `posts`, `post_feedback` and `provider_quota`
 are all **empty** — nothing has flowed through the pipeline yet. Treat "Phase 1
@@ -53,7 +53,7 @@ Deployment-specific config is git-ignored and read through
 
 | Local (ignored) | Sample (tracked) | Holds |
 |---|---|---|
-| `sources.json` | `sources.sample.json` | Per-source channels, filters, replacements, `flow` |
+| `sources.json` | `sources.sample.json` | Per-source channels, filters, replacements, `flow`, `poll_interval_min` |
 | `routing.json` | `routing.sample.json` | `unsorted_destinations` and the phase 2 `routing` rules |
 | `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
 

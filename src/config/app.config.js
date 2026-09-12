@@ -55,6 +55,21 @@ export function positiveNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
   return n;
 }
 
+/**
+ * Те саме, але тиша, коли змінної просто немає.
+ *
+ * Різниця з positiveNumber змістова, не косметична: та стосується змінних, які
+ * `.env.example` вимагає і чия відсутність колись давала NaN — про це оператор
+ * має знати. А це — опційні ручки тюнінгу з робочим дефолтом. Попереджати про
+ * кожну незадану означає засипати старт шумом і привчити його не читати.
+ * Задане, але невалідне значення попереджає в обох випадках: оператор щось
+ * налаштовував, і це не застосувалось.
+ */
+export function optionalNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return fallback;
+  return positiveNumber(name, raw, fallback, sink);
+}
+
 // ── Конфіги конкретного розгортання ───────────────────────────────────────
 // У .gitignore: у кожного розгортання свої канали й призначення. Читаються
 // через loadLocalConfig, який падає на *.sample.json, — інакше свіжий клон
@@ -76,6 +91,26 @@ export const POLLING_FETCH_LIMIT = positiveNumber(
 );
 // Запас поверх FLOOD_WAIT, щоб не повторювати запит рівно на межі вікна.
 export const POLLING_FLOOD_MARGIN_MS = 5_000;
+
+// ── Полінг: пер-джерельні інтервали ───────────────────────────────────────
+// Планувальник тікає часто й дешево, а опитує лише ті джерела, чий час
+// настав (`poll_interval_min` на джерелі, NULL = POLLING_INTERVAL_MIN).
+// Один таймер, не N: серіалізація циклу — властивість безпеки, і незалежні
+// таймери на джерело її знищили б.
+export const POLLING_TICK_MS = optionalNumber(
+  "POLLING_TICK_MS", process.env.POLLING_TICK_MS, 30_000,
+);
+// Стеля каналів на один тік. Навіть якщо все стало due одночасно (рестарт,
+// довгий FLOOD_WAIT), робота на тік обмежена — решта сповзає на наступний.
+export const POLLING_MAX_PER_TICK = optionalNumber(
+  "POLLING_MAX_PER_TICK", process.env.POLLING_MAX_PER_TICK, 8,
+);
+// Скільки разів підряд _pollChannel може добирати повну сторінку, наздоганяючи
+// канал. Без цього джерело з інтервалом «раз на добу» і лімітом 50 відстає
+// назавжди: за цикл воно забирає 50 повідомлень, а за добу їх більше.
+export const POLLING_MAX_DRAIN_PAGES = optionalNumber(
+  "POLLING_MAX_DRAIN_PAGES", process.env.POLLING_MAX_DRAIN_PAGES, 5,
+);
 
 // ── External services ──────────────────────────────────────────────────────
 export const CMC_API_KEY = process.env.CMC_API_KEY;

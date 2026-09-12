@@ -31,7 +31,9 @@
       },
       "destinations": {
         "telegram": [],
-        "discord": ["123123123123"]
+        "discord": [
+          "123123123123"
+        ]
       }
     },
     {
@@ -39,6 +41,8 @@
       "channel_id": "-123123123",
       "channel_name": "Test 2 ",
       "is_active": true,
+      "mode": "polling",
+      "poll_interval_min": 1440,
       "text_replacements": {
         "enabled": false,
         "patterns": []
@@ -51,7 +55,9 @@
       },
       "destinations": {
         "telegram": [],
-        "discord": ["123123123123"]
+        "discord": [
+          "123123123123"
+        ]
       },
       "flow": {
         "enabled": true,

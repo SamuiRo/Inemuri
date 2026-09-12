@@ -214,6 +214,7 @@ Example:
 | `channel_name` | Friendly name used in logs and routed message metadata. |
 | `is_active` | Enables or disables the source. |
 | `mode` | `listener`, `polling`, or `both`. |
+| `poll_interval_min` | Optional. How often to poll this source, in minutes. Omit it to use the global `POLLING_INTERVAL_MIN`. Ignored for `listener`. |
 | `text_replacements` | Preprocessing rules applied before filters. |
 | `filters` | Keyword/blacklist rules. |
 | `destinations` | Target Telegram/Discord destination IDs. |
@@ -223,6 +224,31 @@ Example:
 - `listener`: listens for MTProto updates only
 - `polling`: periodically fetches messages from the source
 - `both`: combines listener and polling, with deduplication support
+
+### Polling schedule
+
+Polling runs on **one** timer, not one per source. Every `POLLING_TICK_MS` the
+scheduler polls only the sources whose turn has come — `poll_interval_min` on
+the source, or `POLLING_INTERVAL_MIN` when it is unset — serialized with
+`POLLING_CHANNEL_DELAY_MS` between channels. Keeping a single serialized cycle
+is deliberate: independent per-source timers would let several channels fire at
+once, which is the failure mode the delay exists to prevent.
+
+Three details make a mixed set of intervals safe:
+
+- **A deterministic phase offset per source.** Sources sharing an interval
+  would otherwise stay synchronized forever — six channels set to daily would
+  mean six requests in the same second, every day. The offset is derived from
+  the source id, so the schedule survives a restart instead of being reshuffled.
+- **A ceiling of `POLLING_MAX_PER_TICK` channels per tick.** Even when
+  everything comes due at once — after a restart, or a long `FLOOD_WAIT` — one
+  tick stays bounded and the remainder slips to the next. The most overdue
+  source goes first, so a short-interval channel cannot starve one that has
+  been waiting.
+- **Page-by-page catch-up**, capped at `POLLING_MAX_DRAIN_PAGES`. A channel
+  polled once a day with `POLLING_FETCH_LIMIT` at 50 would otherwise fall
+  permanently behind: it collects 50 messages per tick while more than that
+  arrives per day.
 
 Use `polling` or `both` for channels where listener-only behavior is not reliable enough.
 

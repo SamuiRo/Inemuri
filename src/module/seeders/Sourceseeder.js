@@ -18,6 +18,15 @@ const FLOW_DEFAULT = {
  * Зливає частковий flow-конфіг із Sources.json з дефолтами, щоб у БД
  * завжди лежав повний об'єкт. flow керується декларативно через Sources.json.
  */
+/**
+ * Інтервал полінгу з конфігу. Усе, що не додатне число, стає NULL —
+ * тобто «як усі». Нуль у колонці означав би due кожен тік.
+ */
+function normalizePollInterval(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+
 function mergeFlow(flow) {
   if (!flow || typeof flow !== "object") return { ...FLOW_DEFAULT };
   return {
@@ -75,6 +84,8 @@ class SourceSeeder {
         is_active: sourceData.is_active ?? true,
         // Якщо mode не вказано — залишаємо дефолт 'listener'
         mode: sourceData.mode ?? "listener",
+        // NULL = глобальний POLLING_INTERVAL_MIN (див. Source.getPollIntervalMin)
+        poll_interval_min: normalizePollInterval(sourceData.poll_interval_min),
         text_replacements: sourceData.text_replacements || {
           enabled: false,
           patterns: [],

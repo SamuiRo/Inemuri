@@ -7,6 +7,56 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.18.0] - 2026-09-12
+
+Polling cadence is now per source.
+
+### Added
+- `sources.poll_interval_min` (migration `006`, plain `ADD COLUMN`, no table
+  rebuild). `NULL` means "use the global `POLLING_INTERVAL_MIN`", so every
+  existing row behaves exactly as before and no backfill was needed.
+  `Source.getPollIntervalMin(globalDefault)` reads it, treating zero, negative
+  and non-numeric as `NULL` — a zero interval would mean "due every tick".
+- `POLLING_TICK_MS` (30s), `POLLING_MAX_PER_TICK` (8) and
+  `POLLING_MAX_DRAIN_PAGES` (5), all optional. They use a new
+  `optionalNumber()` which, unlike `positiveNumber()`, stays silent when the
+  variable is simply unset: warning about every unconfigured knob with a
+  working default trains an operator to stop reading startup warnings.
+- `poll_interval_min` in `SourceBuilder.html`, next to `Mode` and disabled for
+  `listener` sources, where polling does not happen. Verified in-browser: a
+  mixed config round-trips byte-identically, `null` never reaches the file, and
+  zero, negative and non-numeric input is refused rather than written.
+- `test/polling-schedule.test.js` — 19 cases over the interval getter, the
+  phase offset, due selection, rescheduling, the cycle, and drain paging.
+
+### Changed
+- **The scheduler polls only what is due**, on one timer rather than one per
+  source. Keeping a single serialized cycle is the point: independent
+  per-source timers would let several channels fire together, which is the
+  failure mode `POLLING_CHANNEL_DELAY_MS` exists to prevent.
+
+  Three properties make a mixed set of intervals safe:
+  - *A deterministic phase offset per source*, derived from its id. Sources
+    sharing an interval would otherwise stay synchronized forever — six
+    channels set to daily would fire in the same second every day. Deriving it
+    from the id rather than randomly means the schedule survives a restart.
+  - *A ceiling per tick.* When everything comes due at once — a restart, or a
+    long `FLOOD_WAIT` — one tick stays bounded and the rest slips to the next.
+    The most overdue source goes first, so a short-interval channel cannot
+    starve one that has been waiting since an earlier tick.
+  - *Page-by-page catch-up in `_pollChannel`*, capped at
+    `POLLING_MAX_DRAIN_PAGES`. This one is not optional: a channel polled daily
+    with `POLLING_FETCH_LIMIT` at 50 collects 50 messages per tick while more
+    than that arrives per day, so without paging a long interval would fall
+    permanently behind. The cap keeps a single tick bounded, and the checkpoint
+    means the next one resumes rather than restarting.
+- A source that has vanished from the caches is dropped from the schedule
+  instead of staying due forever and consuming a slot under the per-tick cap.
+- `SourceSeeder` threads `poll_interval_min` through, normalizing anything
+  non-positive to `NULL`.
+- `docs/theflow/ROADMAP.md` §2.9's all-polling advice still holds, and the
+  reason a quiet channel was polled 288 times a day is now configurable.
+
 ## [4.17.0] - 2026-09-12
 
 Deployment-specific configuration now lives outside the repository, and a

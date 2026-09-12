@@ -379,6 +379,7 @@ function addSource(data = null) {
     channel_name: '',
     is_active: true,
     mode: 'listener',
+    poll_interval_min: null,
     text_replacements: { enabled: true, patterns: [] },
     filters: { enabled: true, keywords: [], blacklist: [], case_sensitive: false },
     destinations: { telegram: [], discord: [] },
@@ -498,9 +499,26 @@ function buildCardBody(src) {
           <option value="both" ${src.mode==='both'?'selected':''}>both</option>
         </select>
       </div>
-      <div class="field-group" style="justify-content:flex-end;padding-bottom:2px">
-        <label style="margin-bottom:6px">Mode info</label>
+      <div class="field-group">
+        <label>Poll interval (min) — порожньо = глобальний</label>
+        <input type="text" inputmode="numeric" placeholder="default"
+               value="${src.poll_interval_min ?? ''}"
+               oninput="setPollInterval(${id},this.value)"
+               ${(src.mode||'listener')==='listener' ? 'disabled' : ''}>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label>Mode info</label>
         <span id="mode-hint-${id}" style="font-size:0.72rem;color:var(--text3);line-height:1.5">${getModeHint(src.mode||'listener')}</span>
+      </div>
+      <div class="field-group">
+        <label>Interval info</label>
+        <span style="font-size:0.72rem;color:var(--text3);line-height:1.5">${
+          (src.mode||'listener')==='listener'
+            ? 'Не застосовується: listener не опитує.'
+            : 'Тихий канал — 720 або 1440. Активний — 1–5.'
+        }</span>
       </div>
     </div>
 
@@ -729,11 +747,9 @@ function setField(id, field, value) {
   const src = getSrc(id);
   if (!src) return;
   src[field] = value;
-  // Update mode hint without full re-render
+  // mode керує доступністю поля інтервалу — потрібен повний re-render картки
   if (field === 'mode') {
-    const hint = document.getElementById('mode-hint-' + id);
-    if (hint) hint.textContent = getModeHint(value);
-    updateOutput();
+    refreshCard(id);
     return;
   }
   // Re-render card header only
@@ -742,6 +758,21 @@ function setField(id, field, value) {
     const newCard = buildCard(src);
     card.replaceWith(newCard);
   }
+  updateOutput();
+}
+
+/**
+ * Інтервал полінгу. Порожньо -> null («як усі»), нуль і сміття теж null:
+ * нульовий інтервал означав би опитування щотіку.
+ */
+function setPollInterval(id, raw) {
+  const src = getSrc(id);
+  if (!src) return;
+  const text = String(raw).trim();
+  if (text === '') { src.poll_interval_min = null; updateOutput(); return; }
+  const n = Math.round(Number(text));
+  if (!Number.isFinite(n) || n <= 0) return;
+  src.poll_interval_min = n;
   updateOutput();
 }
 
@@ -981,6 +1012,10 @@ function buildJSON() {
         if (clean.destinations[k].length === 0) delete clean.destinations[k];
       });
       if (Object.keys(clean.destinations).length === 0) clean.destinations = {};
+    }
+    // poll_interval_min: null = глобальний дефолт, у файл не пишемо
+    if (clean.poll_interval_min === null || clean.poll_interval_min === undefined) {
+      delete clean.poll_interval_min;
     }
     // flow: недоторканий дефолт не пишемо — джерела класичного форвардингу
     // лишаються такими ж чистими, як були. Модель усе одно підставить
