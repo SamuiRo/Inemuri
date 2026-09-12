@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.14.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.15.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -22,7 +22,7 @@ sources, none yet flow-enabled) are git-ignored — only what's under
 `database/migrations/` is version-controlled.
 
 Audited against the code on 2026-09-11: all five migrations are applied on the
-dev database, `npm test` is 80 green, and every `Done` note in
+dev database, `npm test` is 92 green, and every `Done` note in
 [theflow/ROADMAP.md](theflow/ROADMAP.md) matches what is actually in the tree.
 What the docs cannot show is that `posts`, `post_feedback` and `provider_quota`
 are all **empty** — nothing has flowed through the pipeline yet. Treat "Phase 1
@@ -34,6 +34,33 @@ below are for.
 filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 `flow` and `vision` included. Enabling the pilot is: import the live
 `src/config/sources.json`, switch the chosen sources on, export, reseed.
+
+## Known documentation debt
+
+Three Ukrainian documents under `docs/` are not just untranslated, they are
+wrong, and `CLAUDE.md` points new sessions at them:
+
+- `INEMURI_DOCS.txt` and `description.txt` describe a system that was never
+  built — a Google Sheets config provider, a Rule Engine, and tables
+  `messages` / `deliveries` / `sources_config` / `routing_rules` (the real
+  ones are `sources`, `source_states`, `posts`, `clusters`, `post_feedback`,
+  `provider_quota`, `schema_migrations`). They also use a different project
+  name. Deleting them and dropping the links loses nothing that
+  `ARCHITECTURE.md` does not already say correctly, in English.
+- `USE_EMBED.md` points at code that has moved: `parseMedia()` now lives in
+  `TelegramMessageParser`, and the listener's `downloadableMediaTypes` is now
+  `DOWNLOADABLE_MEDIA_TYPES` in `app.config.js`. It needs rewriting against
+  the current structure, not translating.
+
+`DETAILED_OPTIMIZATION_EXPLANATION.md` is a retrospective and still accurate;
+it is a candidate for `docs/archive/`.
+
+`src/config/categories.json` is tracked by git and carries real channel ids in
+`unsorted_destinations`. It mixes taxonomy (shared, tests depend on it) with
+routing targets (deployment-specific). The repo already has the pattern for
+the latter — `sources.sample.json` tracked, `sources.json` ignored — so the
+two belong apart. Touching it affects phase 2 routing, so it is a decision,
+not a cleanup.
 
 ## Next steps
 

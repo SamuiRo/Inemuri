@@ -7,6 +7,15 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.15.1] - 2026-09-12
+
+### Changed
+- `docs/HANDOFF.md` brought up to date and given a "Known documentation debt"
+  section: which Ukrainian documents are merely untranslated versus actively
+  wrong, and the note that `categories.json` is tracked while carrying real
+  channel ids. A new session reads this file first, so findings that were
+  only in a conversation now survive the session.
+
 ## [4.15.0] - 2026-09-12
 
 Two ways the polling loop could walk into a Telegram flood ban, both closed
