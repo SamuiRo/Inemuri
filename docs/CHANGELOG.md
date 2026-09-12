@@ -7,14 +7,24 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.14.2] - 2026-09-12
+
+### Fixed
+- Test fixtures and comments in `4.14.1` carried real promo codes and a real
+  post from an operator's private channel. Channel-specific data does not
+  belong in a repository where every deployment has its own sources: the
+  per-source config (`src/config/sources.json`) is git-ignored for exactly
+  that reason, and the fixtures had quietly worked around it. Replaced with
+  synthetic codes of the same shape, so the tests exercise the rule rather
+  than one operator's data. No behaviour change.
+
 ## [4.14.1] - 2026-09-12
 
 ### Fixed
 - `RegexStage.extractCandidates()` silently dropped letter-only promo codes.
   The filter required a token to contain **both** a digit and a letter, so
-  real codes like `MTKQEAJAUZWB`, `QWQXDDLOLOMO` and `AHAHAHAHAHAHA` — the
-  form HoYoverse and several other game issuers use — produced no candidate
-  at all. A single stream post carrying three codes surfaced only two.
+  a code with no digit in it — a form several game issuers use — produced no
+  candidate at all. A post listing three such codes surfaced only two.
   A token is now promo-like if it has a digit and a letter (as before) **or**
   is 10+ letters with no digit.
 
@@ -23,9 +33,8 @@ work closes out) — see `CLAUDE.md` § Versioning.
   (`ANNOUNCEMENT`, `CONGRATULATIONS`) now get in. That is acceptable by the
   stage's own contract — candidates are a hint the model confirms, never a
   decision, so a false candidate costs tokens while a missed code costs the
-  code. Cyrillic never matched `[A-Z]` to begin with, and these channels are
-  mostly Cyrillic. Measured on real posts from the three pilot channels: zero
-  false positives, three recovered codes.
+  code. Cyrillic never matched `[A-Z]` to begin with. Measured against a
+  sample of real posts: zero false positives, three recovered codes.
 
   Two regression tests added; both fail against the previous filter.
 

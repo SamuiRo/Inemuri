@@ -118,26 +118,28 @@ test("candidates — promo codes need both a digit and a letter", () => {
 });
 
 test("candidates — letter-only codes of 10+ chars count as promo codes", () => {
-  // Реальні коди з ігрового каналу: жодної цифри, правило digit+letter їх
-  // мовчки пропускало. Коротші капсові слова лишаються відсіяними.
+  // Коди без жодної цифри: правило digit+letter їх мовчки пропускало.
+  // Коротші капсові слова лишаються відсіяними.
   const { candidates } = stage.evaluate({
-    text: "Codes: MTKQEAJAUZWB, QWQXDDLOLOMO and AHAHAHAHAHAHA — not STEAM or GIVEAWAY",
+    text: "Codes: ABCDEFGHJKMN, QRSTUVWXYZAB and CDEFGHJKMNPQ — not STEAM or GIVEAWAY",
     blacklist: null,
   });
   assert.deepEqual(
     candidates.promo_codes.sort(),
-    ["AHAHAHAHAHAHA", "MTKQEAJAUZWB", "QWQXDDLOLOMO"].sort(),
+    ["ABCDEFGHJKMN", "CDEFGHJKMNPQ", "QRSTUVWXYZAB"].sort(),
   );
 });
 
-test("candidates — a real multi-code stream post yields every code", () => {
+test("candidates — a multi-code post yields every code, mixed forms", () => {
+  // Форма реального поста-переліку: коди по одному на рядок, частина з
+  // цифрами, частина без. Раніше поверталися лише ті, що з цифрами.
   const { candidates } = stage.evaluate({
-    text: "Всі промокоди зі стріму 💎\n\nPS3QWS3ACGDK\n\nRSJ9EB2TDGC7\n\nMTKQEAJAUZWB\n",
+    text: "Codes 💎\n\nAB3CD4EF5GHJ\n\nKM6NP7QR8STU\n\nVWXYZABCDEFG\n",
     blacklist: null,
   });
   assert.deepEqual(
     candidates.promo_codes.sort(),
-    ["MTKQEAJAUZWB", "PS3QWS3ACGDK", "RSJ9EB2TDGC7"].sort(),
+    ["AB3CD4EF5GHJ", "KM6NP7QR8STU", "VWXYZABCDEFG"].sort(),
   );
 });
 
