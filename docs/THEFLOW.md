@@ -129,7 +129,7 @@ What landed:
 
 - `Source.flow` JSON column (default `{ enabled: false, ... }`), plus
   `getFlowConfig()` / `isFlowEnabled()` / `isVisionEnabled()` on the model.
-  `flow` is managed declaratively through `Sources.json` (the seeder merges
+  `flow` is managed declaratively through `sources.json` (the seeder merges
   partial config with defaults).
 - `posts` and `clusters` tables — `src/module/teapot/models/Post.js` and
   `Cluster.js`, full field set from [DATA_MODEL.md](theflow/DATA_MODEL.md).

@@ -436,7 +436,7 @@ instead of silently corrupting the corpus.
 >   content, `candidates`, `text_hash`, source name.
 > - Hardening: `caseSensitive` threaded `MessageFilter → FlowIngest →
 >   RegexStage.evaluate()` — the blacklist no longer silently misses when a
->   source sets `case_sensitive: true` (test added). `Sources.sample.json`
+>   source sets `case_sensitive: true` (test added). `sources.sample.json`
 >   stripped of the `[Sponsored]…` / `@techchannel` no-op pair and the
 >   empty-pattern replacement.
 > - **Operator step left:** the same no-op replacements are copy-pasted across

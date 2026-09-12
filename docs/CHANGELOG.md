@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.18.1] - 2026-09-12
+
+### Fixed
+- **The `4.17.0` fresh-clone fallback did not actually work on Linux.** Git
+  tracked the file as `src/config/Sources.sample.json` while
+  `loadLocalConfig("sources", …)` asks for `sources.sample.json`. Windows and
+  macOS ignore filename case, so it resolved here and the new test suite passed;
+  the VPS is Linux, where a fresh clone would have found neither
+  `sources.json` (git-ignored) nor `sources.sample.json` (named with a capital
+  S) and started with an empty source list.
+
+  The sample is renamed to lowercase, and every reference across `README.md`,
+  `CLAUDE.md`, `ARCHITECTURE.md`, `THEFLOW.md`, `ROADMAP.md` and the seeder's
+  comments now matches. The redundant `/src/config/Sources.json` line is gone
+  from `.gitignore`. The historical `CHANGELOG` entry for `4.9.0` keeps the old
+  spelling, which was correct at the time.
+
+  Added a test that reads the directory listing and checks exact filenames, so
+  a case mismatch fails on a case-insensitive filesystem too — parsing the file
+  through the loader cannot catch this class of bug on Windows.
+
 ## [4.18.0] - 2026-09-12
 
 Polling cadence is now per source.

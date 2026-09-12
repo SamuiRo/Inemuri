@@ -48,8 +48,8 @@ Inemuri/
 │   │   ├── cronjob.config.json            # Runtime destination mapping for cron jobs
 │   │   ├── cronjob.config.sample.json     # Example cronjob config
 │   │   ├── cronjobs.js                    # Cron job definitions and Discord slash commands
-│   │   ├── Sources.json                   # Runtime source definitions for seeding
-│   │   └── Sources.sample.json            # Example source definitions
+│   │   ├── sources.json                   # Runtime source definitions for seeding
+│   │   └── sources.sample.json            # Example source definitions
 │   ├── destinations/
 │   │   ├── base/
 │   │   │   └── BaseDestinationAdapter.js  # Common contract for destination adapters
@@ -70,7 +70,7 @@ Inemuri/
 │   │   ├── routing/
 │   │   │   └── MessageRouter.js           # Routes normalized messages to destinations
 │   │   ├── seeders/
-│   │   │   └── Sourceseeder.js            # Imports Sources.json into the database
+│   │   │   └── Sourceseeder.js            # Imports sources.json into the database
 │   │   ├── theflow/                       # TheFlow subsystem
 │   │   │   ├── RegexStage.js              # Deterministic pre-AI stage: rejection, candidates, text hash
 │   │   │   ├── FlowIngest.js              # Stage 1: regex stage -> idempotent INSERT posts
@@ -196,7 +196,7 @@ Deduplication in `mode: "both"`: when the MTProto listener receives a message, i
 
 - `.env` stores secrets and runtime parameters such as Telegram credentials, Discord bot token, CoinMarketCap key, and polling settings.
 - `src/config/app.config.js` is the single source of truth for all constants — both env-backed values and hardcoded tunables. This includes polling intervals, album group timeout, dedup TTL, channel delay, and downloadable media types.
-- `src/config/Sources.json` is the declarative source registry. `src/module/seeders/Sourceseeder.js` imports it into SQLite.
+- `src/config/sources.json` is the declarative source registry. `src/module/seeders/Sourceseeder.js` imports it into SQLite.
 - `src/config/categories.json` is the TheFlow taxonomy (topics, signals with per-signal dedup windows, routing rules). Exposed as `CATEGORIES` from `app.config.js`; the enrich schema and the phase 2 resolve stage read it.
 - `database/pot.sqlite` is the runtime database.
 - `Source` stores source metadata, filters, text replacements, destination mappings, source mode, and the `flow` column (TheFlow settings, default `{ enabled: false }`).
@@ -251,12 +251,12 @@ Two design points that shape the remaining work:
   the source — a resolve stage fills that field from the post's category.
 
 Classic per-source forwarding remains available and unchanged. A source only
-enters TheFlow when its `flow.enabled` is set to `true` in `Sources.json`.
+enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 
 ## Operational entrypoints
 
 - `npm start` runs `src/inemuri.js` and starts the full service.
-- `npm run seed` imports `Sources.json` into the SQLite database.
+- `npm run seed` imports `sources.json` into the SQLite database.
 - `npm run seed:fresh` clears all existing sources and reseeds them.
 - `npm run migrate` applies pending schema migrations from `database/migrations/` (`NNN-name.js`, forward-only, one backup per run into `database/backups/`, refuses `NODE_ENV=development`); `npm run migrate:status` lists applied and pending. Migration `001-theflow-phase0` creates the Phase 0 schema on a fresh database and adopts it on one that already has it.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.

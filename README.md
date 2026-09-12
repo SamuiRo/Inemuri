@@ -47,7 +47,7 @@ For the full repo map, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Some older notes in `docs/` describe a broader or earlier architecture, including Google Sheets-based configuration. The current implementation in this repository is file-based and database-backed:
 
-- source definitions come from `src/config/Sources.json`
+- source definitions come from `src/config/sources.json`
 - cron destinations come from `src/config/cronjob.config.json`
 - runtime state is stored in `database/pot.sqlite`
 
@@ -95,12 +95,12 @@ POLLING_FETCH_LIMIT="50"
 
 Use the sample files as references:
 
-- `src/config/Sources.sample.json`
+- `src/config/sources.sample.json`
 - `src/config/cronjob.config.sample.json`
 
 Runtime files used by the app:
 
-- `src/config/Sources.json`
+- `src/config/sources.json`
 - `src/config/cronjob.config.json`
 
 ### 4. Seed the source configuration into SQLite
@@ -153,7 +153,7 @@ When `NODE_ENV="development"`, the current database sync logic uses `force: true
 
 ### Source configuration
 
-The source registry lives in `src/config/Sources.json`. Each record describes:
+The source registry lives in `src/config/sources.json`. Each record describes:
 
 - where the message comes from
 - how it should be preprocessed
@@ -308,7 +308,7 @@ There is also a Discord slash command:
 | Command | Description |
 | --- | --- |
 | `npm start` | Starts the full application. |
-| `npm run seed` | Seeds sources from `src/config/Sources.json`. |
+| `npm run seed` | Seeds sources from `src/config/sources.json`. |
 | `npm run seed:fresh` | Clears all sources and reseeds them. |
 
 ### Direct CLI usage
@@ -390,7 +390,7 @@ Make sure you copied the printed session string into `TELEGRAM_SESSION` in `.env
 
 Check the following:
 
-- the source exists in `src/config/Sources.json`
+- the source exists in `src/config/sources.json`
 - you ran `npm run seed`
 - `is_active` is `true`
 - destination IDs are correct
@@ -428,7 +428,7 @@ events across channels, and routing by content instead of by source.
 **Phase 0 (persistence without AI) is implemented.** A `flow` column on each
 source (default `{ enabled: false }`), the `posts` / `clusters` tables, a
 deterministic regex stage, and stage-1 ingest. No AI calls yet. Enable it per
-source with `"flow": { "enabled": true }` in `Sources.json`, then
+source with `"flow": { "enabled": true }` in `sources.json`, then
 `npm run migrate` once. Classic forwarding is unchanged and stays
 available per source; sources without `flow.enabled` behave exactly as before.
 

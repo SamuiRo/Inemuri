@@ -92,3 +92,17 @@ test("routing.sample carries no real channel ids", () => {
     assert.match(String(id), /1234567890|123456789012345678/, `плейсхолдер, не живий id: ${id}`);
   }
 });
+
+test("shipped samples are named exactly as the loader asks — case included", () => {
+  // Windows і macOS регістр у іменах файлів ігнорують, Linux — ні. VPS Linux,
+  // тож розбіжність на кшталт `Sources.sample.json` проти `sources.sample.json`
+  // тут проходила б непомітно, а на проді фолбек свіжого клону не знайшов би
+  // файл і система стартувала б з порожнім списком джерел.
+  const present = new Set(fs.readdirSync(CONFIG_DIR));
+  for (const name of ["sources", "routing", "cronjob.config"]) {
+    assert.ok(
+      present.has(`${name}.sample.json`),
+      `${name}.sample.json відсутній (є: ${[...present].filter((f) => /sample/i.test(f)).join(", ")})`,
+    );
+  }
+});

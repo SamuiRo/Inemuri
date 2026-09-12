@@ -103,7 +103,7 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 
 ```bash
 npm start            # start the service
-npm run seed         # seed sources from src/config/Sources.json
+npm run seed         # seed sources from src/config/sources.json
 npm run seed:fresh   # clear all sources and reseed
 npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations

@@ -78,7 +78,7 @@ destinations is worse than not starting. A fresh clone now starts — before
    against the live Telegram session; deploy the current code to the VPS
    per [DEPLOYMENT.md](DEPLOYMENT.md) and run `npm run migrate` there; strip
    the copy-pasted no-op text replacements from the live `sources.json` (the
-   committed `Sources.sample.json` is already clean — v4.9.0) and its VPS
+   committed `sources.sample.json` is already clean — v4.9.0) and its VPS
    copy; enable the pilot sources from ROADMAP §2.9 (not `Source M` until its
    stale checkpoint is explained).
 3. **Once the worker has run for a while:** the Phase 1 checkpoint — read
