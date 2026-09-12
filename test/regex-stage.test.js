@@ -117,6 +117,30 @@ test("candidates — promo codes need both a digit and a letter", () => {
   assert.deepEqual(candidates.promo_codes.sort(), ["BONUS50", "WELCOME2024"].sort());
 });
 
+test("candidates — letter-only codes of 10+ chars count as promo codes", () => {
+  // Реальні коди з ігрового каналу: жодної цифри, правило digit+letter їх
+  // мовчки пропускало. Коротші капсові слова лишаються відсіяними.
+  const { candidates } = stage.evaluate({
+    text: "Codes: MTKQEAJAUZWB, QWQXDDLOLOMO and AHAHAHAHAHAHA — not STEAM or GIVEAWAY",
+    blacklist: null,
+  });
+  assert.deepEqual(
+    candidates.promo_codes.sort(),
+    ["AHAHAHAHAHAHA", "MTKQEAJAUZWB", "QWQXDDLOLOMO"].sort(),
+  );
+});
+
+test("candidates — a real multi-code stream post yields every code", () => {
+  const { candidates } = stage.evaluate({
+    text: "Всі промокоди зі стріму 💎\n\nPS3QWS3ACGDK\n\nRSJ9EB2TDGC7\n\nMTKQEAJAUZWB\n",
+    blacklist: null,
+  });
+  assert.deepEqual(
+    candidates.promo_codes.sort(),
+    ["MTKQEAJAUZWB", "PS3QWS3ACGDK", "RSJ9EB2TDGC7"].sort(),
+  );
+});
+
 test("candidates — tickers, urls (trailing punctuation stripped), amounts, dates", () => {
   const { candidates } = stage.evaluate({
     text:

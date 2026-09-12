@@ -116,11 +116,7 @@ export class RegexStage {
   static extractCandidates(text) {
     const raw = String(text);
 
-    const promo_codes = uniqCap(
-      (raw.match(PROMO_RE) ?? []).filter(
-        (c) => /[0-9]/.test(c) && /[A-Z]/.test(c),
-      ),
-    );
+    const promo_codes = uniqCap((raw.match(PROMO_RE) ?? []).filter(isPromoLike));
 
     const tickers = uniqCap(raw.match(TICKER_RE) ?? []);
 
@@ -140,6 +136,25 @@ export class RegexStage {
 
     return { promo_codes, tickers, urls, dates, amounts };
   }
+}
+
+/**
+ * Чи схожий токен на промокод. Дві форми, бо емітенти різні:
+ *
+ *   1. Є і цифра, і літера — `BONUS50`, `PS3QWS3ACGDK`. Найнадійніша ознака.
+ *   2. Суцільні літери довжиною >= 10 — `MTKQEAJAUZWB`, `QWQXDDLOLOMO`.
+ *      HoYoverse і частина інших ігрових емітентів видають коди без жодної
+ *      цифри, і правило (1) їх мовчки пропускало.
+ *
+ * Поріг 10 — компроміс: короткі капсові слова (`STEAM`, `CSGO`, `GIVEAWAY`)
+ * відсікаються, довгі англійські (`ANNOUNCEMENT`, `CONGRATULATIONS`) — ні.
+ * Це прийнятно: кандидати — підказка моделі, а не рішення. Хибний кандидат
+ * коштує токенів, пропущений код коштує самого коду. Кирилиця під `[A-Z]`
+ * не потрапляє взагалі, а канали тут переважно кирилічні.
+ */
+function isPromoLike(c) {
+  if (/[0-9]/.test(c) && /[A-Z]/.test(c)) return true;
+  return /^[A-Z]{10,20}$/.test(c);
 }
 
 function uniqCap(arr) {

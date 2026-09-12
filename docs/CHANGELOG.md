@@ -7,6 +7,28 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.14.1] - 2026-09-12
+
+### Fixed
+- `RegexStage.extractCandidates()` silently dropped letter-only promo codes.
+  The filter required a token to contain **both** a digit and a letter, so
+  real codes like `MTKQEAJAUZWB`, `QWQXDDLOLOMO` and `AHAHAHAHAHAHA` — the
+  form HoYoverse and several other game issuers use — produced no candidate
+  at all. A single stream post carrying three codes surfaced only two.
+  A token is now promo-like if it has a digit and a letter (as before) **or**
+  is 10+ letters with no digit.
+
+  The 10-character floor is where the trade-off sits: short shouty words
+  (`STEAM`, `CSGO`, `GIVEAWAY`) stay out, long English ones
+  (`ANNOUNCEMENT`, `CONGRATULATIONS`) now get in. That is acceptable by the
+  stage's own contract — candidates are a hint the model confirms, never a
+  decision, so a false candidate costs tokens while a missed code costs the
+  code. Cyrillic never matched `[A-Z]` to begin with, and these channels are
+  mostly Cyrillic. Measured on real posts from the three pilot channels: zero
+  false positives, three recovered codes.
+
+  Two regression tests added; both fail against the previous filter.
+
 ## [4.14.0] - 2026-09-11
 
 ### Added
