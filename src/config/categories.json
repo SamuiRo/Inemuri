@@ -51,7 +51,7 @@
       "dedup_window_hours": 24
     },
     "freebie": {
-      "description": "Something is given away free or at a steep discount",
+      "description": "Something given away to keep: a game, item or currency that stays yours after claiming, or a steep discount on a purchase. Temporary access is NOT a freebie -- a free weekend, trial, demo or preview period grants nothing permanent and belongs to `event` instead.",
       "dedup_window_hours": 24
     },
     "analysis": {
@@ -59,7 +59,7 @@
       "dedup_window_hours": 72
     },
     "event": {
-      "description": "An event with a date: a start, a deadline, an active window",
+      "description": "An event with a date: a start, a deadline, an active window. Includes time-boxed free access -- a free weekend, a trial or a preview period -- where the thing is only usable while the window is open.",
       "dedup_window_hours": 48
     },
     "launch": {

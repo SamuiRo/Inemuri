@@ -7,6 +7,22 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.14.4] - 2026-09-12
+
+### Changed
+- `categories.json`: `freebie` no longer covers temporary access. It read
+  "Something is given away free or at a steep discount", which put a free
+  weekend, a trial and a permanent giveaway in one bucket — an operator
+  reviewing real posts flagged exactly that conflation. `freebie` now means
+  something that **stays yours after claiming**; time-boxed access goes to
+  `event`, whose description now says so, since a free weekend already fits
+  its "start, deadline, active window" shape. No new signal was needed.
+
+  `version` stays `1` deliberately. The rule in ROADMAP §"Phase 1 checkpoint"
+  is to bump it so older verdicts stay interpretable — there are no verdicts
+  yet, so there is nothing to keep interpretable and editing v1 in place is
+  correct. The bump to `2` still belongs at the checkpoint.
+
 ## [4.14.3] - 2026-09-12
 
 ### Changed
