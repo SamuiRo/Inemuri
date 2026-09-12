@@ -9,6 +9,7 @@ import {
   POLLING_INTERVAL_MS,
   POLLING_FETCH_LIMIT,
   POLLING_CHANNEL_DELAY_MS,
+  POLLING_FLOOD_MARGIN_MS,
 } from "../../config/app.config.js";
 
 import TelegramMessageParser  from "./TelegramMessageParser.js";
@@ -161,46 +162,97 @@ class TelegramSourceListener extends BaseSourceAdapter {
     this._scheduleNextPoll();
   }
 
-  _scheduleNextPoll() {
-    this.pollingTimer = setTimeout(async () => {
-      await this._runPollingCycle();
-      if (this.isListening) this._scheduleNextPoll();
-    }, POLLING_INTERVAL_MS);
+  /**
+   * Скільки секунд просить чекати FLOOD_WAIT, або null якщо помилка інша.
+   *
+   * GramJS сам засинає на флуд у межах `floodSleepThreshold` (60 с за
+   * замовчуванням) і прозоро повторює запит, тож сюди доходить лише те, що
+   * перевищило поріг. Чиста функція — перевіряється тестом без мережі.
+   */
+  static floodWaitSeconds(error) {
+    if (!error || typeof error !== "object") return null;
+    const seconds = Number(error.seconds);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    // `seconds` саме по собі не доказ: перевіряємо, що це справді flood.
+    const label = [
+      error.className,
+      error.errorMessage,
+      error.constructor?.name,
+      error.message,
+    ].filter(Boolean).join(" ");
+    return /flood/i.test(label) ? seconds : null;
   }
 
+  _scheduleNextPoll(delayMs = POLLING_INTERVAL_MS) {
+    this.pollingTimer = setTimeout(async () => {
+      const backoffMs = await this._runPollingCycle();
+      if (this.isListening) this._scheduleNextPoll(backoffMs ?? POLLING_INTERVAL_MS);
+    }, delayMs);
+  }
+
+  /**
+   * Один прохід по всіх polling-каналах.
+   * @returns {Promise<number|null>} Затримка перед наступним циклом (мс),
+   *   або null — планувати як зазвичай.
+   */
   async _runPollingCycle() {
     if (this.isPolling) {
       print("[POLLING] Previous cycle still running, skipping", "debug");
-      return;
+      return null;
     }
 
     this.isPolling = true;
     print(`[POLLING] Starting poll cycle for ${this.stateCache.size} channel(s)`, "debug");
 
-    let isFirst = true;
-    for (const [sourceId, state] of this.stateCache) {
-      // Пауза перед кожним каналом крім першого
-      if (!isFirst) await sleep(POLLING_CHANNEL_DELAY_MS);
-      isFirst = false;
+    try {
+      let isFirst = true;
+      for (const [sourceId, state] of this.stateCache) {
+        // Пауза перед кожним каналом крім першого
+        if (!isFirst) await sleep(POLLING_CHANNEL_DELAY_MS);
+        isFirst = false;
 
-      const source = this._getSourceById(sourceId);
-      if (!source) continue;
+        const source = this._getSourceById(sourceId);
+        if (!source) continue;
 
-      try {
-        await this._pollChannel(source, state);
-      } catch (error) {
-        print(`[POLLING] Error polling "${source.channel_name}": ${error.message}`, "error");
-        this.eventBus.emit("error.occurred", {
-          source:  this.platform,
-          error:   error.message,
-          context: `polling:${source.channel_id}`,
-          stack:   error.stack,
-        });
+        try {
+          await this._pollChannel(source, state);
+        } catch (error) {
+          const floodSeconds = TelegramSourceListener.floodWaitSeconds(error);
+          if (floodSeconds !== null) {
+            // Ліміти Telegram діють на АКАУНТ, не на канал. Піти до
+            // наступного каналу означає стукати тим самим заблокованим
+            // акаунтом і подовжувати покарання. Обриваємо цикл цілком і
+            // відкладаємо наступний на стільки, скільки просить сервер.
+            const waitMs = floodSeconds * 1_000 + POLLING_FLOOD_MARGIN_MS;
+            print(
+              `[POLLING] FLOOD_WAIT ${floodSeconds}s on "${source.channel_name}" — ` +
+                `aborting cycle, next poll in ${Math.round(waitMs / 1000)}s`,
+              "error",
+            );
+            this.eventBus.emit("error.occurred", {
+              source:  this.platform,
+              error:   `FLOOD_WAIT ${floodSeconds}s`,
+              context: `polling:${source.channel_id}`,
+              stack:   error.stack,
+            });
+            return waitMs;
+          }
+
+          print(`[POLLING] Error polling "${source.channel_name}": ${error.message}`, "error");
+          this.eventBus.emit("error.occurred", {
+            source:  this.platform,
+            error:   error.message,
+            context: `polling:${source.channel_id}`,
+            stack:   error.stack,
+          });
+        }
       }
-    }
 
-    this.isPolling = false;
-    print("[POLLING] Poll cycle complete", "debug");
+      print("[POLLING] Poll cycle complete", "debug");
+      return null;
+    } finally {
+      this.isPolling = false;
+    }
   }
 
   async _pollChannel(source, state) {

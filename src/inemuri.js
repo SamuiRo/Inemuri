@@ -14,6 +14,7 @@ import { CRON_JOBS, COMMANDS } from "./config/cronjobs.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import {
+  CONFIG_WARNINGS,
   ENRICH_WORKER_ENABLED,
   LLM_PRIMARY,
   LLM_PROVIDERS,
@@ -65,6 +66,12 @@ class Inemuri {
   async main() {
     try {
       banner(WELCOM_MESSAGE, SUB_TITTLE);
+
+      // 0. Проблеми конфігурації — до того, як щось стартує. Мовчазний
+      //    фолбек гірший за гучний: саме він ховає неповний .env.
+      for (const warning of CONFIG_WARNINGS) {
+        print(`[CONFIG] ${warning}`, "warning");
+      }
 
       // 1. Підключення до бази даних
       print("Connecting to database...");

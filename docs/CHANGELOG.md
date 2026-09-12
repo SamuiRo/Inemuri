@@ -7,6 +7,54 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.15.0] - 2026-09-12
+
+Two ways the polling loop could walk into a Telegram flood ban, both closed
+before the pending VPS deploy rather than after it.
+
+### Fixed
+- **A missing env var turned polling into an unthrottled request loop.**
+  `POLLING_INTERVAL_MS` was `Number(process.env.POLLING_INTERVAL_MIN) * 60 *
+  1000` with no fallback, so an unset variable produced `NaN` — and
+  `setTimeout(fn, NaN)` coerces to `0` and fires immediately. A deployment
+  whose `.env` lacked the line would hammer `getMessages` across every
+  channel with no pause and be rate-limited within seconds. The VPS `.env`
+  has never been inspected, so this was live risk on the next deploy.
+  `POLLING_FETCH_LIMIT` had the same shape.
+
+  Both now go through `positiveNumber()`, which falls back (5 minutes, 50
+  messages) on an unset, empty, non-numeric, zero or negative value. Silence
+  is what made the original bug invisible, so each fallback records a line in
+  `CONFIG_WARNINGS`, printed by `src/inemuri.js` as `[CONFIG] …` before
+  anything starts.
+
+- **A `FLOOD_WAIT` moved on to the next channel.** Telegram's limits apply to
+  the *account*, not the channel, so continuing the cycle meant issuing more
+  requests on an account already being rate-limited — which can extend the
+  penalty. The handler logged the error and carried on to the next channel.
+
+  `TelegramSourceListener.floodWaitSeconds()` now recognises the error, the
+  cycle aborts, and the next one is scheduled `seconds + 5s` out instead of
+  at the normal interval. GramJS still absorbs anything under its 60-second
+  `floodSleepThreshold` transparently, so only longer waits reach this path.
+  A `seconds` field alone is not treated as proof — the error must also look
+  like a flood — because an unrelated error carrying that field would
+  otherwise stall polling for no reason.
+
+### Changed
+- `_scheduleNextPoll(delayMs)` takes a delay; `_runPollingCycle()` returns the
+  backoff to apply, or `null` for business as usual. `isPolling` moved into a
+  `finally` so an early return cannot strand it.
+- `POLLING_INTERVAL_MIN` and `POLLING_FETCH_LIMIT` are optional in
+  `.env.example`, with the defaults documented.
+
+### Added
+- `test/polling-backoff.test.js` — 10 cases over `positiveNumber()`,
+  `floodWaitSeconds()` and the cycle itself: a flood aborts and returns the
+  backoff, an ordinary error skips one channel and continues, a clean cycle
+  returns none, and overlapping cycles are refused. The listener is driven
+  with a fake `_pollChannel`, so no network or database is involved.
+
 ## [4.14.4] - 2026-09-12
 
 ### Changed

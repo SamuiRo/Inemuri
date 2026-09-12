@@ -23,10 +23,49 @@ export const DISCORD_COMMAND_WHITELIST = process.env.DISCORD_COMMAND_WHITELIST
   ? process.env.DISCORD_COMMAND_WHITELIST.split(",").map((id) => id.trim())
   : [];
 
+// ── Валідація числових env ────────────────────────────────────────────────
+// Зібрані тут, а не надруковані одразу: app.config.js не тягне shared/utils.js
+// (важкий: chalk, sharp, gradient), тож попередження друкує inemuri.js на
+// старті через print().
+export const CONFIG_WARNINGS = [];
+
+/**
+ * Додатне число з env, із фолбеком замість NaN.
+ *
+ * Чому це важливо саме тут: `Number(undefined) * 60 * 1000` дає `NaN`, а
+ * `setTimeout(fn, NaN)` виконується негайно (NaN приводиться до 0). Без
+ * фолбеку відсутній `POLLING_INTERVAL_MIN` перетворював цикл полінгу на
+ * суцільний потік запитів до Telegram — тобто гарантований flood-бан на
+ * першому ж запуску з неповним `.env`.
+ *
+ * @param {string} name     Ім'я змінної (для тексту попередження).
+ * @param {*} raw           process.env[name].
+ * @param {number} fallback Значення за замовчуванням.
+ * @param {string[]} [sink] Куди складати попередження (для тестів).
+ */
+export function positiveNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    sink.push(`${name} is not set — falling back to ${fallback}`);
+    return fallback;
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) {
+    sink.push(`${name}=${JSON.stringify(raw)} is not a positive number — falling back to ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
 // ── Polling ────────────────────────────────────────────────────────────────
-export const POLLING_INTERVAL_MS =
-  Number(process.env.POLLING_INTERVAL_MIN) * 60 * 1000;
-export const POLLING_FETCH_LIMIT = Number(process.env.POLLING_FETCH_LIMIT);
+export const POLLING_INTERVAL_MIN = positiveNumber(
+  "POLLING_INTERVAL_MIN", process.env.POLLING_INTERVAL_MIN, 5,
+);
+export const POLLING_INTERVAL_MS = POLLING_INTERVAL_MIN * 60 * 1000;
+export const POLLING_FETCH_LIMIT = positiveNumber(
+  "POLLING_FETCH_LIMIT", process.env.POLLING_FETCH_LIMIT, 50,
+);
+// Запас поверх FLOOD_WAIT, щоб не повторювати запит рівно на межі вікна.
+export const POLLING_FLOOD_MARGIN_MS = 5_000;
 
 // ── External services ──────────────────────────────────────────────────────
 export const CMC_API_KEY = process.env.CMC_API_KEY;
