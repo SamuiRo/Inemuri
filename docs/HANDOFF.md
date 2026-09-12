@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.18.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.19.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -42,9 +42,8 @@ retired on 2026-09-12 into `docs/.archive/`, which is git-ignored — they are o
 disk for reference and out of the repository. `docs/.archive/README.md` records
 why each one went. **Do not cite them:** three describe a design that was never
 built (a Google Sheets config provider, a Rule Engine, tables that do not
-exist). The fourth, `USE_EMBED.md`, is the one worth rewriting rather than
-discarding — its `DiscordDestination` details are still correct, but it points
-at `parseMedia()` and `downloadableMediaTypes` in places they no longer live.
+exist). All four are now closed out: `USE_EMBED.md` was rebuilt from the code as
+[media.md](media.md) in `v4.19.0`, and nothing in the archive is pending.
 
 ## Configuration layout
 

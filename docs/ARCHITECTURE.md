@@ -25,6 +25,7 @@ Inemuri/
 │   ├── DEPLOYMENT.md                      # pm2 deploy and migration procedure
 │   ├── THEFLOW.md                         # TheFlow spec — Phase 0/1 implemented, 1.5+ specified
 │   ├── text_replacements.md               # Text preprocessing and replacement rules
+│   ├── media.md                           # Media pipeline, Discord embeds
 │   ├── .archive/                          # Retired docs, git-ignored — do not cite
 │   └── theflow/                           # TheFlow detailed specs
 │       ├── ARCHITECTURE.md                # Pipeline stages, pre-AI regex stage, invariants

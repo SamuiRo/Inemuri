@@ -7,6 +7,52 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.19.0] - 2026-09-12
+
+### Added
+- `docs/media.md`, rebuilt from the code rather than translated from the
+  retired `USE_EMBED.md`. The old document was wrong about the thing it mainly
+  documented: it described an **opt-in** embed API — `useEmbed: true`, or a
+  caller-supplied `embed` object with title, colour and fields — while
+  `DiscordDestination._buildPayload()` composes an embed from the message every
+  time and there is no way to pass one in.
+
+  The rewrite is organized around the fact that media crosses **three
+  independent stages, each dropping things for its own reasons** — which is
+  what you need to know when a file does not arrive:
+
+  1. `TelegramMessageParser.parseMedia()` classifies and rejects nothing;
+  2. `DOWNLOADABLE_MEDIA_TYPES` decides what is downloaded;
+  3. `supportedMediaTypes` decides what may become an embed image.
+
+  Two findings from checking every symbol against the tree:
+
+  - **`audio` and `video_note` parse correctly but are never downloaded.**
+    `DOWNLOADABLE_MEDIA_TYPES` omits them, and both skip paths are a bare
+    `continue` / `return null` with no log line, so the loss is invisible.
+    `audio` is nonetheless configured in `DiscordDestination`'s
+    `supportedMediaTypes`, so the two lists disagree and nothing keeps them
+    in sync.
+  - **`photo.defaultExtension: "png"` almost never applies.** `parseMedia()`
+    sets `mimeType: "image/jpeg"` unconditionally for photos (a Telegram photo
+    carries no document, so there is no MIME type to read), and the MIME lookup
+    runs before the default — so Telegram photos land as `.jpg`. The retired
+    document had a section arguing for PNG that did not describe real
+    behaviour.
+
+  Also documented: the fixed Blurple colour, the 4096-char description
+  truncation and its `*(…)*` marker, per-file oversize skipping with the
+  warning in the embed footer, `setFileSizeLimit(true)` for Nitro and the fact
+  that nothing calls it, the three-step filename resolution, and the three
+  places a new media type has to be registered.
+
+### Changed
+- `README.md`'s media section and document index, and `ARCHITECTURE.md`'s
+  directory tree, point at the new file.
+- `docs/.archive/README.md` marks `USE_EMBED.md` superseded rather than
+  "worth rewriting", and records what it got wrong. Nothing in the archive is
+  pending any more.
+
 ## [4.18.1] - 2026-09-12
 
 ### Fixed
