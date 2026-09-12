@@ -1,14 +1,13 @@
 import "dotenv/config";
 
 import pkg from "../../package.json" with { type: "json" };
-import SourceConfig from "./sources.json" with { type: "json" };
 import CategoriesConfig from "./categories.json" with { type: "json" };
+import { loadLocalConfig } from "./localConfig.js";
 
 // ── Runtime ────────────────────────────────────────────────────────────────
 export const NODE_ENV = process.env.NODE_ENV;
 export const PKG = pkg;
-export const SOURCE_CONFIG = SourceConfig;
-// TheFlow taxonomy (topics / signals / routing) — src/config/categories.json.
+// TheFlow taxonomy (topics / signals) — у репозиторії, спільна для всіх.
 export const CATEGORIES = CategoriesConfig;
 
 // ── Telegram auth ──────────────────────────────────────────────────────────
@@ -55,6 +54,17 @@ export function positiveNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
   }
   return n;
 }
+
+// ── Конфіги конкретного розгортання ───────────────────────────────────────
+// У .gitignore: у кожного розгортання свої канали й призначення. Читаються
+// через loadLocalConfig, який падає на *.sample.json, — інакше свіжий клон
+// не стартує взагалі (module resolution падає на відсутньому файлі).
+export const SOURCE_CONFIG = loadLocalConfig("sources", { sources: [] }, CONFIG_WARNINGS);
+// Маршрутизація TheFlow: unsorted_destinations + routing. Навмисно НЕ в
+// categories.json — таксономія спільна, а id каналів належать розгортанню.
+export const ROUTING = loadLocalConfig(
+  "routing", { unsorted_destinations: {}, routing: [] }, CONFIG_WARNINGS,
+);
 
 // ── Polling ────────────────────────────────────────────────────────────────
 export const POLLING_INTERVAL_MIN = positiveNumber(

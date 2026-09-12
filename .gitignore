@@ -5,6 +5,7 @@
 /src/config/Sources.json
 /src/config/sources.json
 /src/config/cronjob.config.json
+/src/config/routing.json
 # Superseded documentation kept on disk for reference only — see
 # docs/.archive/README.md for why each file was retired.
 /docs/.archive/

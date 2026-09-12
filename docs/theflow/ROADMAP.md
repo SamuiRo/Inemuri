@@ -59,9 +59,9 @@ For classic forwarding that is a missed forward. For TheFlow it is a hole in the
 corpus, which is worse, because the corpus is the thing being built.
 **Every flow source should run `polling` or `both`, never pure `listener`.**
 
-**b. Everything goes to one destination.** All 14 sources route to the same
-Telegram chat `-100XXXXXXXXXX` and the same Discord channel
-`XXXXXXXXXXXXXXXXXXX`. That single firehose *is* the problem TheFlow exists to
+**b. Everything goes to one destination.** All 14 sources route to a single
+Telegram chat and a single Discord channel (the deployment's own ids, in
+`src/config/routing.json`). That one firehose *is* the problem TheFlow exists to
 solve — and it means the phase 2 routing matrix has no channels to route into
 yet. Creating them is a prerequisite, not a detail.
 

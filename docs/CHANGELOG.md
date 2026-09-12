@@ -7,6 +7,45 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.17.0] - 2026-09-12
+
+Deployment-specific configuration now lives outside the repository, and a
+fresh clone starts.
+
+### Fixed
+- **A fresh clone could not start at all.** `sources.json` and
+  `cronjob.config.json` are git-ignored — correctly, since every deployment
+  has its own channels — but they were pulled in with
+  `import ... with { type: "json" }`. Module resolution failed before a single
+  line of logic ran, and the error named a file the reader had no reason to
+  expect. Both now load through `src/config/localConfig.js`.
+
+### Added
+- `src/config/localConfig.js`. A local config is read from
+  `src/config/<name>.json`; if it is absent, the tracked `<name>.sample.json`
+  is used and a line is recorded in `CONFIG_WARNINGS`.
+
+  A **malformed** local file throws rather than falling back. The distinction
+  is deliberate: silently substituting the sample means starting the system
+  with somebody else's destinations, which is worse than refusing to start.
+- `src/config/routing.sample.json`, and `routing.json` added to `.gitignore`.
+- `test/local-config.test.js` — 7 cases: local wins over sample, absent falls
+  back loudly, neither falls back to defaults, malformed local throws,
+  malformed sample throws, every shipped sample parses, and the routing sample
+  carries only placeholder ids.
+
+### Changed
+- **`categories.json` no longer carries routing.** It held
+  `unsorted_destinations` with a deployment's real Telegram and Discord ids
+  while being tracked by git — one operator's channels shipped to everyone,
+  in a file whose other half (topics, signals, dedup windows) is genuinely
+  shared and which the tests depend on. The two halves are now apart:
+  taxonomy stays in `categories.json`, `unsorted_destinations` and `routing`
+  move to `routing.json`, exported as `ROUTING`. Nothing in `src/` read those
+  two keys yet — phase 2 will — so the split is free to make now and would
+  not have been later.
+- `docs/theflow/ROADMAP.md` no longer prints those ids either.
+
 ## [4.16.0] - 2026-09-12
 
 ### Removed

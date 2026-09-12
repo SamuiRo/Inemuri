@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.15.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.17.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -46,12 +46,24 @@ exist). The fourth, `USE_EMBED.md`, is the one worth rewriting rather than
 discarding — its `DiscordDestination` details are still correct, but it points
 at `parseMedia()` and `downloadableMediaTypes` in places they no longer live.
 
-One item of debt remains: `src/config/categories.json` is tracked by git and
-carries real channel ids in `unsorted_destinations`. It mixes taxonomy (shared,
-tests depend on it) with routing targets (deployment-specific). The repo already
-has the pattern for the latter — `sources.sample.json` tracked,
-`sources.json` ignored — so the two belong apart. Touching it affects phase 2
-routing, so it is a decision, not a cleanup.
+## Configuration layout
+
+Deployment-specific config is git-ignored and read through
+`src/config/localConfig.js`, which falls back to the matching `*.sample.json`:
+
+| Local (ignored) | Sample (tracked) | Holds |
+|---|---|---|
+| `sources.json` | `sources.sample.json` | Per-source channels, filters, replacements, `flow` |
+| `routing.json` | `routing.sample.json` | `unsorted_destinations` and the phase 2 `routing` rules |
+| `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
+
+`categories.json` is **tracked** and holds taxonomy only — topics, signals,
+dedup windows. No channel ids live in it.
+
+A missing local file falls back to its sample with a `[CONFIG]` warning; a
+**malformed** one throws instead, because silently running on sample
+destinations is worse than not starting. A fresh clone now starts — before
+`v4.17.0` it could not, since the ignored files were statically imported.
 
 ## Next steps
 

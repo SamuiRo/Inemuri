@@ -1,6 +1,9 @@
 import CryptoDataService from "../services/crypto/CryptoDataService.js";
 import { loadImage, print } from "../shared/utils.js";
-import cronjob_config from "./cronjob.config.json" with { type: "json" };
+import { loadLocalConfig } from "./localConfig.js";
+
+// Локальний конфіг: у .gitignore, з фолбеком на cronjob.config.sample.json.
+const cronjob_config = loadLocalConfig("cronjob.config", { dailyinfo: { destinations: {} } });
 
 const cryptoService = new CryptoDataService();
 

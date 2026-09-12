@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { CATEGORIES } from "../src/config/app.config.js";
+import { CATEGORIES, ROUTING } from "../src/config/app.config.js";
 import { validateStructural } from "../src/services/ai/schemas.js";
 
 // The shipped categories.json must stay a well-formed closed taxonomy — the
@@ -33,9 +33,17 @@ test("categories.json — version, closed axes, dedup windows on signals", () =>
   assert.equal(CATEGORIES.signals.promo_code.dedup_window_hours, 24);
 });
 
-test("categories.json — shadow-mode routing: empty rules, unsorted only", () => {
-  assert.deepEqual(CATEGORIES.routing, []);
-  assert.ok(CATEGORIES.unsorted_destinations.telegram?.length >= 1);
+test("categories.json — carries taxonomy only, no deployment routing", () => {
+  // Розгортання не має перетинатися з таксономією: id каналів живуть у
+  // routing.json (git-ignored), інакше конфіг одного оператора їде в репо.
+  assert.equal(CATEGORIES.routing, undefined);
+  assert.equal(CATEGORIES.unsorted_destinations, undefined);
+  assert.deepEqual(Object.keys(CATEGORIES).sort(), ["_comment", "signals", "topics", "version"]);
+});
+
+test("routing — shadow-mode config: empty rules, unsorted only", () => {
+  assert.deepEqual(ROUTING.routing, []);
+  assert.ok(Array.isArray(ROUTING.unsorted_destinations.telegram));
 });
 
 test("categories.json — usable as the validator's closed enum source", () => {
