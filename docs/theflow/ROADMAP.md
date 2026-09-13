@@ -775,6 +775,31 @@ category or a description that is too narrow. Rewrite `categories.json`, bump
 
 ## 4. Phase 1.5 — vision, in shadow
 
+> **Done (v4.25.1–v4.28.0).** Built against the plan below, with four things the
+> plan did not anticipate:
+>
+> - **The cache is keyed by Hamming distance, not hash equality.** Measured: a
+>   recompressed repost lands 4–7 bits from the original, different screenshots
+>   15–23, so an exact key would have missed nearly every repost and the
+>   "largest single saving" would never have happened. Threshold 10.
+> - **Verbatim validation would have discarded every code from a screenshot**,
+>   since it checked against `raw_text` only. Provenance now has three outcomes
+>   (text → verified, OCR only → kept but `verified: false`, neither →
+>   discarded), which is also what hazard 1 below requires.
+> - **The media resolver downloaded every type before the caller could filter**,
+>   so vision would have pulled whole videos to discard them. `types` and the
+>   album cap now apply before download.
+> - **A shed consumed a retry.** `claimPending` increments `attempts`; a shed
+>   left the post `pending` without giving it back, so a post shed a few times
+>   became `failed` on its first real error. Vision sheds first under quota
+>   pressure, which made this likely. `Post.releaseClaim()` returns the attempt.
+>
+> `sharp` was upgraded to 0.35.4 first, because vision makes it decode images
+> from channels. Only `photo` is transcribed — a screenshot sent as a file
+> (document, `image/png`) is a known gap. **Nothing is enabled**: every source
+> has `flow.vision.enabled = false`, and the gate refuses to run until an
+> operator turns it on for a source.
+
 Spec: [VISION.md](VISION.md). Runs inside the enrichment worker, before
 `enrich()`, never during ingestion.
 

@@ -21,6 +21,11 @@ import {
  * inside `Post.claimPending` — before the gateway call (§13.1).
  *
  * Phase 1 is shadow mode: verdicts land in `posts`, routing ignores them.
+ *
+ * Phase 1.5: an optional vision stage runs before enrich. It is **injected**,
+ * not imported — VisionStage reaches Telegram through the media resolver, and
+ * importing it here would break the boundary above. `flowFor(post)` is
+ * injected for the same reason: the source lookup stays out of this module.
  */
 export class EnrichWorker {
   constructor({
@@ -30,8 +35,15 @@ export class EnrichWorker {
     batchSize = ENRICH_BATCH_SIZE,
     maxAttempts = ENRICH_MAX_ATTEMPTS,
     PostModel = Post,
+    vision = null,
+    flowFor = null,
   } = {}) {
     if (!gateway) throw new Error("EnrichWorker: a gateway is required");
+    if (vision && typeof flowFor !== "function") {
+      throw new Error("EnrichWorker: a vision stage needs flowFor(post) to read the source's flow config");
+    }
+    this.vision = vision;
+    this.flowFor = flowFor;
     this.gateway = gateway;
     this.taxonomy = taxonomy;
     this.tickMs = tickMs;
@@ -92,6 +104,20 @@ export class EnrichWorker {
   }
 
   async _enrichPost(post) {
+    // Стадія 1.5. text_ocr пишеться всередині стадії одразу, до enrich(), тож
+    // повтор збагачення за транскрипцію вже не платить.
+    if (this.vision) {
+      const flow = await this.flowFor(post);
+      const seen = await this.vision.run(post, flow ?? {});
+      if (seen.status === "shed") {
+        // Не збагачувати без OCR: скріншот-пост отримав би впевнений вердикт на
+        // порожньому тексті, став би enriched і більше ніколи не дістав OCR.
+        await this.Post.releaseClaim(post.id);
+        print(`[ENRICH] posts#${post.id} vision shed (quota reserve) — left pending`, "debug");
+        return false;
+      }
+    }
+
     const text = [post.title, post.raw_text]
       .filter((s) => s && String(s).trim() !== "")
       .join("\n\n");
@@ -107,6 +133,8 @@ export class EnrichWorker {
     );
 
     if (enr?.shed) {
+      // Shed — не збій: спробу, забрану при захопленні, повертаємо.
+      await this.Post.releaseClaim(post.id);
       print(`[ENRICH] posts#${post.id} shed (quota reserve) — left pending`, "debug");
       return false;
     }

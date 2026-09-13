@@ -7,6 +7,60 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.28.0] - 2026-09-13
+
+Phase 1.5 (vision), part 5: wired into the worker. **Phase 1.5 is complete**
+and off on every source.
+
+### Fixed
+- **A shed consumed a retry.** `Post.claimPending()` increments `attempts`
+  before the provider call (§13.1, so a crash mid-call counts), but a shed
+  returned the post to `pending` without giving that attempt back. A post shed
+  a few times therefore reached `maxAttempts` without a single real call, and
+  its **first genuine error made it `failed` permanently**. The bug predates
+  vision, but vision made it likely: vision runs at `normal` priority and is
+  shed first under quota pressure, so on a tight day screenshot posts would have
+  exhausted their retries within a minute and died on the next network blip.
+
+  The existing test asserted `attempts === 1` after a shed — it had pinned the
+  bug as expected behaviour. `Post.releaseClaim(id)` now returns the attempt on
+  both enrich and vision sheds (only while still `pending`, never below zero),
+  and a new test sheds five times and then confirms the first real error still
+  gets a retry. Both fail against the previous code.
+
+### Added
+- `EnrichWorker` runs the vision stage before enrich. It is **injected**
+  (`vision`, `flowFor`), not imported: `VisionStage` reaches Telegram through
+  the media resolver, and the worker's defining boundary is that it knows
+  nothing about Telegram — which keeps extracting it into its own process
+  cheap. Supplying `vision` without `flowFor` is a construction error rather
+  than a silent no-op.
+
+  On a vision `shed`, enrichment is **not** attempted and the claim is
+  released: classifying a screenshot-only post on empty text would produce a
+  confident verdict, mark it `enriched`, and it would never receive its OCR.
+  `skipped` and `unavailable` enrich as usual; a vision error counts as an
+  attempt like any gateway error.
+- `inemuri.js` builds the stage with the shared gateway, looks up each source's
+  flow config (cached for the process lifetime, like the listener's own
+  caches), and sweeps `vision_cache` at startup and every 6 hours on an
+  `unref()`'d timer, cleared on stop.
+- `VISION_CACHE_TTL_HOURS` (default 72).
+- 7 worker tests for the integration and the shed fix.
+
+### Verified
+- The full CI sequence against an empty database: `db:bootstrap` creates 7
+  tables including `vision_cache`, all 8 migrations apply, 272/272 tests pass.
+
+### Phase 1.5 summary (v4.25.1–v4.28.0)
+Built to VISION.md, with four departures recorded in ROADMAP §4: the cache is
+keyed by Hamming distance (measured — an exact key misses nearly every repost);
+verbatim validation gained OCR provenance (it would have discarded every code
+from a screenshot); the resolver filters types before downloading (it would
+have pulled whole videos to discard them); and sheds no longer consume retries.
+`sharp` was upgraded first, since vision makes it decode channel images. Known
+gap: only `photo` — a screenshot sent as a file is not transcribed yet.
+
 ## [4.27.0] - 2026-09-13
 
 Phase 1.5 (vision), part 4: the stage, its cache, and fetching only what it

@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.25.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.28.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -11,7 +11,7 @@ key is set in `.env` (`ENRICH_WORKER_ENABLED` + `LLM_PROVIDERS[LLM_PRIMARY].apiK
 in `src/config/app.config.js`); without one, flow-enabled sources ingest into
 `posts` as `pending` and nothing else happens. Classic (non-TheFlow) forwarding
 is untouched throughout. 5 migrations exist (`database/migrations/001`–`005`);
-`npm run migrate:status` is clean on the dev database. `npm test` is 184 green
+`npm run migrate:status` is clean on the dev database. `npm test` is 272 green
 `node --test` cases (`--test-concurrency=1` — some suites touch the real
 SQLite file). See [CHANGELOG.md](CHANGELOG.md) for the version-by-version
 detail and [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task
@@ -82,9 +82,14 @@ destinations is worse than not starting. A fresh clone now starts — before
    pilot sources.
 3. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
    Resolve (§5.2) is built and waiting on them.
-4. **Next buildable work: Phase 1.5 (vision)** — unblocked by the provider
-   decision. After that the plan needs real enriched posts: the §5.4 message
-   template is deliberately designed against real material.
+4. **Phase 1.5 (vision) is built and off everywhere.** Turn it on per source
+   with `flow.vision.enabled` — but only where `node src/cli.js flow stats`
+   shows a high "has_media & len<200" share, and **not** on meme-heavy channels
+   (Source N), where OCR of a meme is noise. A promo-code channel posting code
+   screenshots is the intended case. With nothing enabled the stage costs
+   nothing: the gate refuses before any download.
+5. **The plan now needs real enriched posts.** The §5.4 message template is
+   deliberately designed against real material, and routing waits on §5.1.
 
 ## Open questions
 

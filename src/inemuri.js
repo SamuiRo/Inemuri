@@ -13,8 +13,11 @@ import DiscordCommandHandler from "./module/discord/DiscordCommandHandler.js";
 import { CRON_JOBS, COMMANDS } from "./config/cronjobs.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
+import VisionStage from "./module/theflow/VisionStage.js";
+import { Source, VisionCache } from "./module/teapot/models/index.js";
 import { validateRouting } from "./module/theflow/ResolveStage.js";
 import {
+  VISION_CACHE_TTL_HOURS,
   CATEGORIES,
   ROUTING,
   CONFIG_WARNINGS,
@@ -151,8 +154,32 @@ class Inemuri {
       const primaryKey = LLM_PROVIDERS[LLM_PRIMARY]?.apiKey;
       if (ENRICH_WORKER_ENABLED && primaryKey) {
         print("Starting TheFlow enrichment worker...");
-        this.enrichWorker = new EnrichWorker({ gateway: new LLMGateway() });
+        const gateway = new LLMGateway();
+        // Стадія 1.5 (vision) ін'єктується, а не імпортується воркером: вона
+        // ходить у Telegram через резолвер медіа, а воркер за дизайном
+        // Telegram не знає. Без провайдера з vision стадія сама повертає
+        // "unavailable", і збагачення йде як раніше.
+        const vision = new VisionStage({ gateway, ttlHours: VISION_CACHE_TTL_HOURS });
+        // Конфіг джерела кешується на весь процес — як і в TelegramSourceListener,
+        // що будує свої кеші на старті. Зміна flow.vision через reseed
+        // підхоплюється перезапуском, як і решта налаштувань джерела.
+        const sources = new Map();
+        const flowFor = async (post) => {
+          if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
+          return sources.get(post.source_id)?.getFlowConfig() ?? null;
+        };
+        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor });
         this.enrichWorker.start();
+
+        // Прибирання кешу vision: на старті й далі кожні 6 год. unref() — щоб
+        // таймер обслуговування не тримав процес живим при зупинці.
+        const sweepVisionCache = () =>
+          VisionCache.sweep({ ttlHours: VISION_CACHE_TTL_HOURS })
+            .then((n) => n && print(`[VISION] cache sweep removed ${n} row(s)`, "debug"))
+            .catch((error) => print(`[VISION] cache sweep failed: ${error.message}`, "warning"));
+        sweepVisionCache();
+        this.visionSweepTimer = setInterval(sweepVisionCache, 6 * 3_600_000);
+        this.visionSweepTimer.unref();
       } else {
         print(
           `TheFlow enrichment worker inactive (${
@@ -182,6 +209,10 @@ class Inemuri {
       if (this.enrichWorker) {
         print("Stopping TheFlow enrichment worker...");
         this.enrichWorker.stop();
+      }
+      if (this.visionSweepTimer) {
+        clearInterval(this.visionSweepTimer);
+        this.visionSweepTimer = null;
       }
 
       // Зупиняємо cron scheduler

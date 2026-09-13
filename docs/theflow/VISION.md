@@ -1,5 +1,12 @@
 # TheFlow — vision and screenshots
 
+> **Implemented (v4.25.1–v4.28.0)**, off on every source by default. Code:
+> `src/module/theflow/VisionStage.js`, `src/shared/image.js`,
+> `src/services/ai/prompts/vision.js`, `LLMGateway.vision()`,
+> `models/VisionCache.js`. ROADMAP §4 records where the implementation departed
+> from this document — most importantly, gate 3 looks up the cache by Hamming
+> distance, because a recompressed repost almost never hashes identically.
+
 > Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [LLM_GATEWAY.md](LLM_GATEWAY.md) · [DATA_MODEL.md](DATA_MODEL.md)
 
 ## The gap this closes

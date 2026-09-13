@@ -338,4 +338,23 @@ Post.claimPending = async function (limit) {
   return await this.findAll({ where: { id: ids }, order: [["createdAt", "ASC"]] });
 };
 
+/**
+ * Повертає спробу, яку забрав claimPending, — для shed.
+ *
+ * claimPending збільшує attempts ДО виклику провайдера (§13.1), щоб краш
+ * посеред виклику зараховувався в ліміт. Але shed — не краш і не виклик, а
+ * навмисне відкладання під тиском квоти. Без повернення кожен shed з'їдав
+ * спробу, і пост, відкладений кілька разів, ставав failed на першій же
+ * справжній помилці — без жодного реального повтору.
+ *
+ * Лише для pending і не нижче нуля: пост, що встиг змінити статус, не чіпаємо.
+ */
+Post.releaseClaim = async function (id) {
+  await database.sequelize.query(
+    "UPDATE `posts` SET `attempts` = `attempts` - 1 " +
+      "WHERE `id` = ? AND `status` = 'pending' AND `attempts` > 0",
+    { replacements: [id] },
+  );
+};
+
 export default Post;

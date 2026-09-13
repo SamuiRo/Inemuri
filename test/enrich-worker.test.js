@@ -133,6 +133,33 @@ test("shed — post left pending, no error recorded", async () => {
   await p.reload();
   assert.equal(p.status, "pending");
   assert.equal(p.last_error, null);
+  // Shed — навмисне відкладання, не збій і не виклик. Спробу, яку забрав
+  // claimPending, треба повернути. Попередня версія цього тесту стверджувала
+  // attempts === 1, тобто закріплювала ваду як очікувану поведінку.
+  assert.equal(p.attempts, 0);
+});
+
+test("shed never burns the retry budget: a shed post still gets all its real retries", async () => {
+  // Регресія. Раніше кожен shed лишав attempts+1, тож після кількох shed
+  // перша ж справжня мережева помилка одразу робила пост failed — без жодного
+  // реального повтору. Vision скидається першим під тиском квоти, тож у
+  // тісний день скріншот-пости вичерпували спроби за хвилину.
+  const [p] = await seed(1);
+  const shedding = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async () => ({ shed: true }) }),
+    taxonomy,
+    maxAttempts: 3,
+  });
+  for (let i = 0; i < 5; i++) await shedding.runOnce();
+
+  const failing = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async () => { throw Object.assign(new Error("blip"), { kind: "network" }); } }),
+    taxonomy,
+    maxAttempts: 3,
+  });
+  await failing.runOnce();
+  await p.reload();
+  assert.equal(p.status, "pending", "перша справжня помилка — ще повтор, не failed");
   assert.equal(p.attempts, 1);
 });
 
@@ -157,4 +184,86 @@ test("claimPending — increments attempts and returns the rows once", async () 
   const mine = first.filter((r) => String(r.external_id).startsWith(XID));
   assert.ok(mine.length >= 2);
   assert.ok(mine.every((r) => r.attempts >= 1));
+});
+
+// ── стадія 1.5 у воркері ──────────────────────────────────────────────
+
+const FLOW_ON = { enabled: true, vision: { enabled: true, text_threshold: 200, max_images_per_post: 2 } };
+
+test("vision — a transcription reaches enrich() as textOcr", async () => {
+  const [p] = await seed(1);
+  let seenOcr = null;
+  const w = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async (input) => { seenOcr = input.textOcr; return { ...GOOD }; } }),
+    taxonomy,
+    // Справжня стадія пише text_ocr у пост — фейк робить те саме.
+    vision: { run: async (post) => { await post.update({ text_ocr: "PROMO HY45OLK8QRE2" }); return { status: "done" }; } },
+    flowFor: async () => FLOW_ON,
+  });
+  await w.runOnce();
+  assert.equal(seenOcr, "PROMO HY45OLK8QRE2");
+  await p.reload();
+  assert.equal(p.status, "enriched");
+});
+
+test("vision shed — enrich is NOT called and the claim is released", async () => {
+  // Збагачення без OCR дало б упевнений вердикт на порожньому тексті.
+  const [p] = await seed(1);
+  let enrichCalls = 0;
+  const w = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async () => { enrichCalls += 1; return { ...GOOD }; } }),
+    taxonomy,
+    vision: { run: async () => ({ status: "shed" }) },
+    flowFor: async () => FLOW_ON,
+  });
+  assert.equal(await w.runOnce(), 0);
+  assert.equal(enrichCalls, 0);
+  await p.reload();
+  assert.equal(p.status, "pending");
+  assert.equal(p.attempts, 0, "shed не з'їдає спробу");
+});
+
+test("vision skipped or unavailable — enrichment proceeds as usual", async () => {
+  for (const status of ["skipped", "unavailable"]) {
+    const [p] = await seed(1);
+    const w = new EnrichWorker({
+      gateway: fakeGateway(),
+      taxonomy,
+      vision: { run: async () => ({ status }) },
+      flowFor: async () => FLOW_ON,
+    });
+    await w.runOnce();
+    await p.reload();
+    assert.equal(p.status, "enriched", status);
+  }
+});
+
+test("vision error — counts as an attempt, like any gateway error", async () => {
+  const [p] = await seed(1);
+  const w = new EnrichWorker({
+    gateway: fakeGateway(),
+    taxonomy,
+    maxAttempts: 3,
+    vision: { run: async () => { throw Object.assign(new Error("vision down"), { kind: "server" }); } },
+    flowFor: async () => FLOW_ON,
+  });
+  await w.runOnce();
+  await p.reload();
+  assert.equal(p.status, "pending");
+  assert.equal(p.attempts, 1);
+  assert.match(p.last_error, /vision down/);
+});
+
+test("vision without flowFor is a construction error, not a silent no-op", () => {
+  assert.throws(
+    () => new EnrichWorker({ gateway: fakeGateway(), taxonomy, vision: { run: async () => ({}) } }),
+    /flowFor/,
+  );
+});
+
+test("no vision stage — the worker behaves exactly as before", async () => {
+  const [p] = await seed(1);
+  await new EnrichWorker({ gateway: fakeGateway(), taxonomy }).runOnce();
+  await p.reload();
+  assert.equal(p.status, "enriched");
 });

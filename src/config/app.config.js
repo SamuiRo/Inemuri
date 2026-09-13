@@ -183,6 +183,11 @@ export const ENRICH_TICK_MS      = Number(process.env.ENRICH_TICK_MS ?? 30_000);
 export const ENRICH_BATCH_SIZE   = Number(process.env.ENRICH_BATCH_SIZE ?? 10);
 export const ENRICH_MAX_ATTEMPTS = Number(process.env.ENRICH_MAX_ATTEMPTS ?? 3);
 // Воркер стартує лише коли є ключ провайдера LLM_PRIMARY і це не вимкнено явно.
+// Кеш транскрипцій vision (ROADMAP §4). Скріншоти перепощують протягом
+// кількох днів; довше тримати — зайвий скан при кожному пошуку за відстанню.
+export const VISION_CACHE_TTL_HOURS = optionalNumber(
+  "VISION_CACHE_TTL_HOURS", process.env.VISION_CACHE_TTL_HOURS, 72,
+);
 export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
 
 // Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
