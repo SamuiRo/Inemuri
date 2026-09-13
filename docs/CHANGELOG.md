@@ -7,6 +7,49 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.25.1] - 2026-09-13
+
+Phase 1.5 (vision), part 1: local image processing.
+
+### Added
+- `src/shared/image.js` — `dhash()`, `hammingDistance()`,
+  `downscaleForVision()`. dHash lived only inside
+  `scripts/backfill-image-hash.js`; gate 3 of the vision stage must compute the
+  identical hash or the backfill and the stage would never agree on a cache hit,
+  so it now has one home and the script imports it.
+- **`SAME_IMAGE_MAX_DISTANCE = 10`, measured rather than chosen.** On
+  screenshot-like images the same shot after Telegram-style downscaling and
+  recompression lands at 4–7 bits; genuinely different screenshots at 15–23.
+  Ten sits in the gap with margin both ways.
+
+  The measurement changes the cache design: **a repost almost never hashes to
+  distance 0, so an exact-hash cache key would miss nearly every repost** — the
+  saving VISION.md calls "the largest single one of the four gates" would not
+  happen. The vision cache must be looked up by Hamming distance. A test pins
+  that a recompressed repost does not hash identically, so the premise is
+  flagged if it ever stops holding.
+
+  The first fixture was a smooth gradient, and on it dHash could not tell a
+  recompressed copy (8) from a different image (8): adjacent pixels are nearly
+  equal, so JPEG noise flips comparison bits. Real screenshots have hard edges,
+  so the fixture was replaced — but the caveat is real and recorded: on
+  low-contrast images (subtle gradients, dark UIs) the threshold will produce
+  extra cache misses. That costs a call, not correctness.
+- `limitInputPixels` set explicitly (50 MP) with `failOn: "error"`. From phase
+  1.5, `sharp` decodes images from Telegram channels — bytes from outside. A
+  decompression bomb (a few kilobytes declaring enormous dimensions) is refused
+  before decoding; a test builds one and confirms it. EXIF rotation is applied
+  so phone screenshots do not arrive sideways.
+- `test/image.test.js` — 12 cases.
+
+### Security note
+- Until now `sharp` only ever processed a file from the repository, which is
+  why the `v4.22.1` audit rated its libvips/libheif CVEs unreachable. **That
+  assessment stops being true when vision runs**, since it will decode
+  attacker-influenced image bytes. The `sharp` major upgrade therefore belongs
+  to this phase rather than to "after the VPS deploy", and lands before vision
+  is enabled anywhere.
+
 ## [4.25.0] - 2026-09-13
 
 Provider decision (ROADMAP §3.1): **Gemini primary for text, vision and

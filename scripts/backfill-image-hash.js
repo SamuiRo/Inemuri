@@ -17,7 +17,7 @@
  * треба щойно з'явиться перше flow-джерело.
  */
 
-import sharp from "sharp";
+import { dhash } from "../src/shared/image.js";
 import { Op } from "sequelize";
 
 import { print, sleep } from "../src/shared/utils.js";
@@ -37,34 +37,8 @@ function parseArgs(argv) {
   return out;
 }
 
-/**
- * dHash: 9×8 grayscale → порівняння сусідніх пікселів у рядку → 64 біти → hex.
- * Стійкий до масштабування й легкого стиснення — саме те, що треба для
- * «той самий скріншот у п'яти каналах».
- */
-async function dhash(buffer) {
-  const w = 9, h = 8;
-  const px = await sharp(buffer)
-    .greyscale()
-    .resize(w, h, { fit: "fill" })
-    .raw()
-    .toBuffer();
-
-  let bits = "";
-  for (let row = 0; row < h; row++) {
-    for (let col = 0; col < w - 1; col++) {
-      const left = px[row * w + col];
-      const right = px[row * w + col + 1];
-      bits += left < right ? "1" : "0";
-    }
-  }
-  // 64 біти → 16 hex
-  let hex = "";
-  for (let i = 0; i < 64; i += 4) {
-    hex += parseInt(bits.slice(i, i + 4), 2).toString(16);
-  }
-  return hex;
-}
+// dhash — у src/shared/image.js: той самий хеш має рахувати й стадія vision,
+// інакше кеш між бекфілом і vision не збігався б.
 
 async function main() {
   const { limit, dry } = parseArgs(process.argv);
