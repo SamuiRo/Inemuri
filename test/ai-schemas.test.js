@@ -128,3 +128,69 @@ test("validateEnrichResponse — passes structural, returns cleaned value", () =
   assert.deepEqual(r.value.extracted.promo_codes.map((c) => c.code), ["SAVE20"]);
   assert.equal(r.discarded.length, 1);
 });
+
+// ── провенанс OCR (VISION.md «Entities from images cannot be verified») ──
+
+
+const verdictWith = (codes, tickers = []) => ({
+  entities: { project: null, tickers },
+  extracted: { promo_codes: codes.map((code) => ({ code })), event: null },
+});
+
+test("provenance — a code found in the post text is verified", () => {
+  const { value, unverified } = validateVerbatim(verdictWith(["SAVE20"]), "Use SAVE20 today", "");
+  assert.deepEqual(value.extracted.promo_codes, [{ code: "SAVE20", source: "text", verified: true }]);
+  assert.deepEqual(unverified, []);
+});
+
+test("provenance — a code found ONLY in the transcription is kept, but unverified", () => {
+  // Без провенансу цей код або викидався б (звірка лише з raw_text), або
+  // вважався б перевіреним (якби text_ocr просто додали до перевірки).
+  const { value, discarded, unverified } = validateVerbatim(
+    verdictWith(["HY45OLK8QRE2"]), "see the screenshot", "Promo: HY45OLK8QRE2",
+  );
+  assert.deepEqual(value.extracted.promo_codes, [{ code: "HY45OLK8QRE2", source: "ocr", verified: false }]);
+  assert.deepEqual(discarded, []);
+  assert.deepEqual(unverified, [{ path: "extracted.promo_codes[].code", value: "HY45OLK8QRE2" }]);
+});
+
+test("provenance — the regression: without text_ocr the screenshot code was silently dropped", () => {
+  const { value, discarded } = validateVerbatim(verdictWith(["HY45OLK8QRE2"]), "see the screenshot");
+  assert.deepEqual(value.extracted.promo_codes, []);
+  assert.equal(discarded.length, 1, "звірка лише з raw_text — код із картинки загубився");
+});
+
+test("provenance — a code in neither text nor transcription is still discarded", () => {
+  // OCR не стає лазівкою для галюцинацій: рядок має бути хоч десь.
+  const { value, discarded } = validateVerbatim(verdictWith(["INVENTED99"]), "text", "ocr text");
+  assert.deepEqual(value.extracted.promo_codes, []);
+  assert.deepEqual(discarded, [{ path: "extracted.promo_codes[].code", value: "INVENTED99" }]);
+});
+
+test("provenance — text wins when a code appears in both", () => {
+  const { value, unverified } = validateVerbatim(verdictWith(["SAVE20"]), "SAVE20", "SAVE20");
+  assert.equal(value.extracted.promo_codes[0].verified, true);
+  assert.deepEqual(unverified, []);
+});
+
+test("provenance — OCR-only tickers stay strings and are listed as unverified", () => {
+  // Тікери — рядки; провенанс не вміщається в елемент без зміни схеми.
+  const { value, unverified } = validateVerbatim(verdictWith([], ["$BTC", "$SOL"]), "$BTC up", "$SOL chart");
+  assert.deepEqual(value.entities.tickers, ["$BTC", "$SOL"]);
+  assert.deepEqual(unverified, [{ path: "entities.tickers", value: "$SOL" }]);
+});
+
+test("provenance — reward and expiry survive the annotation", () => {
+  const verdict = {
+    extracted: { promo_codes: [{ code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01" }] },
+  };
+  const { value } = validateVerbatim(verdict, "SAVE20");
+  assert.deepEqual(value.extracted.promo_codes[0],
+    { code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01", source: "text", verified: true });
+});
+
+test("provenance — the caller's object is not mutated", () => {
+  const verdict = verdictWith(["SAVE20"]);
+  validateVerbatim(verdict, "SAVE20");
+  assert.deepEqual(verdict.extracted.promo_codes, [{ code: "SAVE20" }]);
+});

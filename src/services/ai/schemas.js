@@ -179,10 +179,41 @@ export function validateStructural(obj, taxonomy) {
  * @param {string} rawText   The original text those offsets index.
  * @returns {{ value: object, discarded: Array<{path: string, value: string}> }}
  */
-export function validateVerbatim(obj, rawText) {
-  const haystack = String(rawText ?? "").toLowerCase();
-  const present = (s) => typeof s === "string" && s.trim() !== "" &&
-    haystack.includes(s.toLowerCase());
+/**
+ * Verbatim-перевірка з провенансом (VISION.md «Entities from images cannot be
+ * verified»).
+ *
+ * Правило «кожне дослівне поле має бути в тексті» — головний захист від
+ * галюцинацій. З vision у нього з'являється діра в обидва боки:
+ *
+ *   - звіряти лише з raw_text — код зі скріншота там відсутній, тож його
+ *     МОВЧКИ ВИКИДАЛИ б, і vision працював би вхолосту;
+ *   - просто додати text_ocr до перевірки — OCR-код вважався б перевіреним,
+ *     хоча `HY45OLK8QRE2` і `HY45OLK80RE2` з картинки виглядають однаково
+ *     переконливо, а неправильний код із впевненістю гірший за жодного.
+ *
+ * Тому три результати, а не два: знайдено в тексті → лишається, verified;
+ * лише в OCR → лишається, але verified: false; ніде → викидається.
+ *
+ * Збіг із text_ocr підтверджує лише, що модель не вигадала рядок відносно
+ * транскрипції. Сама транскрипція може бути помилковою — звідси verified: false.
+ *
+ * @param {object} obj
+ * @param {string} rawText
+ * @param {string} [textOcr=""]  Без нього поведінка така сама, як до vision.
+ * @returns {{ value: object, discarded: object[], unverified: object[] }}
+ */
+export function validateVerbatim(obj, rawText, textOcr = "") {
+  const inText = String(rawText ?? "").toLowerCase();
+  const inOcr = String(textOcr ?? "").toLowerCase();
+  const usable = (s) => typeof s === "string" && s.trim() !== "";
+  const provenance = (s) => {
+    if (!usable(s)) return null;
+    const needle = s.toLowerCase();
+    if (inText.includes(needle)) return "text";
+    if (inOcr && inOcr.includes(needle)) return "ocr";
+    return null;
+  };
 
   // Work on a shallow-ish copy so the caller's object is untouched.
   const value = {
@@ -191,35 +222,48 @@ export function validateVerbatim(obj, rawText) {
     extracted: obj.extracted ? { ...obj.extracted } : obj.extracted,
   };
   const discarded = [];
+  const unverified = [];
 
   if (value.entities && Array.isArray(value.entities.tickers)) {
+    // Тікери — рядки: провенанс на самому елементі не вмістити, не ламаючи
+    // схему, тож OCR-тікери лишаються в масиві і перелічуються в unverified.
     value.entities.tickers = value.entities.tickers.filter((t) => {
-      if (present(t)) return true;
+      const from = provenance(t);
+      if (from === "ocr") unverified.push({ path: "entities.tickers", value: t });
+      if (from) return true;
       discarded.push({ path: "entities.tickers", value: t });
       return false;
     });
   }
 
   if (value.extracted && Array.isArray(value.extracted.promo_codes)) {
-    value.extracted.promo_codes = value.extracted.promo_codes.filter((c) => {
-      if (present(c?.code)) return true;
-      discarded.push({ path: "extracted.promo_codes[].code", value: c?.code });
-      return false;
-    });
+    const kept = [];
+    for (const c of value.extracted.promo_codes) {
+      const from = provenance(c?.code);
+      if (!from) {
+        discarded.push({ path: "extracted.promo_codes[].code", value: c?.code });
+        continue;
+      }
+      // На об'єкті, бо саме звідси доставка (DELIVERY.md) і tier 1 дедуплікації
+      // читатимуть позначку: неперевірений код не може бути авторитетом.
+      kept.push({ ...c, source: from, verified: from === "text" });
+      if (from === "ocr") unverified.push({ path: "extracted.promo_codes[].code", value: c.code });
+    }
+    value.extracted.promo_codes = kept;
   }
 
-  return { value, discarded };
+  return { value, discarded, unverified };
 }
 
 /**
  * Convenience: structural then verbatim.
  * @returns {{ ok: boolean, errors: string[], value: object|null, discarded: Array }}
  */
-export function validateEnrichResponse(obj, { taxonomy, rawText }) {
+export function validateEnrichResponse(obj, { taxonomy, rawText, textOcr = "" }) {
   const structural = validateStructural(obj, taxonomy);
   if (!structural.ok) {
-    return { ok: false, errors: structural.errors, value: null, discarded: [] };
+    return { ok: false, errors: structural.errors, value: null, discarded: [], unverified: [] };
   }
-  const { value, discarded } = validateVerbatim(obj, rawText);
-  return { ok: true, errors: [], value, discarded };
+  const { value, discarded, unverified } = validateVerbatim(obj, rawText, textOcr);
+  return { ok: true, errors: [], value, discarded, unverified };
 }

@@ -190,7 +190,7 @@ export class LLMGateway {
     const run = await this._runComplete(prompt, priority, {});
     if (run.shed) return run;
 
-    const validated = validateEnrichResponse(run.parsed, { taxonomy, rawText: input.text });
+    const validated = validateEnrichResponse(run.parsed, { taxonomy, rawText: input.text, textOcr: input.textOcr });
     if (!validated.ok) {
       const err = new Error(`enrich: invalid response — ${validated.errors.join("; ")}`);
       err.kind = "bad_response";
@@ -201,6 +201,7 @@ export class LLMGateway {
       value: validated.value,
       model_used: run.model,
       discarded: validated.discarded,
+      unverified: validated.unverified,
     };
 
     // Tiering (NOT fallback): re-run a low-confidence verdict on a stronger
@@ -209,9 +210,9 @@ export class LLMGateway {
       try {
         const tierRun = await this._runComplete(prompt, priority, { modelOverride: this.tierUp });
         if (!tierRun.shed) {
-          const tv = validateEnrichResponse(tierRun.parsed, { taxonomy, rawText: input.text });
+          const tv = validateEnrichResponse(tierRun.parsed, { taxonomy, rawText: input.text, textOcr: input.textOcr });
           if (tv.ok) {
-            result = { value: tv.value, model_used: tierRun.model, discarded: tv.discarded, tiered: true };
+            result = { value: tv.value, model_used: tierRun.model, discarded: tv.discarded, unverified: tv.unverified, tiered: true };
           }
         }
       } catch (err) {

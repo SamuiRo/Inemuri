@@ -7,6 +7,44 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.25.3] - 2026-09-13
+
+Phase 1.5 (vision), part 2: provenance for entities read from images.
+
+### Fixed
+- **Verbatim validation would have silently discarded every code from a
+  screenshot.** `validateVerbatim()` checked extracted promo codes and tickers
+  against `raw_text` only. A code that exists only in an image is by definition
+  absent there, so once vision ran, the codes it exists to recover would have
+  been thrown away with no error — vision spending quota for nothing.
+
+  The obvious fix was the dangerous one: adding `text_ocr` to the haystack
+  would have marked OCR codes as verified. VISION.md is explicit that
+  `HY45OLK8QRE2` and `HY45OLK80RE2` read from an image look equally convincing,
+  and a wrong code delivered with confidence is worse than none.
+
+  So there are now three outcomes instead of two: found in the post text →
+  kept, `verified: true`; found **only** in the transcription → kept,
+  `verified: false`; found in neither → discarded, as before. A match against
+  `text_ocr` only proves the model did not invent the string relative to the
+  transcription — the transcription itself may be wrong, hence unverified.
+
+### Added
+- Promo code objects carry `source` (`"text"` / `"ocr"`) and `verified`. They
+  go on the object because that is where delivery (DELIVERY.md: "any entity
+  carrying `verified: false` is marked") and tier 1 dedup ("an unverified code
+  must not suppress a verified one") will read them.
+- Tickers are strings, and giving them per-item provenance would have changed
+  the schema, so OCR-only tickers stay in the array and are listed in a new
+  `unverified: [{ path, value }]` result, symmetric with `discarded`. That
+  limitation is deliberate and noted in the code.
+- `validateEnrichResponse()` and the gateway pass `textOcr` through — on both
+  the base run and the tier-up re-run, since a validation that supports
+  provenance is useless if the caller never hands it the transcription.
+  `enrich()` results now include `unverified`.
+- 8 tests; five fail against the previous code. Without `text_ocr` the
+  behaviour is unchanged, which one test pins.
+
 ## [4.25.2] - 2026-09-13
 
 ### Security
