@@ -795,8 +795,10 @@ category or a description that is too narrow. Rewrite `categories.json`, bump
 >   pressure, which made this likely. `Post.releaseClaim()` returns the attempt.
 >
 > `sharp` was upgraded to 0.35.4 first, because vision makes it decode images
-> from channels. Only `photo` is transcribed — a screenshot sent as a file
-> (document, `image/png`) is a known gap. **Nothing is enabled**: every source
+> from channels. Screenshots sent as files (`image/png|jpeg|webp` documents,
+> ≤ 20 MB) are transcribed since v4.29.0, with the format checked by magic
+> bytes before decoding — the MIME type is the sender's claim, and a mislabelled
+> SVG was otherwise rendered. **Nothing is enabled**: every source
 > has `flow.vision.enabled = false`, and the gate refuses to run until an
 > operator turns it on for a source.
 

@@ -46,7 +46,7 @@ export class TelegramMediaResolver {
    * @param {{types?: string[], limit?: number}} [opts]  Див. MediaResolver.resolve.
    * @returns {Promise<object[]>} [{ type, buffer, filename, mimeType, fileSize, duration, width, height }]
    */
-  async resolve(post, { types = null, limit = null } = {}) {
+  async resolve(post, { types = null, limit = null, accept = null } = {}) {
     const ref = post?.media_ref;
     if (!ref || ref.kind !== "telegram" || ref.channel_id == null || ref.message_id == null) {
       print(`[MEDIA] telegram: post#${post?.id} has no usable media_ref`, "debug");
@@ -85,6 +85,12 @@ export class TelegramMediaResolver {
     if (Array.isArray(types) && types.length > 0) {
       parsedMedia = parsedMedia.filter((m) => types.includes(m.type));
     }
+    // Тонший фільтр за метаданими, які відомі до завантаження (mimeType,
+    // fileSize документа). Напр. vision: документ лише якщо це зображення
+    // розумного розміру.
+    if (typeof accept === "function") {
+      parsedMedia = parsedMedia.filter((m) => accept(m));
+    }
     if (Number.isInteger(limit) && limit > 0) {
       parsedMedia = parsedMedia.slice(0, limit);
     }
@@ -97,9 +103,11 @@ export class TelegramMediaResolver {
     // or an array for albums. It returns file records or null.
     const files = await this._getDownloader().download(
       { media: parsedMedia.length === 1 ? parsedMedia[0] : parsedMedia, messageId: firstId },
-      // Той самий фільтр і для завантажувача: інакше його глобальний список
-      // (без audio тощо) тихо відкидав би запитаний тип.
-      Array.isArray(types) && types.length > 0 ? types : null,
+      // Типи для завантажувача — з того, що пережило фільтри: інакше його
+      // глобальний список тихо відкидав би запитаний тип.
+      Array.isArray(types) || typeof accept === "function"
+        ? [...new Set(parsedMedia.map((m) => m.type))]
+        : null,
     );
 
     return (files ?? []).map((f) => ({

@@ -9,7 +9,7 @@ import defaultResolver from "./media/index.js";
  * Між ingest і enrich, у воркері — ніколи під час ingest: інваріант «ingest
  * без вихідних мережевих викликів» лишається.
  *
- *   gate → лише фото, не більше N → зменшити → dHash → кеш за відстанню →
+ *   gate → фото й документи-зображення, не більше N → зменшити → dHash → кеш за відстанню →
  *   gateway.vision() → ОДРАЗУ UPDATE posts.text_ocr → далі enrich як завжди
  *
  * text_ocr записується негайно, до enrich(): якщо збагачення потім впаде й
@@ -20,9 +20,40 @@ import defaultResolver from "./media/index.js";
  * нема (немає фото, нечитабельне, заблоковане). Інакше пост без тексту на
  * знімку перетранскрибовувався б на кожній спробі.
  *
- * Відомий пропуск: беремо лише `photo`. Скріншот, надісланий як файл
- * (документ image/png, щоб Telegram не стискав), сюди не потрапляє.
+ * Беремо `photo` і **документи-зображення**: скріншот часто надсилають файлом
+ * (image/png), щоб Telegram не стискав якість, — саме на каналах промокодів,
+ * де кожен символ коду важливий. Див. isVisionImage().
  */
+
+/**
+ * MIME документів, які вважаємо скріншотами. Allowlist, не «усе image/*»:
+ *   - SVG — ні: це не скріншот, а sharp рендерить його через librsvg; векторний
+ *     документ із відкритого каналу — зайва поверхня атаки;
+ *   - HEIC — ні: зібраний sharp його не декодує;
+ *   - GIF — ні: анімація, не знімок екрана.
+ */
+export const VISION_DOCUMENT_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+/**
+ * Стеля розміру документа ДО завантаження. Документи Telegram не стискає:
+ * 4K-скріншот файлом — 5–15 МБ, а «картинка» може бути й значно більшою.
+ * Фото стискає сам Telegram і розмір у метаданих не несе — їх не обмежуємо.
+ */
+export const VISION_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+
+/**
+ * Чи підходить медіа для vision — лише за метаданими, до завантаження.
+ * @param {{type: string, mimeType?: string, fileSize?: number|bigint}} m
+ */
+export function isVisionImage(m) {
+  if (m?.type === "photo") return true;
+  if (m?.type !== "document") return false;
+  if (!VISION_DOCUMENT_MIME.has(String(m.mimeType ?? "").toLowerCase())) return false;
+  // GramJS віддає long-поля як BigInt-подібні об'єкти — приводимо явно.
+  const size = m.fileSize == null ? null : Number(m.fileSize);
+  if (size != null && !(Number.isFinite(size) && size <= VISION_MAX_DOCUMENT_BYTES)) return false;
+  return true;
+}
 
 /** Чому стадія не запускається. Порядок — від найдешевшої перевірки. */
 export const VISION_SKIP = Object.freeze({
@@ -92,7 +123,11 @@ export class VisionStage {
     if (!gate.run) return { status: "skipped", reason: gate.reason };
 
     const limit = Math.max(1, Number(flow.vision.max_images_per_post ?? 2) || 2);
-    const files = await this.resolver.resolve(post, { types: ["photo"], limit });
+    const files = await this.resolver.resolve(post, {
+      types: ["photo", "document"],
+      accept: isVisionImage,
+      limit,
+    });
 
     const texts = [];
     let firstHash = null;

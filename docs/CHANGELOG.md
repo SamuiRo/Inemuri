@@ -7,6 +7,43 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.29.0] - 2026-09-13
+
+### Added
+- **Vision transcribes screenshots sent as files**, closing the gap left in
+  `v4.27.0`. People send a screenshot as a document (`image/png`) to stop
+  Telegram recompressing it — and that is exactly what promo-code channels do,
+  because every character of a code matters. `isVisionImage()` accepts `photo`
+  plus documents whose MIME is on an allowlist — `image/png`, `image/jpeg`,
+  `image/webp` — and no larger than 20 MB, decided from message metadata
+  **before** any download (Telegram does not compress documents, so a 4K
+  screenshot as a file runs 5–15 MB).
+
+  Deliberately excluded: **SVG** (not a screenshot, and `sharp` renders it
+  through librsvg — a vector file from an open channel is attack surface for no
+  gain), **HEIC** (the prebuilt `sharp` does not decode it) and **GIF**
+  (animation). GramJS `long` sizes arrive BigInt-like and are coerced
+  explicitly, since an uncoerced comparison would fail silently.
+- `MediaResolver.resolve(post, { accept })` — a predicate over pre-download
+  metadata. The downloader's type list is now derived from what survives the
+  filters.
+
+### Security
+- **A document's MIME type is the sender's claim; `sharp` decodes by content.**
+  An SVG labelled `image/png` passed the allowlist and was rendered — verified
+  before the fix, returning a 400×200 JPEG. `sniffImageFormat()` now checks the
+  JPEG / PNG / WebP magic bytes and `downscaleForVision()` refuses anything
+  else **before invoking any decoder**. A signature cannot be faked without the
+  file actually being that format. This also covers photos, as defence in
+  depth.
+- Verified with the live key (read-only `models.list`, no generation quota):
+  `gemini-2.5-flash` supports `generateContent` and `gemini-embedding-2`
+  supports `embedContent` in the configured project, confirming the `v4.25.0`
+  defaults against the real account rather than only against documentation.
+- Tests: 7 for `isVisionImage` (allowlist, excluded types, size cap, BigInt
+  sizes), 4 for signature sniffing including the mislabelled-SVG regression and
+  a WebP screenshot, 1 for the resolver's `accept`.
+
 ## [4.28.0] - 2026-09-13
 
 Phase 1.5 (vision), part 5: wired into the worker. **Phase 1.5 is complete**

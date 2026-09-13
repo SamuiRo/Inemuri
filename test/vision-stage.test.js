@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { VisionStage, visionGate, VISION_SKIP as SKIP } from "../src/module/theflow/VisionStage.js";
+import {
+  VisionStage, visionGate, VISION_SKIP as SKIP, isVisionImage, VISION_MAX_DOCUMENT_BYTES,
+} from "../src/module/theflow/VisionStage.js";
 
 const FLOW = { enabled: true, vision: { enabled: true, text_threshold: 200, max_images_per_post: 2 } };
 
@@ -83,11 +85,61 @@ test("run — skipped by the gate does nothing at all", async () => {
   assert.equal(post.updates.length, 0);
 });
 
-test("run — asks the resolver for photos only, capped by max_images_per_post", async () => {
+test("run — asks the resolver for images only, capped by max_images_per_post", async () => {
   // Vision потрібні лише зображення; відео не має завантажуватись взагалі.
   const { stage, calls } = mkDeps();
   await stage.run(mkPost(), FLOW);
-  assert.deepEqual(calls.resolve[0], { types: ["photo"], limit: 2 });
+  const opts = calls.resolve[0];
+  assert.deepEqual(opts.types, ["photo", "document"]);
+  assert.equal(opts.limit, 2);
+  assert.equal(opts.accept, isVisionImage, "документи — лише через фільтр зображень");
+});
+
+// ── isVisionImage: що вважаємо скріншотом, до завантаження ───────────
+
+test("isVisionImage — photos always", () => {
+  assert.equal(isVisionImage({ type: "photo" }), true);
+});
+
+test("isVisionImage — a screenshot sent as a file is picked up", () => {
+  // Файлом шлють, щоб Telegram не стискав якість — на каналах промокодів
+  // саме так, бо кожен символ коду важливий.
+  for (const mimeType of ["image/png", "image/jpeg", "image/webp", "IMAGE/PNG"]) {
+    assert.equal(isVisionImage({ type: "document", mimeType, fileSize: 2_000_000 }), true, mimeType);
+  }
+});
+
+test("isVisionImage — SVG, HEIC and GIF documents are refused", () => {
+  // SVG рендериться через librsvg — векторний файл із відкритого каналу є
+  // зайвою поверхнею атаки; HEIC зібраний sharp не декодує; GIF — анімація.
+  for (const mimeType of ["image/svg+xml", "image/heic", "image/gif", "application/pdf", "", undefined]) {
+    assert.equal(isVisionImage({ type: "document", mimeType, fileSize: 1000 }), false, String(mimeType));
+  }
+});
+
+test("isVisionImage — an oversized document is refused before download", () => {
+  const big = VISION_MAX_DOCUMENT_BYTES + 1;
+  assert.equal(isVisionImage({ type: "document", mimeType: "image/png", fileSize: big }), false);
+  assert.equal(isVisionImage({ type: "document", mimeType: "image/png", fileSize: VISION_MAX_DOCUMENT_BYTES }), true);
+});
+
+test("isVisionImage — GramJS BigInt sizes are handled", () => {
+  // long-поля GramJS — BigInt-подібні; порівняння без приведення тихо хибило б.
+  assert.equal(isVisionImage({ type: "document", mimeType: "image/png", fileSize: 1_000_000n }), true);
+  assert.equal(
+    isVisionImage({ type: "document", mimeType: "image/png", fileSize: BigInt(VISION_MAX_DOCUMENT_BYTES) + 1n }),
+    false,
+  );
+});
+
+test("isVisionImage — a document with no size is allowed (the pixel limit still guards decode)", () => {
+  assert.equal(isVisionImage({ type: "document", mimeType: "image/png" }), true);
+});
+
+test("isVisionImage — videos, animations and audio are never images", () => {
+  for (const type of ["video", "video_note", "animation", "audio", "webpage", undefined]) {
+    assert.equal(isVisionImage({ type, mimeType: "image/png" }), false, String(type));
+  }
 });
 
 test("run — transcribes, caches, and persists text_ocr BEFORE returning", async () => {

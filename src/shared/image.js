@@ -26,6 +26,29 @@ export const VISION_MAX_SIDE = 1024;
 
 const sharpSafe = (buffer) => sharp(buffer, { limitInputPixels: MAX_INPUT_PIXELS, failOn: "error" });
 
+/** Формати, які ми погоджуємося декодувати з чужих байтів. */
+export const ACCEPTED_IMAGE_FORMATS = Object.freeze(["jpeg", "png", "webp"]);
+
+/**
+ * Формат за сигнатурою перших байтів — БЕЗ жодного декодера.
+ *
+ * Потрібно тому, що `mimeType` документа в Telegram вказує відправник, а sharp
+ * визначає формат за вмістом. SVG, підписаний як image/png, проходив фільтр за
+ * MIME і рендерився через librsvg — перевірено. Сигнатуру підробити не можна,
+ * не зробивши файл справді PNG/JPEG/WebP, тож до sharp доходить лише те, що ним
+ * і є.
+ *
+ * @param {Buffer} buffer
+ * @returns {"jpeg"|"png"|"webp"|null}
+ */
+export function sniffImageFormat(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpeg";
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  if (buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "webp";
+  return null;
+}
+
 /**
  * dHash: 9×8 grayscale → порівняння сусідніх пікселів у рядку → 64 біти → 16 hex.
  * Стійкий до масштабування й легкого стиснення — саме те, що треба для
@@ -99,6 +122,11 @@ export function hammingDistance(a, b) {
  * @returns {Promise<{data: Buffer, mimeType: string, width: number, height: number}>}
  */
 export async function downscaleForVision(buffer, { maxSide = VISION_MAX_SIDE, quality = 85 } = {}) {
+  // Сигнатура ДО sharp: до декодера доходить лише справжній JPEG/PNG/WebP.
+  const format = sniffImageFormat(buffer);
+  if (!format) {
+    throw new Error("unsupported image format: not a JPEG, PNG or WebP by signature");
+  }
   const { data, info } = await sharpSafe(buffer)
     .rotate() // EXIF-орієнтація: інакше знімок з телефона приходить боком
     .resize(maxSide, maxSide, { fit: "inside", withoutEnlargement: true })
@@ -107,4 +135,7 @@ export async function downscaleForVision(buffer, { maxSide = VISION_MAX_SIDE, qu
   return { data, mimeType: "image/jpeg", width: info.width, height: info.height };
 }
 
-export default { dhash, hammingDistance, downscaleForVision, MAX_INPUT_PIXELS, VISION_MAX_SIDE, SAME_IMAGE_MAX_DISTANCE };
+export default {
+  dhash, hammingDistance, downscaleForVision, sniffImageFormat,
+  MAX_INPUT_PIXELS, VISION_MAX_SIDE, SAME_IMAGE_MAX_DISTANCE, ACCEPTED_IMAGE_FORMATS,
+};

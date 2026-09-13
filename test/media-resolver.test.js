@@ -130,3 +130,36 @@ test("TelegramMediaResolver — without options the behaviour is unchanged", asy
   await tg.resolve(post);
   assert.equal(downloaded.length, 5, "доставці потрібне все, як і раніше");
 });
+
+test("TelegramMediaResolver — `accept` filters by pre-download metadata", async () => {
+  // Документ-зображення проходить, документ-PDF — ні, і PDF не завантажується.
+  const messages = [
+    { id: 200, groupedId: "g2", media: { kind: "document", mime: "image/png" } },
+    { id: 201, groupedId: "g2", media: { kind: "document", mime: "application/pdf" } },
+    { id: 202, groupedId: "g2", media: { kind: "photo", mime: "image/jpeg" } },
+  ];
+  const downloaded = [];
+  const typesSeen = [];
+  const tg = new TelegramMediaResolver({
+    client: { getMessages: async () => messages },
+    downloader: {
+      download: async (md, types) => {
+        typesSeen.push(types);
+        const list = Array.isArray(md.media) ? md.media : [md.media];
+        downloaded.push(...list.map((m) => m.mimeType));
+        return list.map((m) => ({ type: m.type, data: Buffer.from("x"), mimeType: m.mimeType }));
+      },
+    },
+    parser: { parseMedia: (m) => ({ type: m.media.kind, mimeType: m.media.mime, raw: m.media }) },
+  });
+  const post = { id: 2, media_ref: { kind: "telegram", channel_id: "-100", message_id: 200, grouped_id: "g2" } };
+
+  const files = await tg.resolve(post, {
+    types: ["photo", "document"],
+    accept: (m) => m.type === "photo" || m.mimeType?.startsWith("image/"),
+  });
+
+  assert.deepEqual(downloaded.sort(), ["image/jpeg", "image/png"], "PDF не завантажувався");
+  assert.equal(files.length, 2);
+  assert.deepEqual([...typesSeen[0]].sort(), ["document", "photo"], "типи завантажувача — з того, що лишилось");
+});

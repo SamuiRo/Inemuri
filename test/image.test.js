@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import sharp from "sharp";
 
 import {
-  dhash, hammingDistance, downscaleForVision, VISION_MAX_SIDE, SAME_IMAGE_MAX_DISTANCE,
+  dhash, hammingDistance, downscaleForVision, VISION_MAX_SIDE, SAME_IMAGE_MAX_DISTANCE, sniffImageFormat,
 } from "../src/shared/image.js";
 
 /**
@@ -117,4 +117,46 @@ test("downscaleForVision — refuses a decompression bomb", async () => {
     create: { width: 10_000, height: 10_000, channels: 3, background: { r: 255, g: 255, b: 255 } },
   }).png({ compressionLevel: 9 }).toBuffer();
   await assert.rejects(downscaleForVision(bomb), /pixel limit|exceeds/i);
+});
+
+// ── сигнатура до декодера ─────────────────────────────────────────────
+
+
+test("sniffImageFormat — recognises real JPEG, PNG and WebP bytes", async () => {
+  const base = sharp({ create: { width: 20, height: 20, channels: 3, background: "#fff" } });
+  assert.equal(sniffImageFormat(await base.clone().jpeg().toBuffer()), "jpeg");
+  assert.equal(sniffImageFormat(await base.clone().png().toBuffer()), "png");
+  assert.equal(sniffImageFormat(await base.clone().webp().toBuffer()), "webp");
+});
+
+test("sniffImageFormat — anything else is null", async () => {
+  const base = sharp({ create: { width: 20, height: 20, channels: 3, background: "#fff" } });
+  for (const [name, buf] of [
+    ["svg", Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>')],
+    ["gif", await base.clone().gif().toBuffer()],
+    ["tiff", await base.clone().tiff().toBuffer()],
+    ["text", Buffer.from("hello world, not an image")],
+    ["short", Buffer.from([0xff, 0xd8])],
+    ["empty", Buffer.alloc(0)],
+  ]) {
+    assert.equal(sniffImageFormat(buf), null, name);
+  }
+  assert.equal(sniffImageFormat("not a buffer"), null);
+});
+
+test("downscaleForVision — an SVG labelled as PNG is refused before sharp", async () => {
+  // Регресія. mimeType документа вказує відправник, а sharp визначає формат
+  // за вмістом: SVG з підписом image/png проходив фільтр і рендерився через
+  // librsvg. Перевірено до виправлення — повертав 400×200 JPEG.
+  const svg = Buffer.from(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#f00"/></svg>',
+  );
+  await assert.rejects(downscaleForVision(svg), /not a JPEG, PNG or WebP by signature/);
+});
+
+test("downscaleForVision — a WebP screenshot is processed", async () => {
+  const webp = await sharp(await screenshot()).webp().toBuffer();
+  const out = await downscaleForVision(webp);
+  assert.equal(out.mimeType, "image/jpeg");
+  assert.ok(out.width > 0);
 });

@@ -39,10 +39,11 @@ export class MediaResolver {
 
   /**
    * @param {import("../../teapot/models/Post.js").default} post
-   * @param {{types?: string[], limit?: number}} [opts]
-   *   `types` — качати лише ці типи медіа; `limit` — не більше стількох файлів.
-   *   Обидва застосовуються ДО завантаження: vision потрібні лише зображення,
-   *   і без цього пост із відео тягнув би весь ролик, щоб його викинути.
+   * @param {{types?: string[], limit?: number, accept?: (media: object) => boolean}} [opts]
+   *   `types` — качати лише ці типи медіа; `accept` — тонший фільтр за
+   *   метаданими, відомими до завантаження (mimeType, fileSize);
+   *   `limit` — не більше стількох файлів. Усе застосовується ДО завантаження:
+   *   без цього пост із відео тягнув би весь ролик, щоб його викинути.
    * @returns {Promise<object[]>} Downloaded file records; `[]` when the post
    *   has no media or `media_ref` was never written.
    */
