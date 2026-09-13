@@ -7,6 +7,31 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.22.1] - 2026-09-13
+
+### Security
+- `npm audit fix` applied: **24 production advisories down to 10**, 22 packages
+  updated, `package-lock.json` only — every change was inside an already
+  declared semver range, so `package.json` is untouched. Tests 149/149, lint
+  clean.
+
+  Notable ones closed: `axios` 1.13.5 → 1.20.0 (a long list of prototype
+  pollution gadgets and `NO_PROXY` bypasses), `sequelize` 6.37.7 → 6.37.8 (SQL
+  injection via JSON column cast, GHSA-6457-6jrx-69cr), `ws` → 8.21.3 and
+  `undici` → 7.29.1 / 6.28.1 (WebSocket parser crashes and unbounded
+  decompression on the Discord gateway), `validator` 13.12.0 → 13.15.35,
+  `lodash` 4.17.21 → 4.18.1, `form-data`, `socks`/`ip`, `dottie`, `tar-fs`.
+
+  The 10 that remain need a major bump and were left alone: eight are the
+  `sqlite3@5.1.7` build toolchain (`tar` — the one critical — plus `node-gyp`,
+  `cacache`, `make-fetch-happen`, `http-proxy-agent`, `@tootallnate/once`),
+  reachable only while `npm install` extracts a prebuilt binary and not at
+  runtime — verified by hooking `Module._load` around `require("sqlite3")`:
+  ten modules load, none from that chain. The other two are `sharp` (libvips
+  and libheif CVEs) and `sqlite3` itself. npm's suggestion for the remaining
+  `sequelize`/`uuid` entries is `sequelize@3.30.0`, a downgrade from 6.x, and
+  is nonsense.
+
 ## [4.22.0] - 2026-09-13
 
 CI, and a working linter — the last two items of build-side debt.
