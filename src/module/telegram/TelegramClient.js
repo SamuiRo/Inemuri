@@ -1,7 +1,8 @@
 import os from "os";
-import input from "input"; // npm i input
 import { TelegramClient as MTProtoClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
+
+import { askText, askSecret } from "../../shared/prompt.js";
 
 import {
   TELEGRAM_SESSION,
@@ -45,9 +46,11 @@ class TelegramClient {
       );
 
       await this.client.start({
-        phoneNumber: async () => await input.text("Phone number: "),
-        password: async () => await input.text("Password (if enabled): "),
-        phoneCode: async () => await input.text("Verification code: "),
+        phoneNumber: async () => askText("Phone number: "),
+        // askSecret, не askText: раніше 2FA-пароль друкувався в термінал
+        // відкритим текстом і лишався в історії сесії.
+        password:    async () => askSecret("Password (if enabled): "),
+        phoneCode:   async () => askText("Verification code: "),
         onError: (error) => {
           print(`Authentication error: ${error.message}`, "error");
           console.error(error);

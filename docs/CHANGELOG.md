@@ -7,6 +7,37 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.23.0] - 2026-09-13
+
+### Security
+- **The Telegram 2FA password was echoed to the terminal in clear text.**
+  `TelegramClient` used `input.text()` for all three auth prompts, and that
+  helper maps to inquirer's `input` type, which does not mask. The password
+  appeared on screen and stayed in the shell's scrollback. It now goes through
+  `askSecret()`, which mutes the output stream immediately after the prompt is
+  written.
+
+  The masking test has a **control case**: the same readline interface without
+  muting, asserting the echo *is* present. Without it, "the secret never
+  reaches the output" would have proved nothing — it could equally have meant
+  readline does not echo to a fake stream at all. It does; the guard is
+  load-bearing.
+
+### Removed
+- The `input@1.0.1` dependency, and with it **26 packages**: `inquirer@0.12.0`
+  (a 2016 release), `babel-runtime`, `core-js`, `rx-lite`, `readline2`, its own
+  copies of `chalk`/`ansi-styles`/`supports-color`, and the rest of that tree —
+  all for three prompts in the Telegram login path. Nothing in the audit
+  flagged it, which is the point: it was the oldest thing in the tree and the
+  largest attack surface per line of value.
+
+### Added
+- `src/shared/prompt.js` — `askText()` and `askSecret()` on the built-in
+  `node:readline/promises`. Streams are injectable, so the behaviour is
+  testable without a terminal. One interface per prompt, closed immediately:
+  an open readline on stdin keeps the event loop alive, and the process would
+  not exit after `npm start`. `test/prompt.test.js` covers that too.
+
 ## [4.22.1] - 2026-09-13
 
 ### Security
