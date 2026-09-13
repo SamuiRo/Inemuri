@@ -7,6 +7,17 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.25.2] - 2026-09-13
+
+### Security
+- `sharp` 0.34.5 → 0.35.4 (libvips 8.18.6), closing the libvips and libheif
+  advisories — `npm audit` 10 → 9. Deferred at `v4.22.1` as a major bump with
+  no reachable path, it became urgent at `v4.25.1`: vision will make `sharp`
+  decode images from Telegram channels. It lands before vision is enabled
+  anywhere. The 12 image tests, including the decompression-bomb refusal, pass
+  on the new version, as does the one pre-existing call site
+  (`loadImage("daily.png")` in the cron job).
+
 ## [4.25.1] - 2026-09-13
 
 Phase 1.5 (vision), part 1: local image processing.
