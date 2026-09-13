@@ -7,6 +7,53 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.24.0] - 2026-09-13
+
+Phase 2 begins: the resolve stage (ROADMAP §5.2).
+
+### Added
+- `src/module/theflow/ResolveStage.js` — `resolve({ post, flow, routing })`
+  turns a verdict into destinations. Pure, no I/O: rules and destinations are
+  arguments, so it is tested as a function. Implements every rule in
+  TAXONOMY.md — descending priority, first match wins, fallthrough to
+  `unsorted_destinations`, low confidence forcing `#unsorted` regardless of a
+  match, single value ≡ one-element array — plus the `#unsorted is mandatory`
+  list: a failed model, topic `other`, and no rule matching all land there.
+
+  **Every result carries a `reason`** (`matched_rule`, `model_failed`,
+  `low_confidence`, `topic_other`, `topic_not_in_source`, `no_rule`). That is
+  what makes `#unsorted` useful rather than a heap: it tells you whether to fix
+  a description, a threshold, a topic list or a rule. The checks run in a fixed
+  order and the first that applies is recorded.
+
+  Two gaps in the spec, filled:
+  - *A topic outside the source's `flow.topics`* → `#unsorted` with its own
+    reason. The spec only defined `null` as "all". Dropping such posts would
+    make a topic-restricted source the one place things vanish silently.
+  - *A rule that matches but has no destinations* is skipped rather than taken,
+    so a half-written rule cannot swallow posts.
+
+  And three defensive properties: a post whose status should never reach
+  resolve (`pending`, `skipped_*`, `routed`) **throws** — a quiet `#unsorted`
+  would hide a bug in whatever selected it; returned destinations are copies,
+  so a caller cannot corrupt the config by mutating them; a missing or garbage
+  confidence is treated as low rather than routed.
+- `validateRouting(routing, taxonomy)` — returns problems instead of throwing.
+  A bad routing rule does not fail, it silently changes behaviour: `"signal"`
+  typed for `"signal_type"` would make a rule match everything, and a topic not
+  in the taxonomy would make one match nothing. **TAXONOMY.md's own example
+  uses `games` and `market`, neither of which exists in v1**, so a
+  `routing.json` copied from the spec would have routed nothing. Printed at
+  startup as `[ROUTING]` warnings — not fatal, because routing is still in
+  shadow and classic forwarding does not depend on it. The live `routing.json`
+  and the shipped sample both validate clean.
+- `test/resolve-stage.test.js` — 24 cases.
+
+### Not yet
+- Nothing calls `resolve()` on real posts. Wiring it into delivery is 5.4, and
+  creating the channels it routes to is 5.1 — still the operator's, and still
+  what gates turning any of phase 2 on.
+
 ## [4.23.0] - 2026-09-13
 
 ### Security

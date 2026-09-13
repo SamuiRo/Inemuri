@@ -1,0 +1,245 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  resolve,
+  validateRouting,
+  orderRules,
+  matchesWhen,
+  RESOLVE_REASONS as R,
+} from "../src/module/theflow/ResolveStage.js";
+import { CATEGORIES } from "../src/config/app.config.js";
+
+const UNSORTED = { telegram: ["-100unsorted"] };
+
+const routing = (rules) => ({ unsorted_destinations: UNSORTED, routing: rules });
+
+const post = (over = {}) => ({
+  status: "enriched", topic: "steam", signal_type: "promo_code", confidence: 0.9, ...over,
+});
+
+const FLOW = { topics: null, min_confidence: 0.6 };
+
+// ── правила специфікації ──────────────────────────────────────────────
+
+test("rule 2 — the first matching rule supplies the destinations", () => {
+  const r = resolve({
+    post: post(),
+    flow: FLOW,
+    routing: routing([
+      { when: { topic: "steam", signal_type: "promo_code" }, destinations: { telegram: ["-100promo"] } },
+    ]),
+  });
+  assert.equal(r.outcome, "routed");
+  assert.equal(r.reason, R.MATCHED_RULE);
+  assert.deepEqual(r.destinations, { telegram: ["-100promo"] });
+});
+
+test("rule 1 — rules are evaluated in descending priority", () => {
+  const r = resolve({
+    post: post(),
+    flow: FLOW,
+    routing: routing([
+      { when: { topic: "steam" }, destinations: { telegram: ["-100broad"] }, priority: 1 },
+      { when: { topic: "steam", signal_type: "promo_code" }, destinations: { telegram: ["-100narrow"] }, priority: 10 },
+    ]),
+  });
+  assert.deepEqual(r.destinations, { telegram: ["-100narrow"] }, "вищий пріоритет, хоч і другий у списку");
+  assert.deepEqual(r.rule, { index: 1, priority: 10 });
+});
+
+test("rule 1 — equal priority keeps config order (stable)", () => {
+  const r = resolve({
+    post: post(),
+    flow: FLOW,
+    routing: routing([
+      { when: { topic: "steam" }, destinations: { telegram: ["-100first"] }, priority: 5 },
+      { when: { topic: "steam" }, destinations: { telegram: ["-100second"] }, priority: 5 },
+    ]),
+  });
+  assert.deepEqual(r.destinations, { telegram: ["-100first"] });
+});
+
+test("rule 3 — nothing matches, falls through to unsorted", () => {
+  const r = resolve({
+    post: post({ topic: "crypto" }),
+    flow: FLOW,
+    routing: routing([{ when: { topic: "steam" }, destinations: { telegram: ["-100x"] } }]),
+  });
+  assert.equal(r.outcome, "unsorted");
+  assert.equal(r.reason, R.NO_RULE);
+  assert.deepEqual(r.destinations, UNSORTED);
+});
+
+test("rule 4 — low confidence goes to unsorted REGARDLESS of a match", () => {
+  const r = resolve({
+    post: post({ confidence: 0.4 }),
+    flow: FLOW,
+    routing: routing([{ when: { topic: "steam" }, destinations: { telegram: ["-100x"] }, priority: 99 }]),
+  });
+  assert.equal(r.outcome, "unsorted");
+  assert.equal(r.reason, R.LOW_CONFIDENCE);
+});
+
+test("rule 4 — confidence exactly at the threshold is not low", () => {
+  const r = resolve({
+    post: post({ confidence: 0.6 }),
+    flow: FLOW,
+    routing: routing([{ when: { topic: "steam" }, destinations: { telegram: ["-100x"] } }]),
+  });
+  assert.equal(r.outcome, "routed");
+});
+
+test("rule 4 — a missing or garbage confidence is treated as low", () => {
+  // Краще в unsorted, ніж маршрутизувати вердикт без впевненості.
+  for (const confidence of [undefined, null, NaN, "abc"]) {
+    const r = resolve({
+      post: post({ confidence }),
+      flow: FLOW,
+      routing: routing([{ when: {}, destinations: { telegram: ["-100x"] } }]),
+    });
+    assert.equal(r.reason, R.LOW_CONFIDENCE, `confidence=${confidence}`);
+  }
+});
+
+test("rule 5 — a single value in `when` equals a one-element array", () => {
+  const single = { when: { topic: "steam" }, destinations: { telegram: ["-100x"] } };
+  const array = { when: { topic: ["steam"] }, destinations: { telegram: ["-100x"] } };
+  const a = resolve({ post: post(), flow: FLOW, routing: routing([single]) });
+  const b = resolve({ post: post(), flow: FLOW, routing: routing([array]) });
+  assert.deepEqual(a, b);
+});
+
+// ── #unsorted is mandatory ────────────────────────────────────────────
+
+test("#unsorted — a failed post lands there, never disappears", () => {
+  const r = resolve({ post: { status: "failed" }, flow: FLOW, routing: routing([]) });
+  assert.equal(r.outcome, "unsorted");
+  assert.equal(r.reason, R.MODEL_FAILED);
+});
+
+test("#unsorted — topic `other` always lands there, even with a catch-all rule", () => {
+  const r = resolve({
+    post: post({ topic: "other" }),
+    flow: FLOW,
+    routing: routing([{ when: {}, destinations: { telegram: ["-100catchall"] } }]),
+  });
+  assert.equal(r.reason, R.TOPIC_OTHER);
+});
+
+// ── заповнена діра специфікації ───────────────────────────────────────
+
+test("flow.topics — a post off the source's topics goes to unsorted, not the bin", () => {
+  const r = resolve({
+    post: post({ topic: "crypto" }),
+    flow: { topics: ["steam"], min_confidence: 0.6 },
+    routing: routing([{ when: { topic: "crypto" }, destinations: { telegram: ["-100crypto"] } }]),
+  });
+  assert.equal(r.outcome, "unsorted");
+  assert.equal(r.reason, R.TOPIC_NOT_IN_SOURCE, "правило для crypto є, але джерело його не приймає");
+});
+
+test("flow.topics — null or empty means all topics", () => {
+  for (const topics of [null, undefined, []]) {
+    const r = resolve({
+      post: post({ topic: "crypto" }),
+      flow: { topics, min_confidence: 0.6 },
+      routing: routing([{ when: { topic: "crypto" }, destinations: { telegram: ["-100crypto"] } }]),
+    });
+    assert.equal(r.outcome, "routed", `topics=${JSON.stringify(topics)}`);
+  }
+});
+
+// ── захисні властивості ───────────────────────────────────────────────
+
+test("a matching rule with no destinations does not swallow the post", () => {
+  const r = resolve({
+    post: post(),
+    flow: FLOW,
+    routing: routing([
+      { when: { topic: "steam" }, destinations: {}, priority: 10 },
+      { when: { topic: "steam" }, destinations: { telegram: ["-100real"] }, priority: 1 },
+    ]),
+  });
+  assert.deepEqual(r.destinations, { telegram: ["-100real"] });
+});
+
+test("returned destinations are copies — mutating them cannot corrupt the config", () => {
+  const rules = [{ when: { topic: "steam" }, destinations: { telegram: ["-100x"] } }];
+  const r = resolve({ post: post(), flow: FLOW, routing: routing(rules) });
+  r.destinations.telegram.push("-100INJECTED");
+  assert.deepEqual(rules[0].destinations.telegram, ["-100x"]);
+});
+
+test("a status that should never reach resolve throws instead of hiding the bug", () => {
+  // Тихий unsorted для pending замаскував би ваду в стадії, що вибирає пости.
+  for (const status of ["pending", "skipped_blacklist", "routed", "suppressed", undefined]) {
+    assert.throws(() => resolve({ post: post({ status }), flow: FLOW, routing: routing([]) }), /status/);
+  }
+});
+
+test("numeric ids in config come back as strings", () => {
+  const r = resolve({
+    post: post(),
+    flow: FLOW,
+    routing: routing([{ when: { topic: "steam" }, destinations: { discord: [1234567890] } }]),
+  });
+  assert.deepEqual(r.destinations, { discord: ["1234567890"] });
+});
+
+// ── helpers ───────────────────────────────────────────────────────────
+
+test("matchesWhen — empty `when` is a catch-all; missing when never matches", () => {
+  assert.equal(matchesWhen({}, { topic: "steam", signal_type: "x" }), true);
+  assert.equal(matchesWhen(undefined, { topic: "steam" }), false);
+  assert.equal(matchesWhen(null, { topic: "steam" }), false);
+});
+
+test("orderRules — missing priority counts as 0", () => {
+  const ordered = orderRules([{ id: "a" }, { id: "b", priority: 1 }, { id: "c", priority: -1 }]);
+  assert.deepEqual(ordered.map((o) => o.rule.id), ["b", "a", "c"]);
+});
+
+// ── validateRouting ───────────────────────────────────────────────────
+
+test("validateRouting — a correct config has no problems", () => {
+  assert.deepEqual(validateRouting(routing([
+    { when: { topic: "steam", signal_type: ["promo_code", "freebie"] }, destinations: { telegram: ["-1"] }, priority: 10 },
+  ]), CATEGORIES), []);
+});
+
+test("validateRouting — the spec's own example topics do not exist in v1", () => {
+  // Приклад у TAXONOMY.md використовує `games` і `market`. Скопійований
+  // routing.json мовчки не маршрутизував би нічого — валідація має це ловити.
+  const problems = validateRouting(routing([
+    { when: { topic: "games" }, destinations: { telegram: ["-1"] } },
+    { when: { topic: ["market", "crypto"] }, destinations: { telegram: ["-2"] } },
+  ]), CATEGORIES);
+  assert.ok(problems.some((p) => p.includes('"games"')));
+  assert.ok(problems.some((p) => p.includes('"market"')));
+  assert.equal(problems.some((p) => p.includes('"crypto"')), false, "crypto у таксономії є");
+});
+
+test("validateRouting — a typo'd condition key is caught, not silently matched", () => {
+  // `signal` замість `signal_type`: ключ ігнорувався б і правило збігалося б з усім.
+  const problems = validateRouting(routing([
+    { when: { topic: "steam", signal: ["promo_code"] }, destinations: { telegram: ["-1"] } },
+  ]), CATEGORIES);
+  assert.ok(problems.some((p) => p.includes("when.signal")));
+});
+
+test("validateRouting — missing #unsorted is a problem", () => {
+  const problems = validateRouting({ unsorted_destinations: {}, routing: [] }, CATEGORIES);
+  assert.ok(problems.some((p) => p.includes("unsorted_destinations")));
+});
+
+test("validateRouting — a rule that matches but delivers nowhere is flagged", () => {
+  const problems = validateRouting(routing([{ when: { topic: "steam" }, destinations: {} }]), CATEGORIES);
+  assert.ok(problems.some((p) => p.includes("destinations is empty")));
+});
+
+test("validateRouting — the shipped routing.sample.json is valid", async () => {
+  const { loadLocalConfig } = await import("../src/config/localConfig.js");
+  const sample = loadLocalConfig("routing.sample", null, []);
+  assert.deepEqual(validateRouting(sample, CATEGORIES), []);
+});

@@ -13,7 +13,10 @@ import DiscordCommandHandler from "./module/discord/DiscordCommandHandler.js";
 import { CRON_JOBS, COMMANDS } from "./config/cronjobs.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
+import { validateRouting } from "./module/theflow/ResolveStage.js";
 import {
+  CATEGORIES,
+  ROUTING,
   CONFIG_WARNINGS,
   ENRICH_WORKER_ENABLED,
   LLM_PRIMARY,
@@ -71,6 +74,13 @@ class Inemuri {
       //    фолбек гірший за гучний: саме він ховає неповний .env.
       for (const warning of CONFIG_WARNINGS) {
         print(`[CONFIG] ${warning}`, "warning");
+      }
+      // Помилка в routing.json не падає, а тихо змінює поведінку: правило з
+      // топіком не з таксономії не збігається ніколи, з опечаткою в ключі —
+      // збігається з усім. Попередження, не зупинка: маршрутизація за
+      // вердиктами ще в тіні, класичний форвардинг від неї не залежить.
+      for (const problem of validateRouting(ROUTING, CATEGORIES)) {
+        print(`[ROUTING] ${problem}`, "warning");
       }
 
       // 1. Підключення до бази даних

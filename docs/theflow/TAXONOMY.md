@@ -163,6 +163,30 @@ window".
 A single value and an array are equivalent in `when`: `"games"` equals
 `["games"]`.
 
+**Implemented** in [`ResolveStage.js`](../../src/module/theflow/ResolveStage.js)
+(`v4.24.0`). Two things the rules above did not settle, decided there:
+
+- **A topic outside the source's `flow.topics` goes to `#unsorted`**, with its
+  own reason. The spec defined `topics: null` as "all topics" and said nothing
+  about a post outside a set list. Dropping it would make a topic-restricted
+  source the one place posts vanish without a trace — the exact failure
+  `#unsorted` exists to prevent.
+- **A rule that matches but has no destinations is skipped**, not taken. A
+  half-written rule should not swallow the posts that reach it.
+
+The checks run in a fixed order and the **first one that applies becomes the
+recorded reason**: `model_failed` → `low_confidence` → `topic_other` →
+`topic_not_in_source` → rule match → `no_rule`. Confidence comes before topic
+because rule 4 applies "regardless of what matched". The reason is what makes
+`#unsorted` readable: it says whether to fix a description, a threshold, a
+source's topic list, or a routing rule.
+
+Routing lives in `src/config/routing.json`, not in `categories.json` as the
+example above shows — the example predates the `v4.17.0` split. Note too that
+the example's topics (`games`, `market`) are not in v1; `validateRouting()`
+flags that at startup as `[ROUTING]` warnings, because a rule naming an unknown
+topic does not fail — it silently never matches.
+
 ## `#unsorted` is mandatory
 
 **Nothing disappears silently.** It receives everything where:

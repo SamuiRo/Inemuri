@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.19.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.24.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -11,7 +11,7 @@ key is set in `.env` (`ENRICH_WORKER_ENABLED` + `LLM_PROVIDERS[LLM_PRIMARY].apiK
 in `src/config/app.config.js`); without one, flow-enabled sources ingest into
 `posts` as `pending` and nothing else happens. Classic (non-TheFlow) forwarding
 is untouched throughout. 5 migrations exist (`database/migrations/001`–`005`);
-`npm run migrate:status` is clean on the dev database. `npm test` is 80 green
+`npm run migrate:status` is clean on the dev database. `npm test` is 184 green
 `node --test` cases (`--test-concurrency=1` — some suites touch the real
 SQLite file). See [CHANGELOG.md](CHANGELOG.md) for the version-by-version
 detail and [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task

@@ -798,6 +798,14 @@ Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 �
 | 5.6 | Status transitions `enriched` → `routed` / `unsorted` | | S |
 | 5.7 | Reaction capture → `post_feedback` (needs 2.6). Run the 13.5 probe first — the estimate depends on it | | M |
 
+> **5.2 done (v4.24.0).** `src/module/theflow/ResolveStage.js` — `resolve()`
+> and `validateRouting()`, pure, reading `ROUTING` (routing.json) rather than
+> `categories.json`. `test/resolve-stage.test.js` covers every rule below plus
+> the two gaps it had to fill: a topic outside `flow.topics` goes to
+> `#unsorted`, and a matching rule with no destinations is skipped. Every
+> result carries a `reason`. Not yet wired into a delivery path — that is 5.4.
+> 5.1 (the channels) is still the operator's and still gates enabling any of it.
+
 Resolve is a pure function and is tested as one: rules in descending `priority`,
 first match wins, a single value equals a one-element array in `when`, and
 `confidence` below `flow.min_confidence` forces `#unsorted` regardless of what
