@@ -504,6 +504,37 @@ Spec: [LLM_GATEWAY.md](LLM_GATEWAY.md), [TAXONOMY.md](TAXONOMY.md).
 
 ### 3.1 Provider capability check (`S`) — first
 
+> **Decided (v4.25.0).** **Gemini is primary for text, vision and embeddings;
+> OpenRouter is the fallback for text only.** One provider covering all three
+> capabilities was the deciding factor — it also unblocks phase 1.5, since the
+> vision provider question is answered.
+>
+> Checked against `ai.google.dev` on 2026-09-13, and what it changed:
+>
+> - **`text-embedding-004` was shut down on 2026-01-14** and was the config
+>   default. It did not fail loudly: a 404 classifies as `bad_response`, so the
+>   breaker stayed shut, but `quota.bump()` runs *before* the request — every
+>   post burned RPD on a guaranteed 404 and ended with `embedding = null`. The
+>   default is now `gemini-embedding-2`, dimension pinned at 768 (the model's
+>   own default is 3072). `task_type` is not sent: embedding-2 rejects it.
+> - **Gemini resets RPD at midnight Pacific, not UTC**, while the quota ledger
+>   keyed on the UTC date. Exhausting at 06:00 UTC (23:00 PDT) marked Gemini
+>   spent for the whole UTC day, so after Google restored the quota at 07:00
+>   the gateway still refused the provider for ~17 hours. `ProviderQuota.today()`
+>   now takes a zone, and each provider carries `quotaTimeZone`.
+> - `gemini-2.5-flash` has no shutdown announced and stays the complete/vision
+>   default. `flash-lite` is the throughput option.
+> - **Free-tier RPM/RPD are not published** — only visible per project in AI
+>   Studio. `GEMINI_RPD` / `GEMINI_RPM` are an operator step, not a default.
+>
+> **OpenRouter does expose `/embeddings`** (OpenAI-compatible), closing the
+> open question below — and it is **deliberately unused**. 13.2 already forbids
+> comparing vectors across models, so a fallback embedding would not corrupt
+> dedup; it would make the post *invisible* to it, sitting in a vector space the
+> rest of the corpus is never searched in. A `null` is backfillable by the same
+> model. `OPENROUTER_EMBED_MODEL` stays empty on purpose, and startup warns if
+> more than one embedding model is configured.
+
 | Capability | Gemini | OpenRouter |
 |---|---|---|
 | `complete` structured output | `responseSchema` | `response_format: json_schema` — support varies **per model id**, verify each |
@@ -1009,7 +1040,7 @@ gray-zone volume.
 | Now | Why Source M's checkpoint has not advanced since 2026-05-01 — dead channel or broken polling |
 | Before 2.3 | The app root path on the VPS, for `ecosystem.config.cjs` and `docs/DEPLOYMENT.md` |
 | Before 2.9 | Confirmation that forwarding may pause on the pilot sources, and which channel is the screenshot-heavy one |
-| Before phase 1 | The OpenRouter model ids you intend to use, and whether your account exposes embeddings |
+| Before phase 1 | ~~The OpenRouter model ids you intend to use, and whether your account exposes embeddings~~ **Decided v4.25.0:** Gemini primary, OpenRouter text-only fallback; OpenRouter has embeddings but they stay unused (3.1). Still open: the OpenRouter complete model id, which must support `json_schema` output |
 | Before the phase 1 checkpoint | Your own read of `#unsorted`: which categories are missing, which descriptions are too narrow |
 | Before phase 2 | The new destination channels, including `#unsorted` and a `security` channel — today there is only the one firehose chat |
 | Before 5.4 | **The delivery template itself** — the lines, the wording, and the Discord embed layout. [DELIVERY.md](DELIVERY.md) fixes the mechanism and the constraints; what the message actually reads like is yours |

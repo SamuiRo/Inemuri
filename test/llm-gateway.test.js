@@ -235,3 +235,35 @@ test("priority queue respects the concurrency cap", async () => {
   );
   assert.equal(peak, 2, `peak in-flight should be exactly the cap`);
 });
+
+test("quota — the ledger day is computed in each provider's own reset zone", async () => {
+  // Gemini скидає RPD за тихоокеанським часом. Gateway має питати реєстр про
+  // день саме в поясі провайдера, а не про UTC-дату для всіх.
+  const seen = [];
+  const quota = fakeQuota();
+  quota.today = (tz) => `day-in-${tz}`;
+  const origUsed = quota.used, origBump = quota.bump;
+  quota.used = async (p, day) => { seen.push(["used", p, day]); return origUsed(p); };
+  quota.bump = async (p, day) => { seen.push(["bump", p, day]); return origBump(p); };
+
+  const g = mkGateway(
+    { primary: fakeProvider("primary") },
+    { quota, meta: { primary: { quotaTimeZone: "America/Los_Angeles" } } },
+  );
+  await g.enrich(input());
+
+  assert.ok(seen.length >= 2, "реєстр мав бути опитаний");
+  for (const [, , day] of seen) assert.equal(day, "day-in-America/Los_Angeles");
+});
+
+test("quota — a provider with no zone configured uses UTC", async () => {
+  const days = [];
+  const quota = fakeQuota();
+  quota.today = (tz) => tz;
+  const origBump = quota.bump;
+  quota.bump = async (p, day) => { days.push(day); return origBump(p); };
+
+  const g = mkGateway({ primary: fakeProvider("primary") }, { quota });
+  await g.enrich(input());
+  assert.deepEqual([...new Set(days)], ["UTC"]);
+});

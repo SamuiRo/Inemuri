@@ -26,7 +26,10 @@ export const ProviderQuota = database.sequelize.define("ProviderQuota", {
   day_utc: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "UTC calendar day, YYYY-MM-DD — the reset boundary",
+    // Назва колонки старша за виправлення: тут лежить календарний день у
+    // поясі, де ПРОВАЙДЕР скидає квоту (Gemini — America/Los_Angeles), а не
+    // обов'язково UTC. Див. ProviderQuota.today().
+    comment: "Quota day YYYY-MM-DD in the provider's reset time zone (column name predates that)",
   },
   count: {
     type: DataTypes.INTEGER,
@@ -49,9 +52,31 @@ export const ProviderQuota = database.sequelize.define("ProviderQuota", {
 
 // ==================== STATIC МЕТОДИ ====================
 
-/** UTC calendar day as YYYY-MM-DD. */
-ProviderQuota.today = function () {
-  return new Date().toISOString().slice(0, 10);
+/**
+ * Календарний день YYYY-MM-DD у поясі, де провайдер скидає добову квоту.
+ *
+ * Раніше це була завжди UTC-дата, а Gemini скидає RPD опівночі за
+ * тихоокеанським часом (07:00/08:00 UTC). Реєстр існує, щоб передбачити
+ * «стіну» квоти — і передбачав її не там. Найгірший наслідок: вичерпання о
+ * 06:00 UTC позначало Gemini вичерпаним на всю UTC-добу, тож після того, як
+ * Google відновлював квоту о 07:00, gateway не чіпав провайдера ще ~17 годин.
+ *
+ * Невалідний пояс не валить воркер — повертається UTC-дата. Валідація поясу
+ * з попередженням відбувається раніше, при читанні конфігу.
+ *
+ * @param {string} [timeZone="UTC"]  IANA-пояс, напр. "America/Los_Angeles".
+ * @param {Date}   [now=new Date()]   Для тестів.
+ */
+ProviderQuota.today = function (timeZone = "UTC", now = new Date()) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(now);
+    const get = (type) => parts.find((p) => p.type === type)?.value;
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
 };
 
 /**

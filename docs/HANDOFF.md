@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.24.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.25.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -66,30 +66,25 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-1. **Provider decisions (ROADMAP §11, §3.1)** — pick the Gemini and
-   OpenRouter model ids, confirm whether the OpenRouter account exposes
-   `/embeddings` (leave `OPENROUTER_EMBED_MODEL` empty if not — `embed()`
-   degrades to a single provider, dedup degrades to tier 1, both already
-   handled), pick a vision provider, and measure RPD/RPM per model id
-   against `scripts/estimate-volume.js`'s output. Then fill in `.env` from
-   `.env.example`'s `LLM_*` / `GEMINI_*` / `OPENROUTER_*` block.
+1. **Fill in `.env` for the provider decision** (ROADMAP §3.1, decided
+   `v4.25.0`: Gemini primary, OpenRouter text-only fallback). `.env.example`
+   carries the block. Two values cannot be defaulted and need you:
+   - **`GEMINI_RPD` / `GEMINI_RPM`** — Google does not publish free-tier
+     limits; read them for your project at `aistudio.google.com/rate-limit`.
+   - **`OPENROUTER_COMPLETE_MODEL`** — must support structured output
+     (`response_format: json_schema`); check the model page first.
+
+   Leave `OPENROUTER_EMBED_MODEL` empty — see §3.1 for why.
 2. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
-   against the live Telegram session; deploy the current code to the VPS
-   per [DEPLOYMENT.md](DEPLOYMENT.md) and run `npm run migrate` there; strip
-   the copy-pasted no-op text replacements from the live `sources.json` (the
-   committed `sources.sample.json` is already clean — v4.9.0) and its VPS
-   copy; enable the pilot sources from ROADMAP §2.9 (not `Source M` until its
-   stale checkpoint is explained).
-3. **Once the worker has run for a while:** the Phase 1 checkpoint — read
-   everything landing in `other`/low confidence through
-   `node src/cli.js flow review`, rewrite `categories.json`, bump its
-   `version` to `2`. Exit gate for enabling routing is "verdicts you agree
-   with often enough", not a fixed number of days.
-4. **Next phase of work:** Phase 2 (content-based routing) needs the new
-   destination channels from ROADMAP §11 first (including `#unsorted` and a
-   `security` channel — today everything still goes to one firehose chat).
-   Phase 1.5 (vision) can start independently once a vision provider is
-   chosen in step 1.
+   against the live session; deploy to the VPS per
+   [DEPLOYMENT.md](DEPLOYMENT.md) — on an empty database run
+   `npm run db:bootstrap` before `npm run migrate`; enable `flow.enabled` on the
+   pilot sources.
+3. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
+   Resolve (§5.2) is built and waiting on them.
+4. **Next buildable work: Phase 1.5 (vision)** — unblocked by the provider
+   decision. After that the plan needs real enriched posts: the §5.4 message
+   template is deliberately designed against real material.
 
 ## Open questions
 

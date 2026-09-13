@@ -70,6 +70,21 @@ export function optionalNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
   return positiveNumber(name, raw, fallback, sink);
 }
 
+/**
+ * IANA-пояс для скидання квоти. Невалідний — попередження і UTC: краще
+ * гучно рахувати не в тому поясі, ніж упасти на старті.
+ */
+export function quotaTimeZone(name, raw, fallback, sink = CONFIG_WARNINGS) {
+  const tz = raw == null || String(raw).trim() === "" ? fallback : String(raw).trim();
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
+  } catch {
+    sink.push(`${name}=${JSON.stringify(raw)} is not a valid IANA time zone — falling back to UTC`);
+    return "UTC";
+  }
+}
+
 // ── Конфіги конкретного розгортання ───────────────────────────────────────
 // У .gitignore: у кожного розгортання свої канали й призначення. Читаються
 // через loadLocalConfig, який падає на *.sample.json, — інакше свіжий клон
@@ -178,11 +193,23 @@ export const LLM_PROVIDERS = {
     apiKey:        process.env.GEMINI_API_KEY || null,
     baseUrl:       process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
     completeModel: process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
-    embedModel:    process.env.GEMINI_EMBED_MODEL    || "text-embedding-004",
+    // gemini-embedding-2, НЕ text-embedding-004: той вимкнено 14.01.2026.
+    // Старий дефолт не падав, а тихо псував: 404 класифікується як
+    // bad_response (breaker не відкривається), але quota.bump() іде ДО запиту,
+    // тож кожен пост спалював RPD на гарантований 404 і отримував
+    // embedding = null. Для embedding-2 task_type не передається — модель
+    // його відхиляє; інструкції задачі йдуть у сам текст.
+    embedModel:    process.env.GEMINI_EMBED_MODEL    || "gemini-embedding-2",
     visionModel:   process.env.GEMINI_VISION_MODEL   || process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
+    // Закріплено явно (ROADMAP 13.2): дефолт моделі — 3072, і він може
+    // змінитись. 768 — одне з рекомендованих значень; провайдер нормалізує
+    // вектор сам, тож це безпечно і для embedding-001, де нормалізація ручна.
     embedDim:      Number(process.env.GEMINI_EMBED_DIM || 768),
     rpd:           Number(process.env.GEMINI_RPD || 1_400), // verify per 3.1
     rpm:           Number(process.env.GEMINI_RPM || 12),
+    // Google скидає RPD опівночі за тихоокеанським часом, не UTC
+    // (ai.google.dev/gemini-api/docs/rate-limits). Реєстр квоти рахує добу тут.
+    quotaTimeZone: quotaTimeZone("GEMINI_QUOTA_TZ", process.env.GEMINI_QUOTA_TZ, "America/Los_Angeles"),
   },
   openrouter: {
     apiKey:        process.env.OPENROUTER_API_KEY || null,
@@ -193,5 +220,8 @@ export const LLM_PROVIDERS = {
     embedDim:      Number(process.env.OPENROUTER_EMBED_DIM || 0),
     rpd:           Number(process.env.OPENROUTER_RPD || 200),
     rpm:           Number(process.env.OPENROUTER_RPM || 20),
+    // Не звірено з документацією OpenRouter — задайте, якщо ліміти вашого
+    // акаунта скидаються не за UTC.
+    quotaTimeZone: quotaTimeZone("OPENROUTER_QUOTA_TZ", process.env.OPENROUTER_QUOTA_TZ, "UTC"),
   },
 };

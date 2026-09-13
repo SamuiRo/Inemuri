@@ -135,6 +135,14 @@ export class LLMGateway {
     return null;
   }
 
+  /**
+   * День квоти в поясі, де провайдер скидає добовий ліміт. Фейкові реєстри в
+   * тестах не мають today() — тоді undefined, і реєстр бере свій дефолт.
+   */
+  _quotaDay(entry) {
+    return this.quota.today?.(entry.meta?.quotaTimeZone ?? "UTC");
+  }
+
   // ── routing helpers ────────────────────────────────────────────
 
   _candidates(capability) {
@@ -150,7 +158,7 @@ export class LLMGateway {
     if (!entry.breaker.allow()) return "circuit open";
 
     const rpd = entry.meta.rpd ?? Infinity;
-    const used = await this.quota.used(entry.provider.name);
+    const used = await this.quota.used(entry.provider.name, this._quotaDay(entry));
     if (used >= rpd) return "quota exhausted";
 
     if (priority !== "critical" && rpd !== Infinity) {
@@ -233,7 +241,7 @@ export class LLMGateway {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           await entry.bucket.take(this.sleep);
-          await this.quota.bump(entry.provider.name);
+          await this.quota.bump(entry.provider.name, this._quotaDay(entry));
           const provider = modelOverride
             ? this._withModel(entry.provider, modelOverride)
             : entry.provider;
@@ -247,7 +255,7 @@ export class LLMGateway {
           lastErr = err;
           const kind = err.kind ?? "server";
           if (kind === "quota") {
-            await this.quota.markExhausted(entry.provider.name);
+            await this.quota.markExhausted(entry.provider.name, this._quotaDay(entry));
             break;
           }
           if (kind === "server" || kind === "network") {
@@ -286,7 +294,7 @@ export class LLMGateway {
       }
       try {
         await entry.bucket.take(this.sleep);
-        await this.quota.bump(entry.provider.name);
+        await this.quota.bump(entry.provider.name, this._quotaDay(entry));
         const out = await entry.provider.embed(String(text ?? ""));
         entry.breaker.recordSuccess();
         const result = { vector: out.vector, model: out.model, dim: out.dim };
@@ -295,7 +303,7 @@ export class LLMGateway {
       } catch (err) {
         lastErr = err;
         const kind = err.kind ?? "server";
-        if (kind === "quota") await this.quota.markExhausted(entry.provider.name);
+        if (kind === "quota") await this.quota.markExhausted(entry.provider.name, this._quotaDay(entry));
         else if (kind === "server" || kind === "network") entry.breaker.recordFailure();
       }
     }

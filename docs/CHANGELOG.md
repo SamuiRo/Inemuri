@@ -7,6 +7,58 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.25.0] - 2026-09-13
+
+Provider decision (ROADMAP §3.1): **Gemini primary for text, vision and
+embeddings; OpenRouter fallback for text only.** Checking the decision against
+the provider's current documentation turned up two defects that would have
+shown up only after going live.
+
+### Fixed
+- **The default embedding model had been shut down.** `text-embedding-004` was
+  retired on 2026-01-14 and was still the config default. It failed quietly: a
+  404 classifies as `bad_response`, so the circuit breaker stayed closed and
+  enrichment carried on — but `quota.bump()` runs before the request, so every
+  post spent daily quota on a guaranteed 404 and was stored with
+  `embedding = null`. With one enrich and one embed call per post, that is half
+  the Gemini allowance buying nothing. Now `gemini-embedding-2`, dimension
+  pinned at 768 per ROADMAP 13.2 (the model default is 3072). No `task_type` is
+  sent, which embedding-2 rejects; the provider already normalizes vectors, so
+  the switch needed no code change there.
+- **The quota ledger counted days in UTC; Gemini resets at Pacific midnight.**
+  The ledger exists to predict the quota wall, and it predicted it seven to
+  eight hours off. The worst case was concrete: exhausting at 06:00 UTC
+  (23:00 PDT) marked Gemini spent for the entire UTC day, so after Google
+  restored the quota at 07:00 the gateway kept refusing the provider for about
+  17 hours — enrichment either stalled or shifted everything onto OpenRouter's
+  smaller allowance. `ProviderQuota.today(timeZone, now)` computes the day in a
+  given IANA zone (DST included), each provider carries `quotaTimeZone`
+  (`America/Los_Angeles` for Gemini, per Google's rate-limit page; `UTC` for
+  OpenRouter, unverified and configurable), and the gateway passes the right day
+  at all five ledger call sites. An invalid zone warns at startup and falls back
+  to UTC rather than crashing the worker.
+
+### Added
+- A startup warning when more than one embedding model is configured.
+  OpenRouter **does** expose `/embeddings` — closing that open question in
+  §3.1 — and it stays deliberately unused. 13.2 already forbids comparing
+  vectors across models, so a fallback embedding would not corrupt dedup; it
+  would make the post invisible to it, stored in a vector space the rest of the
+  corpus is never searched in. A `null` can be backfilled by the same model.
+- `.env.example` rewritten around the decision, marking what cannot be
+  defaulted: **free-tier RPM/RPD are not published by Google**, only visible
+  per project in AI Studio; and the OpenRouter model must support
+  `json_schema` output.
+- Tests: the Pacific/UTC day boundary including DST, zone propagation through
+  the gateway, invalid-zone fallback, and `test/llm-config.test.js` asserting no
+  default points at a shut-down model. The five regression tests fail against
+  the previous code.
+
+### Changed
+- ROADMAP §3.1 records the decision and what the doc check changed; §11 marks
+  it decided. HANDOFF's next steps now start from the two values only the
+  operator can supply, and name phase 1.5 (vision) as unblocked.
+
 ## [4.24.0] - 2026-09-13
 
 Phase 2 begins: the resolve stage (ROADMAP §5.2).

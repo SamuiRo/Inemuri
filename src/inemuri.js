@@ -82,6 +82,21 @@ class Inemuri {
       for (const problem of validateRouting(ROUTING, CATEGORIES)) {
         print(`[ROUTING] ${problem}`, "warning");
       }
+      // Ембеддинги лише з однієї моделі. Порівнювати вектори між моделями
+      // заборонено (ROADMAP 13.2), тож вектор від fallback-моделі лягає в
+      // простір, у якому дедуплікація основну масу корпусу не шукає, — і пост
+      // стає для неї невидимим. `null` краще: його дозаповнює та сама модель.
+      const embedModels = Object.entries(LLM_PROVIDERS)
+        .filter(([, p]) => p.apiKey && p.embedModel)
+        .map(([name, p]) => `${name}:${p.embedModel}`);
+      if (embedModels.length > 1) {
+        print(
+          `[LLM] ${embedModels.length} embedding models configured (${embedModels.join(", ")}). ` +
+            "A fallback embedding lands in a vector space dedup does not search — " +
+            "keep embeddings on one provider and leave the others' *_EMBED_MODEL empty",
+          "warning",
+        );
+      }
 
       // 1. Підключення до бази даних
       print("Connecting to database...");
