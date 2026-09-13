@@ -339,6 +339,11 @@ There is also a Discord slash command:
 | `npm start` | Starts the full application. |
 | `npm run seed` | Seeds sources from `src/config/sources.json`. |
 | `npm run seed:fresh` | Clears all sources and reseeds them. |
+| `npm run db:bootstrap` | Creates missing tables in an empty database. Run **before** `npm run migrate` on a fresh install — migrations cannot bootstrap from nothing. No-op once the tables exist. |
+| `npm run migrate` | Applies pending schema migrations (takes a backup first). |
+| `npm run migrate:status` | Lists applied and pending migrations. |
+| `npm test` | Runs the `node --test` suites under `test/`. |
+| `npm run lint` | ESLint over the project (`lint:fix` to auto-fix). |
 
 ### Direct CLI usage
 
@@ -371,6 +376,21 @@ reasons: `parseMedia()` classifies, `DOWNLOADABLE_MEDIA_TYPES` in
 `supportedMediaTypes` in `DiscordDestination` decides what may become an
 embed image. See [docs/media.md](docs/media.md) — including why an `audio`
 file parses but never arrives.
+
+### First run on an empty database
+
+```bash
+npm run db:bootstrap   # sync() creates tables from the models
+npm run migrate        # applies what sync() does not know about
+npm start
+```
+
+The order matters and is not interchangeable. **Migrations cannot create the
+schema from nothing**: `sources` and `source_states` predate the migration
+system and are created by `database.sync()` at application start, not by any
+migration — so `npm run migrate` against an empty file fails in migration
+`002` at `describeTable("sources")`. `db:bootstrap` fills that gap and is a
+no-op once the tables exist.
 
 ## Data storage
 

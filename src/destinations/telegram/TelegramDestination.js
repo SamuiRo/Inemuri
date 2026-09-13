@@ -161,7 +161,9 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
    */
   async sendBatch(destinationId, messageList) {
     try {
-      const entity = await this.resolveEntity(destinationId);
+      // Pre-flight: валить рано, якщо чат не резолвиться, ще до розсилки.
+      // Результат не потрібен — sendMessage() усередині циклу резолвить сам.
+      await this.resolveEntity(destinationId);
       const results = [];
 
       for (const message of messageList) {

@@ -7,6 +7,57 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.22.0] - 2026-09-13
+
+CI, and a working linter — the last two items of build-side debt.
+
+### Added
+- `.github/workflows/ci.yml`: lint, schema bootstrap, migrations and tests on
+  every push to `master` and every PR, on Node 22. CI deliberately has no
+  `.env`, no `sources.json` and no database, so every run re-proves that a
+  fresh clone starts on the `*.sample.json` fallbacks — the property `v4.17.0`
+  added and `v4.18.1` had to repair.
+- `eslint` as a pinned devDependency with a flat `eslint.config.js`, plus
+  `npm run lint` / `lint:fix`. Lint was **not running at all**: eslint was in
+  no dependency list, so `npx eslint` fetched a current release, which reads
+  only flat config and failed on `.eslintrc.json` (now deleted). Nothing caught
+  it because lint was not a script.
+
+  Rules carried over as they were, with three deliberate settings.
+  `eqeqeq` gets `{ null: "ignore" }`: all ten violations were the intentional
+  `x != null` idiom, and rewriting them to `!==` would stop catching
+  `undefined` — a behaviour change for a lint rule. `no-console` allows
+  `error`/`warn` and is off in `shared/utils.js`, the CLI and scripts, which
+  *are* the output layer rather than callers of it. Base adapters use
+  `args: "none"`, since their unused parameters document the contract for
+  subclasses and renaming them to `_foo` would spoil the only place that
+  contract is visible.
+- `npm run db:bootstrap` (`scripts/bootstrap-schema.js`), because
+  **migrations cannot create the schema from nothing.** `sources` and
+  `source_states` predate the migration system and come from
+  `database.sync()`, so `npm run migrate` against an empty file dies in `002`
+  at `describeTable("sources")`. Invisible until now, because every database in
+  existence already had those tables. It is a no-op on a populated database and
+  refuses `NODE_ENV=development` exactly as `migrate` does.
+
+### Fixed
+- `test/enrich-worker.test.js` took its source from `Source.findOne()` —
+  depending on data it never created. On a clean database that returns `null`
+  and five tests died on `.id`. It now creates and removes its own namespaced
+  source. Verified by running the whole CI sequence against an empty database:
+  149/149.
+- 17 files were missing a trailing newline, fixed by `--fix`. Dead code
+  removed: an unused `print` import in `MessageFilter`, two unused `catch`
+  bindings, an unused loop key in `cronjobs.js`.
+- `inemuri.js` dumped error data through `console.log`; it is `console.error`
+  now.
+
+### Notes
+- `npm audit` reports 24 vulnerabilities in production dependencies (1
+  critical, 15 high), all pre-existing and mostly transitive through the
+  Discord and Telegram clients. Not addressed here, since `npm audit fix` can
+  bump majors, but recorded so it is not discovered by accident.
+
 ## [4.21.1] - 2026-09-13
 
 ### Changed

@@ -99,7 +99,7 @@ class MessageRouter {
             // Ідентичність надісланого — для clusters.delivered / linked
             // (docs/theflow/DELIVERY.md). Класичний форвардинг її ігнорує.
             if (identity) delivered.push(identity);
-          } catch (error) {
+          } catch {
             print(
               `[ROUTER] Failed to send to ${platform}:${destinationId}, but continuing with other destinations`,
               "warning",

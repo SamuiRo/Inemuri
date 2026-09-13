@@ -90,6 +90,13 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   explicit `ALTER TABLE` — never `sync({ alter: true })` against a real
   database (SQLite rebuilds the whole table). `database/` is git-ignored except
   `database/migrations/`.
+- **Migrations cannot bootstrap an empty database.** `sources` and
+  `source_states` predate the migration system and are created by
+  `database.sync()`, not by a migration, so `npm run migrate` on an empty file
+  fails in `002`. A fresh install runs `npm run db:bootstrap` first.
+- `.github/workflows/ci.yml` runs lint, bootstrap, migrate and tests on push
+  and PR. CI has no `.env`, no `sources.json` and no database, which is
+  deliberate: it proves a fresh clone starts on the `*.sample.json` fallbacks.
 - Tests are `node --test` suites under `test/` (`*.test.js`, no dependency);
   run with `npm test` (`--test-concurrency=1` — some suites hit the real
   SQLite file and would race in parallel). They cover the pure/unit layers —
@@ -107,6 +114,8 @@ npm run seed         # seed sources from src/config/sources.json
 npm run seed:fresh   # clear all sources and reseed
 npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations
+npm run db:bootstrap # create missing tables (empty DB only; run BEFORE migrate)
+npm run lint         # eslint (flat config, eslint.config.js)
 npm test             # node --test suites under test/
 node src/cli.js list # list configured sources
 node src/cli.js flow stats     # TheFlow corpus stats (per source + total)

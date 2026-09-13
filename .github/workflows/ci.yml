@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# Дозволяємо лише один прогін на гілку: пуші підряд скасовують попередній.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # ci, не install: ставить рівно те, що в lockfile, і падає при розбіжності.
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # Порядок не довільний. Міграції НЕ можуть підняти базу з нуля:
+      # `sources` і `source_states` старші за систему міграцій і створюються
+      # database.sync(), а не міграцією — тож на порожньому файлі міграція 002
+      # падає на describeTable("sources"). Спершу bootstrap, потім міграції.
+      - name: Bootstrap schema
+        run: npm run db:bootstrap
+        env:
+          NODE_ENV: production
+
+      # Прогін міграцій у CI перевіряє і їх самих: кожна має застосуватись на
+      # щойно створеній схемі.
+      - name: Migrate
+        run: npm run migrate
+        env:
+          NODE_ENV: production
+
+      # Тести серіалізовані (--test-concurrency=1 у скрипті): частина торкається
+      # реального файлу SQLite і в паралелі гонилась би.
+      #
+      # Ані sources.json, ані .env у репозиторії немає — вони git-ignored. Це
+      # навмисна перевірка: loadLocalConfig має підхопити *.sample.json, а
+      # відсутність змінних оточення — фолбеки з app.config.js. Якщо свіжий
+      # клон не стартує, CI впаде тут, а не на проді.
+      - name: Test
+        run: npm test
+        env:
+          NODE_ENV: production

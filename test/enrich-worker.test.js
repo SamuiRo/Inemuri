@@ -35,12 +35,24 @@ let sourceId;
 
 test.before(async () => {
   await database.connect();
-  sourceId = (await Source.findOne()).id;
+  // Створюємо власне джерело, а не беремо перше-ліпше з бази: інакше набір
+  // залежить від даних, яких сам не створював, і на чистій базі (CI, свіжа
+  // установка) `Source.findOne()` повертає null.
+  const [source] = await Source.findOrCreate({
+    where: { channel_id: `${XID}channel` },
+    defaults: {
+      platform: "telegram",
+      channel_id: `${XID}channel`,
+      channel_name: "enrich-worker test source",
+    },
+  });
+  sourceId = source.id;
 });
 test.after(async () => {
   const rows = await Post.findAll({ attributes: ["id", "external_id"] });
   const ids = rows.filter((r) => String(r.external_id).startsWith(XID)).map((r) => r.id);
   if (ids.length) await Post.destroy({ where: { id: ids } });
+  await Source.destroy({ where: { channel_id: `${XID}channel` } });
   await database.disconnect();
 });
 

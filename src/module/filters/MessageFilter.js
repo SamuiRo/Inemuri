@@ -1,4 +1,3 @@
-import { print } from "../../shared/utils.js";
 import { compileShouty, isShouty } from "../../shared/text.js";
 
 /**
@@ -42,7 +41,7 @@ class MessageFilter {
                 replacement: item.replacement || ''
               };
             }
-          } catch (error) {
+          } catch {
             console.error(`[MessageFilter] Invalid regex pattern for source ${sourceId}:`, item.pattern);
             return null;
           }

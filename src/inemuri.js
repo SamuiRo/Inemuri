@@ -54,7 +54,7 @@ class Inemuri {
     // Обробка критичних помилок на рівні системи
     this.eventBus.on("error.occurred", (errorData) => {
       print(`[ERROR] ${errorData.source}: ${errorData.error}`, "error");
-      console.log(errorData);
+      console.error(errorData);
       // Тут можна додати логіку для критичних помилок
       // наприклад, запис в логи, алерти, тощо
     });

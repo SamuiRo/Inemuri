@@ -61,6 +61,9 @@ class TelegramClient {
       const sessionString = this.client.session.save();
       if (sessionString !== TELEGRAM_SESSION) {
         print("New session string generated. Save it to .env:", "warning");
+        // Інтерактивний крок авторизації: рядок сесії треба показати
+        // оператору, щоб він зберіг його у .env. Це не лог.
+        // eslint-disable-next-line no-console
         console.log(sessionString);
       }
 

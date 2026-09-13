@@ -1,6 +1,9 @@
 {
   "name": "inemuri",
-  "version": "4.21.1",
+  "version": "4.22.0",
+  "engines": {
+    "node": ">=22"
+  },
   "description": "Data Control Unit",
   "main": "inemuri.js",
   "type": "module",
@@ -10,7 +13,10 @@
     "seed": "node src/cli.js seed",
     "seed:fresh": "node src/cli.js seed --fresh",
     "migrate": "node scripts/migrate.js",
-    "migrate:status": "node scripts/migrate.js status"
+    "migrate:status": "node scripts/migrate.js status",
+    "db:bootstrap": "node scripts/bootstrap-schema.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "repository": {
     "type": "git",
@@ -38,5 +44,8 @@
     "sharp": "^0.34.5",
     "sqlite3": "^5.1.7",
     "telegram": "^2.26.22"
+  },
+  "devDependencies": {
+    "eslint": "9.37.0"
   }
 }

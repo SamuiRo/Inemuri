@@ -32,7 +32,7 @@ function getDropsInfo() {
   
   const drops = [];
   
-  for (const [gameKey, gameInfo] of Object.entries(GAME_DROPS)) {
+  for (const gameInfo of Object.values(GAME_DROPS)) {
     let daysUntilDrop;
     
     if (currentDay === gameInfo.dayOfWeek) {
