@@ -17,6 +17,7 @@ import {
 import { TokenBucket, CircuitBreaker, TtlCache } from "./internal.js";
 import { validateEnrichResponse } from "./schemas.js";
 import { buildEnrichPrompt } from "./prompts/enrich.js";
+import { buildVisionPrompt, validateVisionResponse } from "./prompts/vision.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
@@ -94,9 +95,21 @@ export class LLMGateway {
     return this._enqueue(priority, () => this._embed(text, priority));
   }
 
-  // eslint-disable-next-line no-unused-vars
-  async vision(image, options = {}) {
-    throw new Error("LLMGateway.vision(): phase 1.5, not implemented");
+  /**
+   * Транскрипція зображення (VISION.md). Спільна з enrich квота, breaker і
+   * rate limit на провайдера — інакше vision тихо з'їдав би добовий ліміт і
+   * збагачення звичайних постів падало б як «класифікація зламалась».
+   *
+   * Пріоритет за замовчуванням `normal`, нижче за enrich (`critical`): під
+   * тиском квоти першим скидається vision.
+   *
+   * @param {{data: Buffer, mimeType: string}} image  Уже зменшене зображення.
+   * @returns {Promise<{text_ocr, description, legible, model, blocked}|{shed: true}|null>}
+   *   null — жоден провайдер не має capability vision (стадію просто пропускають).
+   */
+  async vision(image, { priority = "normal" } = {}) {
+    if (this._candidates("vision").length === 0) return null;
+    return this._enqueue(priority, () => this._vision(image, priority));
   }
 
   get cacheSize() {
@@ -225,8 +238,34 @@ export class LLMGateway {
   }
 
   async _runComplete(prompt, priority, { modelOverride } = {}) {
-    const cands = this._candidates("complete");
-    if (cands.length === 0) throw this._unavailable("complete");
+    return this._runWithFallback("complete", priority, async (entry) => {
+      const provider = modelOverride
+        ? this._withModel(entry.provider, modelOverride)
+        : entry.provider;
+      const res = await provider.complete(
+        { system: prompt.system, user: prompt.user },
+        { schema: prompt.responseSchema, temperature: 0, timeoutMs: this.timeoutMs },
+      );
+      return { parsed: this._parseJson(res.text), model: res.model };
+    });
+  }
+
+  /**
+   * Матриця fallback (LLM_GATEWAY.md), спільна для complete і vision.
+   *
+   * Винесена, а не скопійована: це найпідступніша частина gateway — квота,
+   * breaker, rate limit, повтор bad_response, перехід на наступного
+   * провайдера — і дві копії розійшлися б при першій же правці.
+   *
+   * @param {string} capability  complete | vision
+   * @param {string} priority
+   * @param {(entry) => Promise<object>} invoke  Робить виклик і повертає
+   *   результат; кидає класифіковану помилку. Розбір JSON — теж тут, щоб
+   *   невалідна відповідь проходила як bad_response і отримувала свій повтор.
+   */
+  async _runWithFallback(capability, priority, invoke) {
+    const cands = this._candidates(capability);
+    if (cands.length === 0) throw this._unavailable(capability);
 
     let lastErr;
     for (const entry of cands) {
@@ -243,15 +282,9 @@ export class LLMGateway {
         try {
           await entry.bucket.take(this.sleep);
           await this.quota.bump(entry.provider.name, this._quotaDay(entry));
-          const provider = modelOverride
-            ? this._withModel(entry.provider, modelOverride)
-            : entry.provider;
-          const res = await provider.complete(
-            { system: prompt.system, user: prompt.user },
-            { schema: prompt.responseSchema, temperature: 0, timeoutMs: this.timeoutMs },
-          );
+          const result = await invoke(entry);
           entry.breaker.recordSuccess();
-          return { parsed: this._parseJson(res.text), model: res.model };
+          return result;
         } catch (err) {
           lastErr = err;
           const kind = err.kind ?? "server";
@@ -272,7 +305,30 @@ export class LLMGateway {
         }
       }
     }
-    throw lastErr ?? this._unavailable("complete");
+    throw lastErr ?? this._unavailable(capability);
+  }
+
+
+  // ── vision ───────────────────────────────────────────────────
+
+  async _vision(image, priority) {
+    const prompt = buildVisionPrompt();
+    return this._runWithFallback("vision", priority, async (entry) => {
+      const res = await entry.provider.vision(image, {
+        system: prompt.system,
+        user: prompt.user,
+        schema: prompt.responseSchema,
+        temperature: prompt.settings.temperature,
+        timeoutMs: this.timeoutMs,
+      });
+      const checked = validateVisionResponse(this._parseJson(res.text));
+      if (!checked.ok) {
+        const err = new Error(`vision: invalid response — ${checked.errors.join("; ")}`);
+        err.kind = "bad_response";
+        throw err;
+      }
+      return { ...checked.value, model: res.model, blocked: Boolean(res.blocked) };
+    });
   }
 
   // ── embed ────────────────────────────────────────────────────
@@ -329,7 +385,7 @@ export class LLMGateway {
           return JSON.parse(m[0]);
         } catch { /* fall through */ }
       }
-      const err = new Error("enrich: response is not valid JSON");
+      const err = new Error("provider response is not valid JSON");
       err.kind = "bad_response";
       throw err;
     }

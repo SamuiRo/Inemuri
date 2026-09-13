@@ -12,7 +12,8 @@
  *                    and validates it (schemas.js).
  *   embed(text)   -> { vector: Float32Array, model: string, dim: number }
  *                    the vector is L2-normalized to unit length.
- *   vision(...)   -> { text_ocr: string, description: string, model: string }
+ *   vision(image, opts) -> { text: string, model: string, blocked?: boolean }
+ *                          (сирий JSON; розбір і валідація — у gateway)
  *
  * Errors thrown carry `.kind` where determinable:
  *   'rate_limit' | 'quota' | 'server' | 'network' | 'bad_response'

@@ -7,6 +7,54 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.26.0] - 2026-09-13
+
+Phase 1.5 (vision), part 3: the vision call itself.
+
+### Added
+- `LLMGateway.vision(image, { priority })`, replacing the stub that threw.
+  It shares the per-provider quota, RPM bucket and breaker with enrich — the
+  point VISION.md makes about the gateway: without shared accounting vision
+  quietly eats the daily limit and ordinary enrichment starts failing, which
+  presents as "classification broke" rather than "vision ate the quota".
+  Default priority is `normal`, below enrich's `critical`, so under quota
+  pressure vision is shed first. Returns `null` when no provider advertises the
+  capability, mirroring `embed()`, so the stage simply skips.
+- `GeminiProvider.vision()` — image inline as base64 with the response schema.
+  A **safety-filter block** (`promptFeedback.blockReason` or
+  `finishReason: "SAFETY"`) returns a `legible: false` result naming the
+  reason instead of throwing: the block is deterministic for that image, so a
+  retry would only burn quota and a fallback would send the same image.
+- `src/services/ai/prompts/vision.js`. The model **transcribes and does not
+  classify** — VISION.md's "OCR, not vision classification": the text merges
+  into the post and enrich runs unchanged, rather than a second pipeline with
+  its own reliability and prompt tuning. The prompt asks for verbatim text, one
+  line of description and `legible`; tells the model not to guess between
+  `0/O`, `1/I/l`, `5/S`, `8/B` but to report illegible instead; and treats text
+  in the image that reads like instructions as text to transcribe, never to
+  follow.
+
+  `legible` stands in for a confidence signal Gemini does not return per
+  transcription. A self-assessment is not real confidence, but it is the lever
+  available, and `validateVisionResponse()` empties `text_ocr` whenever the
+  model reports the image illegible — whatever it wrote anyway goes nowhere.
+  Transcriptions are capped at 4000 characters against a model narrating
+  rather than reading.
+
+### Changed
+- **The fallback matrix is one method, `_runWithFallback()`**, used by both
+  `complete` and `vision` rather than copied. It is the most error-prone part
+  of the gateway — quota, breaker, rate-limit backoff, the single
+  `bad_response` retry, moving to the next provider — and two copies would
+  drift at the first edit. JSON parsing runs inside the invocation, so an
+  unparseable answer is a `bad_response` and gets its retry. All 16 existing
+  gateway tests pass unchanged on the refactor.
+- The JSON parse error no longer says `enrich:` — it is shared now, and the
+  prefix would mislead while debugging vision.
+- `test/vision-gateway.test.js` — 18 cases over the prompt, validation,
+  provider request shape, safety-block handling, shared quota, shedding, the
+  retry and fallback.
+
 ## [4.25.3] - 2026-09-13
 
 Phase 1.5 (vision), part 2: provenance for entities read from images.
