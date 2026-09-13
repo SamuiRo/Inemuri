@@ -7,6 +7,63 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.27.0] - 2026-09-13
+
+Phase 1.5 (vision), part 4: the stage, its cache, and fetching only what it
+needs.
+
+### Added
+- `src/module/theflow/VisionStage.js` — `visionGate()` and `VisionStage.run()`.
+  Gate → photos only, capped → downscale → dHash → cache by distance →
+  `gateway.vision()` → **`UPDATE posts.text_ocr` immediately**, before enrich,
+  so an enrichment retry never pays for the transcription twice. That is also
+  why vision needs no status of its own: `text_ocr IS NOT NULL` is the marker.
+
+  `NULL` and `""` mean different things on purpose. `NULL` is "not attempted";
+  `""` is "attempted, no text" — no photos, illegible, blocked, deleted
+  message. Without the distinction a post whose screenshot carries no text
+  would be re-transcribed on every attempt.
+
+  Outcomes the worker must treat differently:
+  - `shed` — quota under pressure. **The post is left untouched** rather than
+    enriched without OCR: a screenshot-only post classified on empty text gets
+    a confident verdict on garbage input, becomes `enriched`, and never
+    receives its OCR. Images already paid for before the shed are in the cache,
+    so the retry does not buy them again.
+  - `unavailable` — no provider has the capability. `text_ocr` is not marked,
+    so adding a vision provider later still reaches these posts.
+  - A resolver or gateway error propagates, so the worker counts the attempt.
+  - One undecodable image (or a decompression bomb) is skipped without blocking
+    the rest of the post.
+- `vision_cache` table (migration `008`) and `VisionCache.nearest()` /
+  `store()` / `sweep()`. **Lookup is by Hamming distance, not hash equality** —
+  the `v4.25.1` measurement showed a recompressed repost lands 4–7 bits away,
+  so an exact key would have missed nearly every repost. Exact match is tried
+  first (indexed, cheap), then a capped scan of the TTL window in JS.
+  `image_hash` is deliberately not unique. Illegible results are cached too, so
+  an unreadable repost is not paid for twice.
+- `MediaResolver.resolve(post, { types, limit })`. **The Telegram resolver
+  downloaded every media type before the caller could filter**, so the vision
+  stage asking for a post with a video would have pulled the whole video just
+  to discard it — the exact thing ROADMAP §5 forbids ("must never have
+  triggered a video download"). Types and the album cap now apply to the parsed
+  media *before* download, and the type list is handed to the downloader too,
+  or its global list would silently drop a requested type. Without options,
+  behaviour is unchanged.
+- Tests: `vision-stage` (17), `vision-cache` (8), 5 more for the resolver.
+
+### Known gap
+- Only `photo` is transcribed. A screenshot sent **as a file** — a document
+  with `image/png`, which people do to stop Telegram compressing it — is not
+  picked up. Supporting it needs the resolver to filter documents by MIME type.
+
+### Test hygiene
+- The first `sweep()` test swept with a future date, which deletes **every**
+  row in `vision_cache`, not just the test's own. Harmless on the new, empty
+  table, but it would have wiped real cache entries on any developer database
+  that had them. It now ages one test row directly and sweeps with the real
+  clock.
+
 ## [4.26.0] - 2026-09-13
 
 Phase 1.5 (vision), part 3: the vision call itself.

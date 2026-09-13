@@ -39,10 +39,14 @@ export class MediaResolver {
 
   /**
    * @param {import("../../teapot/models/Post.js").default} post
+   * @param {{types?: string[], limit?: number}} [opts]
+   *   `types` — качати лише ці типи медіа; `limit` — не більше стількох файлів.
+   *   Обидва застосовуються ДО завантаження: vision потрібні лише зображення,
+   *   і без цього пост із відео тягнув би весь ролик, щоб його викинути.
    * @returns {Promise<object[]>} Downloaded file records; `[]` when the post
    *   has no media or `media_ref` was never written.
    */
-  async resolve(post) {
+  async resolve(post, opts = {}) {
     const ref = post?.media_ref;
     if (!ref || !ref.kind) return [];
 
@@ -50,7 +54,7 @@ export class MediaResolver {
     if (!resolver) {
       throw new Error(`No media resolver registered for kind "${ref.kind}"`);
     }
-    const files = await resolver.resolve(post);
+    const files = await resolver.resolve(post, opts);
     return Array.isArray(files) ? files : [];
   }
 

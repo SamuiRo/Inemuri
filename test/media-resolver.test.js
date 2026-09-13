@@ -70,3 +70,63 @@ test("TelegramMediaResolver — unusable media_ref => []", async () => {
   assert.deepEqual(await tg.resolve({ id: 3, media_ref: null }), []);
   assert.deepEqual(await tg.resolve({ id: 4, media_ref: { kind: "url", urls: [] } }), []);
 });
+
+// ── лише потрібне, до завантаження (vision) ──────────────────────────
+
+function mixedAlbum() {
+  // Альбом: відео, два фото, документ, ще фото — усе з одним grouped_id.
+  const kinds = ["video", "photo", "document", "photo", "photo"];
+  const messages = kinds.map((kind, i) => ({ id: 100 + i, groupedId: "g1", media: { kind } }));
+  const downloaded = [];
+  const typesSeen = [];
+  const tg = new TelegramMediaResolver({
+    client: { getMessages: async () => messages },
+    downloader: {
+      download: async (md, types) => {
+        typesSeen.push(types);
+        const list = Array.isArray(md.media) ? md.media : [md.media];
+        downloaded.push(...list.map((m) => m.type));
+        return list.map((m) => ({ type: m.type, data: Buffer.from(m.type) }));
+      },
+    },
+    parser: { parseMedia: (m) => ({ type: m.media.kind, raw: m.media }) },
+  });
+  const post = { id: 1, media_ref: { kind: "telegram", channel_id: "-100", message_id: 100, grouped_id: "g1" } };
+  return { tg, post, downloaded, typesSeen };
+}
+
+test("TelegramMediaResolver — `types` filters BEFORE download: a video is never fetched", async () => {
+  // Специфікація: пост, відсіяний дедуплікацією, ніколи не має тягнути відео.
+  // Vision потрібні лише зображення — ролик до 25+ МБ не завантажується зовсім.
+  const { tg, post, downloaded } = mixedAlbum();
+  const files = await tg.resolve(post, { types: ["photo"] });
+  assert.deepEqual(downloaded, ["photo", "photo", "photo"], "завантажено лише фото");
+  assert.equal(files.every((f) => f.type === "photo"), true);
+});
+
+test("TelegramMediaResolver — `limit` caps the download, not just the result", async () => {
+  // Альбомна стеля (vision.max_images_per_post): 10 скріншотів ≠ 10 завантажень.
+  const { tg, post, downloaded } = mixedAlbum();
+  const files = await tg.resolve(post, { types: ["photo"], limit: 2 });
+  assert.equal(files.length, 2);
+  assert.equal(downloaded.length, 2, "качаємо рівно стільки, скільки треба");
+});
+
+test("TelegramMediaResolver — the type filter reaches the downloader too", async () => {
+  // Інакше глобальний список завантажувача тихо відкидав би запитаний тип.
+  const { tg, post, typesSeen } = mixedAlbum();
+  await tg.resolve(post, { types: ["photo"] });
+  assert.deepEqual(typesSeen, [["photo"]]);
+});
+
+test("TelegramMediaResolver — no requested kind present → [] without downloading", async () => {
+  const { tg, post, downloaded } = mixedAlbum();
+  assert.deepEqual(await tg.resolve(post, { types: ["audio"] }), []);
+  assert.deepEqual(downloaded, []);
+});
+
+test("TelegramMediaResolver — without options the behaviour is unchanged", async () => {
+  const { tg, post, downloaded } = mixedAlbum();
+  await tg.resolve(post);
+  assert.equal(downloaded.length, 5, "доставці потрібне все, як і раніше");
+});
