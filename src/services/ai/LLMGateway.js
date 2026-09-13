@@ -54,17 +54,24 @@ export class LLMGateway {
     const metas = opts.providersMeta ?? LLM_PROVIDERS;
     const instances = opts.providers ?? LLMGateway._buildProviders(metas);
 
-    // name -> { provider, meta, bucket, breaker }
+    // name -> { provider, meta, breaker }
+    //
+    // Breaker — на провайдера: недоступний провайдер недоступний для всіх
+    // своїх моделей. А квота й RPM — на МОДЕЛЬ: Google рахує їх окремо для
+    // кожної (в AI Studio кожна модель — свій рядок), тож flash-lite з RPD 500
+    // і embedding-2 з RPD 1000 — два незалежні бюджети. Спільний лічильник на
+    // провайдера вдвічі занижував би пропускну здатність: пост — це enrich і
+    // embed, і обидва списувались би з одного бюджету.
     this.providers = new Map();
     for (const [name, provider] of Object.entries(instances)) {
       const meta = metas[name] ?? {};
       this.providers.set(name, {
         provider,
         meta,
-        bucket: new TokenBucket(meta.rpm ?? 12, this.now),
         breaker: new CircuitBreaker({ now: this.now }),
       });
     }
+    this._buckets = new Map(); // quotaKey -> TokenBucket
 
     this.order = (opts.order ?? [LLM_PRIMARY, LLM_FALLBACK]).filter(Boolean);
 
@@ -167,11 +174,50 @@ export class LLMGateway {
     return out;
   }
 
-  async _gate(entry, priority) {
+  // ── per-model quota ────────────────────────────────────────────
+
+  /** Яку модель використає виклик цієї capability на цьому провайдері. */
+  _modelFor(entry, capability, modelOverride = null) {
+    const c = entry.provider.config ?? {};
+    if (capability === "embed") return c.embedModel ?? null;
+    if (capability === "vision") return c.visionModel ?? null;
+    return modelOverride ?? c.completeModel ?? null;
+  }
+
+  /**
+   * Ліміти моделі. Спершу `meta.modelLimits[model]`, інакше ліміти провайдера
+   * (`meta.rpd` / `meta.rpm`) — для моделі без власного запису, напр. tier-up.
+   */
+  _limitsFor(entry, model) {
+    const own = model ? entry.meta.modelLimits?.[model] : null;
+    return {
+      rpd: own?.rpd ?? entry.meta.rpd ?? Infinity,
+      rpm: own?.rpm ?? entry.meta.rpm ?? 12,
+    };
+  }
+
+  /**
+   * Ключ у реєстрі квоти: `provider:model`. Без моделі — лише провайдер.
+   * Колонка `provider` у provider_quota — рядок, тож складений ключ не
+   * потребує міграції.
+   */
+  _quotaKey(entry, model) {
+    return model ? `${entry.provider.name}:${model}` : entry.provider.name;
+  }
+
+  _bucketFor(entry, model) {
+    const key = this._quotaKey(entry, model);
+    if (!this._buckets.has(key)) {
+      this._buckets.set(key, new TokenBucket(this._limitsFor(entry, model).rpm, this.now));
+    }
+    return this._buckets.get(key);
+  }
+
+  async _gate(entry, priority, model = null) {
     if (!entry.breaker.allow()) return "circuit open";
 
-    const rpd = entry.meta.rpd ?? Infinity;
-    const used = await this.quota.used(entry.provider.name, this._quotaDay(entry));
+    const { rpd } = this._limitsFor(entry, model);
+    const used = await this.quota.used(this._quotaKey(entry, model), this._quotaDay(entry));
     if (used >= rpd) return "quota exhausted";
 
     if (priority !== "critical" && rpd !== Infinity) {
@@ -238,7 +284,7 @@ export class LLMGateway {
   }
 
   async _runComplete(prompt, priority, { modelOverride } = {}) {
-    return this._runWithFallback("complete", priority, async (entry) => {
+    return this._runWithFallback("complete", priority, { modelOverride }, async (entry) => {
       const provider = modelOverride
         ? this._withModel(entry.provider, modelOverride)
         : entry.provider;
@@ -263,13 +309,15 @@ export class LLMGateway {
    *   результат; кидає класифіковану помилку. Розбір JSON — теж тут, щоб
    *   невалідна відповідь проходила як bad_response і отримувала свій повтор.
    */
-  async _runWithFallback(capability, priority, invoke) {
+  async _runWithFallback(capability, priority, { modelOverride = null } = {}, invoke) {
     const cands = this._candidates(capability);
     if (cands.length === 0) throw this._unavailable(capability);
 
     let lastErr;
     for (const entry of cands) {
-      const gate = await this._gate(entry, priority);
+      const model = this._modelFor(entry, capability, modelOverride);
+      const quotaKey = this._quotaKey(entry, model);
+      const gate = await this._gate(entry, priority, model);
       if (gate === "shed") return { shed: true, reason: "quota reserve" };
       if (gate !== "ok") {
         lastErr = new Error(`${entry.provider.name}: ${gate}`);
@@ -280,8 +328,8 @@ export class LLMGateway {
       // moving to the next (fallback matrix, LLM_GATEWAY.md).
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          await entry.bucket.take(this.sleep);
-          await this.quota.bump(entry.provider.name, this._quotaDay(entry));
+          await this._bucketFor(entry, model).take(this.sleep);
+          await this.quota.bump(quotaKey, this._quotaDay(entry));
           const result = await invoke(entry);
           entry.breaker.recordSuccess();
           return result;
@@ -289,7 +337,7 @@ export class LLMGateway {
           lastErr = err;
           const kind = err.kind ?? "server";
           if (kind === "quota") {
-            await this.quota.markExhausted(entry.provider.name, this._quotaDay(entry));
+            await this.quota.markExhausted(quotaKey, this._quotaDay(entry));
             break;
           }
           if (kind === "server" || kind === "network") {
@@ -313,7 +361,7 @@ export class LLMGateway {
 
   async _vision(image, priority) {
     const prompt = buildVisionPrompt();
-    return this._runWithFallback("vision", priority, async (entry) => {
+    return this._runWithFallback("vision", priority, {}, async (entry) => {
       const res = await entry.provider.vision(image, {
         system: prompt.system,
         user: prompt.user,
@@ -343,15 +391,19 @@ export class LLMGateway {
 
     let lastErr;
     for (const entry of cands) {
-      const gate = await this._gate(entry, priority);
+      const model = this._modelFor(entry, "embed");
+      // quotaKey, а не key: `key` вище — ключ кешу. Однакове ім'я затінило б
+      // його, і результат кешувався б під ключем квоти — кеш тихо промахувався б.
+      const quotaKey = this._quotaKey(entry, model);
+      const gate = await this._gate(entry, priority, model);
       if (gate === "shed") return { shed: true, reason: "quota reserve" };
       if (gate !== "ok") {
         lastErr = new Error(`${entry.provider.name}: ${gate}`);
         continue;
       }
       try {
-        await entry.bucket.take(this.sleep);
-        await this.quota.bump(entry.provider.name, this._quotaDay(entry));
+        await this._bucketFor(entry, model).take(this.sleep);
+        await this.quota.bump(quotaKey, this._quotaDay(entry));
         const out = await entry.provider.embed(String(text ?? ""));
         entry.breaker.recordSuccess();
         const result = { vector: out.vector, model: out.model, dim: out.dim };
@@ -360,7 +412,7 @@ export class LLMGateway {
       } catch (err) {
         lastErr = err;
         const kind = err.kind ?? "server";
-        if (kind === "quota") await this.quota.markExhausted(entry.provider.name, this._quotaDay(entry));
+        if (kind === "quota") await this.quota.markExhausted(quotaKey, this._quotaDay(entry));
         else if (kind === "server" || kind === "network") entry.breaker.recordFailure();
       }
     }

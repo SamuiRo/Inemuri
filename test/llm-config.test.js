@@ -54,3 +54,23 @@ test("quotaTimeZone — an invalid zone warns and falls back to UTC", () => {
   assert.equal(sink.length, 1);
   assert.match(sink[0], /GEMINI_QUOTA_TZ/);
 });
+
+test("Gemini limits are per model: complete and embed are separate budgets", () => {
+  const g = LLM_PROVIDERS.gemini;
+  assert.ok(g.modelLimits[g.completeModel], "ліміти complete-моделі");
+  assert.ok(g.modelLimits[g.embedModel], "ліміти embed-моделі");
+  assert.notEqual(g.completeModel, g.embedModel);
+});
+
+test("Gemini vision on the complete model shares its entry, not a second budget", () => {
+  const g = LLM_PROVIDERS.gemini;
+  if (g.visionModel !== g.completeModel) return; // оператор задав окрему модель
+  assert.equal(Object.keys(g.modelLimits).filter((m) => m === g.visionModel).length, 1);
+});
+
+test("the default complete model is not one with a 20-requests/day free tier", () => {
+  // gemini-2.5-flash і Flash 3.x на безкоштовному тирі — RPD 20. Пілот
+  // вичерпав би це за годину (виміряно в AI Studio 2026-09-13).
+  if (process.env.GEMINI_COMPLETE_MODEL) return;
+  assert.equal(/flash-lite/.test(LLM_PROVIDERS.gemini.completeModel), true);
+});

@@ -522,10 +522,20 @@ Spec: [LLM_GATEWAY.md](LLM_GATEWAY.md), [TAXONOMY.md](TAXONOMY.md).
 >   spent for the whole UTC day, so after Google restored the quota at 07:00
 >   the gateway still refused the provider for ~17 hours. `ProviderQuota.today()`
 >   now takes a zone, and each provider carries `quotaTimeZone`.
-> - `gemini-2.5-flash` has no shutdown announced and stays the complete/vision
->   default. `flash-lite` is the throughput option.
 > - **Free-tier RPM/RPD are not published** — only visible per project in AI
->   Studio. `GEMINI_RPD` / `GEMINI_RPM` are an operator step, not a default.
+>   Studio. Read from the pilot project on 2026-09-13 (v4.30.0), they changed
+>   two decisions:
+>   - **`gemini-2.5-flash` and every Flash 3.x model have RPD 20** on the free
+>     tier. The default moved to **`gemini-3.5-flash-lite` (RPD 500, RPM 15)**,
+>     verified with live calls to return schema-valid JSON and to read a code
+>     correctly from an image, so it serves both enrich and vision.
+>   - **Limits are per model** (each model is its own row), so the ledger now
+>     counts per `provider:model` instead of per provider. One shared counter
+>     had charged every embedding against flash-lite's 500, halving throughput,
+>     although `gemini-embedding-2` has its own RPD 1000 / RPM 100. Vision on
+>     the complete model still shares that model's counter, as Google does.
+>
+>   The measured free-tier values are now the defaults.
 >
 > **OpenRouter does expose `/embeddings`** (OpenAI-compatible), closing the
 > open question below — and it is **deliberately unused**. 13.2 already forbids

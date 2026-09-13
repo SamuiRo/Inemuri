@@ -21,7 +21,10 @@ export const ProviderQuota = database.sequelize.define("ProviderQuota", {
   provider: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Provider key: gemini | openrouter | ...",
+    // `provider:model`, напр. "gemini:gemini-3.5-flash-lite". Google рахує
+    // квоту окремо для кожної моделі, тож і реєстр веде лічильник на модель.
+    // Без моделі — просто ім'я провайдера.
+    comment: "Quota key: provider:model (e.g. gemini:gemini-3.5-flash-lite), or provider alone",
   },
   day_utc: {
     type: DataTypes.STRING,

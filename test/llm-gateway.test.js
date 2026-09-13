@@ -107,7 +107,8 @@ test("enrich — daily quota error marks the provider exhausted and falls back",
   }, { quota });
   const r = await g.enrich(input());
   assert.equal(r.model_used, "m-backup");
-  assert.ok(quota._exhausted.has("primary"));
+  // Квота — на модель: вичерпано саме "primary:m-primary", не весь провайдер.
+  assert.ok(quota._exhausted.has("primary:m-primary"));
 });
 
 test("enrich — a rate_limit is retried on the SAME provider, not a fallback", async () => {
@@ -164,7 +165,7 @@ test("enrich — verbatim stripping flows through to discarded[]", async () => {
 
 test("shed — low priority is deferred near the quota reserve; critical is not", async () => {
   const quota = fakeQuota();
-  quota._used.set("primary", 90); // rpd 100, reserve 15 -> remaining 10 <= 15
+  quota._used.set("primary:m-primary", 90); // rpd 100, reserve 15 -> remaining 10 <= 15
   const g = mkGateway({ primary: fakeProvider("primary") }, { quota });
 
   const low = await g.enrich(input(), { priority: "low" });
@@ -266,4 +267,88 @@ test("quota — a provider with no zone configured uses UTC", async () => {
   const g = mkGateway({ primary: fakeProvider("primary") }, { quota });
   await g.enrich(input());
   assert.deepEqual([...new Set(days)], ["UTC"]);
+});
+
+// ── квота на модель (ліміти Google — окремо для кожної моделі) ────────
+
+function twoModelProvider(name, over = {}) {
+  return {
+    name,
+    config: { completeModel: "lite", embedModel: "emb2", visionModel: "lite" },
+    capabilities: () => ({ complete: true, embed: true, vision: true }),
+    complete: over.complete ?? (async () => ({ text: JSON.stringify(GOOD), model: "lite" })),
+    embed: async () => ({ vector: Float32Array.from([1, 0]), model: "emb2", dim: 2 }),
+  };
+}
+
+test("per-model quota — enrich and embed draw on separate budgets", async () => {
+  // Регресія дизайну. Раніше один лічильник на провайдера: пост = enrich +
+  // embed, обидва з одного бюджету, тож RPD 500 закінчувався на 250 постах,
+  // хоча Google дозволяє 500 enrich ПЛЮС 1000 embed.
+  const quota = fakeQuota();
+  const g = new LLMGateway({
+    providers: { gemini: twoModelProvider("gemini") },
+    providersMeta: { gemini: { rpd: 500, rpm: 100_000, modelLimits: {
+      lite: { rpd: 500, rpm: 100_000 }, emb2: { rpd: 1000, rpm: 100_000 },
+    } } },
+    order: ["gemini"], quota, sleep: async () => {}, now: () => 0,
+  });
+  await g.enrich(input());
+  await g.embed("some text");
+  assert.equal(quota._used.get("gemini:lite"), 1);
+  assert.equal(quota._used.get("gemini:emb2"), 1);
+  assert.equal(quota._used.get("gemini"), undefined, "спільного лічильника більше немає");
+});
+
+test("per-model quota — an exhausted embed model does not block enrichment", async () => {
+  const quota = fakeQuota();
+  quota._used.set("gemini:emb2", 1000); // embed вичерпано
+  const g = new LLMGateway({
+    providers: { gemini: twoModelProvider("gemini") },
+    providersMeta: { gemini: { modelLimits: {
+      lite: { rpd: 500, rpm: 100_000 }, emb2: { rpd: 1000, rpm: 100_000 },
+    } } },
+    order: ["gemini"], quota, sleep: async () => {}, now: () => 0,
+  });
+  const r = await g.enrich(input());
+  assert.equal(r.model_used, "lite", "бюджет flash-lite не зачеплено");
+  await assert.rejects(g.embed("x"), /quota exhausted/);
+});
+
+test("per-model quota — vision and enrich on the SAME model share one budget", async () => {
+  // Google рахує за моделлю; vision за замовчуванням на тій самій моделі, що й
+  // complete, тож вони мусять ділити лічильник — інакше облік завищував би запас.
+  const quota = fakeQuota();
+  const provider = twoModelProvider("gemini");
+  provider.vision = async () => ({ text: JSON.stringify({ text_ocr: "x", description: "d", legible: true }), model: "lite" });
+  const g = new LLMGateway({
+    providers: { gemini: provider },
+    providersMeta: { gemini: { modelLimits: { lite: { rpd: 500, rpm: 100_000 } } } },
+    order: ["gemini"], quota, sleep: async () => {}, now: () => 0,
+  });
+  await g.enrich(input());
+  await g.vision({ data: Buffer.from("img"), mimeType: "image/jpeg" }, { priority: "critical" });
+  assert.equal(quota._used.get("gemini:lite"), 2);
+});
+
+test("per-model quota — a model with no own limits falls back to the provider's", async () => {
+  const g = new LLMGateway({
+    providers: { gemini: twoModelProvider("gemini") },
+    providersMeta: { gemini: { rpd: 42, rpm: 7, modelLimits: { lite: { rpd: 500, rpm: 15 } } } },
+    order: ["gemini"], quota: fakeQuota(), sleep: async () => {}, now: () => 0,
+  });
+  const entry = g.providers.get("gemini");
+  assert.deepEqual(g._limitsFor(entry, "lite"), { rpd: 500, rpm: 15 });
+  assert.deepEqual(g._limitsFor(entry, "tier-up-model"), { rpd: 42, rpm: 7 });
+});
+
+test("per-model quota — each model gets its own RPM bucket", async () => {
+  const g = new LLMGateway({
+    providers: { gemini: twoModelProvider("gemini") },
+    providersMeta: { gemini: { modelLimits: { lite: { rpd: 500, rpm: 15 }, emb2: { rpd: 1000, rpm: 100 } } } },
+    order: ["gemini"], quota: fakeQuota(), sleep: async () => {}, now: () => 0,
+  });
+  const entry = g.providers.get("gemini");
+  assert.notEqual(g._bucketFor(entry, "lite"), g._bucketFor(entry, "emb2"));
+  assert.equal(g._bucketFor(entry, "lite"), g._bucketFor(entry, "lite"), "той самий bucket на повторі");
 });

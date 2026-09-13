@@ -7,6 +7,54 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.30.0] - 2026-09-13
+
+Real free-tier limits, read from the pilot project's AI Studio page, overturned
+two configuration decisions.
+
+### Changed
+- **Default complete/vision model: `gemini-2.5-flash` → `gemini-3.5-flash-lite`.**
+  On the free tier `gemini-2.5-flash` allows **20 requests per day** (RPM 5),
+  and so does every Flash 3.x model. The config had assumed 1400 — 70× too
+  high — and a three-channel pilot would have exhausted the real allowance
+  within an hour. `gemini-3.5-flash-lite` allows RPD 500 / RPM 15. Before
+  switching, two live calls confirmed it returns schema-valid JSON and reads a
+  code correctly from an image (`AB12CD`), so it serves enrich and vision both.
+  Cost: 2 of the day's 500.
+- **The quota ledger and RPM buckets are per model, not per provider.** The
+  AI Studio table lists each model as its own row with its own limits, which
+  settles the open question from `v4.25.0`. One counter per provider charged
+  every embedding against flash-lite's budget: a post is one enrich plus one
+  embed, so RPD 500 ran out at 250 posts while Google allows 500 enrich *and*
+  1000 embed (`gemini-embedding-2`: RPD 1000 / RPM 100). The gateway now keys
+  quota and buckets by `provider:model`; the breaker stays per provider,
+  because an unavailable provider is unavailable for all its models. Vision on
+  the complete model shares that model's counter, as Google does. A model with
+  no limits of its own (a tier-up model) falls back to the provider's.
+
+  `provider_quota.provider` is a string, so the composite key needs **no
+  migration**.
+- The measured free-tier values are the defaults (`GEMINI_RPD` 500,
+  `GEMINI_RPM` 15, new `GEMINI_EMBED_RPD` 1000, `GEMINI_EMBED_RPM` 100,
+  optional `GEMINI_VISION_RPD/RPM`). A paid project has higher limits, where
+  these defaults under-use quota rather than exceed it — the safe side. The
+  pilot's `.env`, with empty placeholders, now resolves to exactly these.
+
+### Fixed during the change
+- Introducing a `key` variable for the quota inside `_embed()` **shadowed the
+  cache key** of the same name, so embeddings were cached under the quota key
+  and every lookup missed — the embedding cache would have silently stopped
+  working, re-spending a request on each repeat. The existing
+  `embed — happy path, cached on repeat` test caught it before commit; the
+  variable is now `quotaKey` in both paths, with a comment saying why.
+
+### Added
+- 5 gateway tests: enrich and embed draw on separate budgets; an exhausted
+  embed model does not block enrichment; vision and enrich on one model share a
+  budget; limit fallback for a model with none of its own; one RPM bucket per
+  model. 3 config tests, including that the default complete model is not a
+  20-requests-per-day one. Two existing tests updated to the per-model key.
+
 ## [4.29.0] - 2026-09-13
 
 ### Added

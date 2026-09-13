@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.28.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
+`v4.30.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
 enrichment, shadow mode) are both **implemented in code, and have never yet
 run on real data** — the corpus is empty, no source is flow-enabled, and no
 provider key is set. Phase 1 is **dormant**:
@@ -11,7 +11,7 @@ key is set in `.env` (`ENRICH_WORKER_ENABLED` + `LLM_PROVIDERS[LLM_PRIMARY].apiK
 in `src/config/app.config.js`); without one, flow-enabled sources ingest into
 `posts` as `pending` and nothing else happens. Classic (non-TheFlow) forwarding
 is untouched throughout. 5 migrations exist (`database/migrations/001`–`005`);
-`npm run migrate:status` is clean on the dev database. `npm test` is 272 green
+`npm run migrate:status` is clean on the dev database. `npm test` is 292 green
 `node --test` cases (`--test-concurrency=1` — some suites touch the real
 SQLite file). See [CHANGELOG.md](CHANGELOG.md) for the version-by-version
 detail and [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task
@@ -66,15 +66,15 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-1. **Fill in `.env` for the provider decision** (ROADMAP §3.1, decided
-   `v4.25.0`: Gemini primary, OpenRouter text-only fallback). `.env.example`
-   carries the block. Two values cannot be defaulted and need you:
-   - **`GEMINI_RPD` / `GEMINI_RPM`** — Google does not publish free-tier
-     limits; read them for your project at `aistudio.google.com/rate-limit`.
-   - **`OPENROUTER_COMPLETE_MODEL`** — must support structured output
-     (`response_format: json_schema`); check the model page first.
-
-   Leave `OPENROUTER_EMBED_MODEL` empty — see §3.1 for why.
+1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
+   limits read from AI Studio are the defaults since `v4.30.0` —
+   `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
+   (RPD 1000 / RPM 100), counted per model. Nothing further is required.
+   Daily capacity is roughly **250–500 posts**: a text post costs one
+   flash-lite and one embedding call, a post that needs vision costs two
+   flash-lite calls. A backlog drains quickly and then waits for Pacific
+   midnight. Optional: an OpenRouter fallback (`OPENROUTER_API_KEY` plus a
+   model supporting `json_schema` output); leave `OPENROUTER_EMBED_MODEL` empty.
 2. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
    against the live session; deploy to the VPS per
    [DEPLOYMENT.md](DEPLOYMENT.md) — on an empty database run

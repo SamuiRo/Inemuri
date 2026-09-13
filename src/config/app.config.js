@@ -193,25 +193,70 @@ export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "fals
 // Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
 // embedModel === null, не оголошує capability `embed` — gateway маршрутизує
 // `embed()` на іншого провайдера або деградує до tier 1 (ROADMAP 3.1).
+/**
+ * Ліміти на модель. Google рахує RPM/RPD окремо для кожної моделі (у AI Studio
+ * кожна — свій рядок), тож flash-lite і embedding-2 — два незалежні бюджети.
+ * Моделі, що збігаються (vision на тій самій моделі, що й complete), зливаються
+ * в один запис — і ділять лічильник, як і в Google.
+ *
+ * @param {Array<[model: string|null, limits: {rpd: number, rpm: number}]>} pairs
+ *   Порядок має значення: перший запис для моделі виграє.
+ */
+function modelLimits(pairs) {
+  const out = {};
+  for (const [model, limits] of pairs) {
+    if (model && !(model in out)) out[model] = limits;
+  }
+  return out;
+}
+
+const GEMINI_COMPLETE = process.env.GEMINI_COMPLETE_MODEL || "gemini-3.5-flash-lite";
+const GEMINI_VISION = process.env.GEMINI_VISION_MODEL || GEMINI_COMPLETE;
+const GEMINI_EMBED = process.env.GEMINI_EMBED_MODEL || "gemini-embedding-2";
+
 export const LLM_PROVIDERS = {
   gemini: {
     apiKey:        process.env.GEMINI_API_KEY || null,
     baseUrl:       process.env.GEMINI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta",
-    completeModel: process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
+    // gemini-3.5-flash-lite, НЕ gemini-2.5-flash. Безкоштовний тир (AI Studio,
+    // 2026-09-13): 2.5-flash — RPD 20, RPM 5; flash-lite — RPD 500, RPM 15.
+    // 20 запитів на добу пілот із трьох каналів вичерпав би за годину.
+    // Перевірено реальними викликами: flash-lite повертає JSON за schema і
+    // правильно читає код зі зображення — тож годиться і для enrich, і для vision.
+    completeModel: GEMINI_COMPLETE,
     // gemini-embedding-2, НЕ text-embedding-004: той вимкнено 14.01.2026.
     // Старий дефолт не падав, а тихо псував: 404 класифікується як
     // bad_response (breaker не відкривається), але quota.bump() іде ДО запиту,
     // тож кожен пост спалював RPD на гарантований 404 і отримував
     // embedding = null. Для embedding-2 task_type не передається — модель
     // його відхиляє; інструкції задачі йдуть у сам текст.
-    embedModel:    process.env.GEMINI_EMBED_MODEL    || "gemini-embedding-2",
-    visionModel:   process.env.GEMINI_VISION_MODEL   || process.env.GEMINI_COMPLETE_MODEL || "gemini-2.5-flash",
+    embedModel:    GEMINI_EMBED,
+    visionModel:   GEMINI_VISION,
     // Закріплено явно (ROADMAP 13.2): дефолт моделі — 3072, і він може
     // змінитись. 768 — одне з рекомендованих значень; провайдер нормалізує
     // вектор сам, тож це безпечно і для embedding-001, де нормалізація ручна.
     embedDim:      Number(process.env.GEMINI_EMBED_DIM || 768),
-    rpd:           Number(process.env.GEMINI_RPD || 1_400), // verify per 3.1
-    rpm:           Number(process.env.GEMINI_RPM || 12),
+    // Дефолти — виміряні ліміти безкоштовного тиру (AI Studio, 2026-09-13).
+    // Платний проєкт має вищі: там ці числа просто недовикористовують квоту,
+    // а не перевищують її — безпечний бік.
+    // rpd/rpm — ліміти complete-моделі (і vision, якщо модель та сама); вони ж
+    // фолбек для моделі без власного запису, напр. tier-up.
+    rpd:           Number(process.env.GEMINI_RPD || 500),
+    rpm:           Number(process.env.GEMINI_RPM || 15),
+    modelLimits: modelLimits([
+      [GEMINI_COMPLETE, {
+        rpd: Number(process.env.GEMINI_RPD || 500),
+        rpm: Number(process.env.GEMINI_RPM || 15),
+      }],
+      [GEMINI_VISION, {
+        rpd: Number(process.env.GEMINI_VISION_RPD || process.env.GEMINI_RPD || 500),
+        rpm: Number(process.env.GEMINI_VISION_RPM || process.env.GEMINI_RPM || 15),
+      }],
+      [GEMINI_EMBED, {
+        rpd: Number(process.env.GEMINI_EMBED_RPD || 1_000),
+        rpm: Number(process.env.GEMINI_EMBED_RPM || 100),
+      }],
+    ]),
     // Google скидає RPD опівночі за тихоокеанським часом, не UTC
     // (ai.google.dev/gemini-api/docs/rate-limits). Реєстр квоти рахує добу тут.
     quotaTimeZone: quotaTimeZone("GEMINI_QUOTA_TZ", process.env.GEMINI_QUOTA_TZ, "America/Los_Angeles"),
