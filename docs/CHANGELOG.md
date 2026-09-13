@@ -7,6 +7,38 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.21.1] - 2026-09-13
+
+### Changed
+- `analysis` and `opinion` sharpened in `categories.json`, from a case where
+  the old wording could not choose. Two posts from one channel, same shape — a
+  long write-up on a Valve content drought, dates and patch history cited, poll
+  at the end:
+
+  - *"524 days without a new case, 871 without a new Arcana"* is **analysis**:
+    it says nothing tradeable shipped in that window, which is a fact about
+    supply, and supply bears on price.
+  - *"CS2 turns three and there has been no content for two months"* is
+    **opinion**: the occasion is a birthday, the dates are decoration, and
+    nothing about what to buy, sell or claim follows.
+
+  "A breakdown with data and reasoning, not just an opinion" admitted both.
+  The test is now whether the data **changes what a reader would buy, sell or
+  claim** — a retrospective pegged to a calendar occasion is an opinion however
+  well researched. `opinion` gained the matching half: data that is incidental.
+
+  No regex can draw this line and no per-source filter can either — the posts
+  differ only in what their numbers are *about* — so it belongs in the taxonomy.
+- `docs/theflow/TAXONOMY.md` gains a "Boundaries that were actually contested"
+  section holding this case and the `freebie` / `event` one from `v4.14.4`.
+  Signal descriptions are the model's only instruction, and a boundary recorded
+  without the case that forced it gets re-litigated — or, worse, labelled both
+  ways in `flow review`, which poisons the `post_feedback` set phase 5 draws
+  few-shot examples from.
+
+  `version` stays `1`: the corpus is empty, so no stored verdict depends on the
+  old wording (same reasoning as `v4.14.4`).
+
 ## [4.21.0] - 2026-09-12
 
 ### Added

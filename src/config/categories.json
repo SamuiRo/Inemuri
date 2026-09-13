@@ -48,7 +48,7 @@
       "dedup_window_hours": 24
     },
     "analysis": {
-      "description": "A breakdown with data and reasoning, not just an opinion",
+      "description": "A breakdown with data and reasoning that bears on the state of the market: supply, prices, availability of tradeable items. The test is whether it changes what a reader would buy, sell or claim. Citing dates and history is not enough -- a retrospective pegged to a calendar occasion (an anniversary, a year in review) is an opinion unless something about supply or price follows from it. 'No new case for 524 days' is analysis: it says nothing tradeable shipped. 'The game turns three' is not.",
       "dedup_window_hours": 72
     },
     "event": {
@@ -68,7 +68,7 @@
       "dedup_window_hours": 6
     },
     "opinion": {
-      "description": "An opinion without supporting data",
+      "description": "An opinion without supporting data, or a piece whose data is incidental -- an occasion or anniversary write-up that cites dates and patches but leaves supply, price and availability exactly where they were.",
       "dedup_window_hours": 72
     },
     "security": {

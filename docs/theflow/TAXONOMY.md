@@ -87,12 +87,12 @@ If the model cannot place a post in any category, it returns `other` with low
   "signals": {
     "promo_code": { "description": "Contains a code that can be redeemed" },
     "freebie":    { "description": "Something is given away free or at a steep discount" },
-    "analysis":   { "description": "A breakdown with data and reasoning, not just an opinion" },
+    "analysis":   { "description": "A breakdown with data and reasoning that bears on the state of the market (see below)" },
     "event":      { "description": "An event with a date: start, deadline, active window" },
     "launch":     { "description": "A release, a listing, something new going live" },
     "patch":      { "description": "An update, changes, patch notes" },
     "outage":     { "description": "A failure, an outage, a problem" },
-    "opinion":    { "description": "An opinion without supporting data" }
+    "opinion":    { "description": "An opinion without supporting data, or one whose data is incidental" }
   },
   "routing": [
     {
@@ -118,6 +118,39 @@ If the model cannot place a post in any category, it returns `other` with low
   ]
 }
 ```
+
+### Boundaries that were actually contested
+
+Signal descriptions are the model's only instruction, so the ones that split
+near-identical posts are recorded here with the case that forced them. Without
+the case, the next reader re-litigates the decision — or worse, labels both
+ways in `flow review` and poisons the `post_feedback` set that phase 5 draws
+few-shot examples from.
+
+**`analysis` vs `opinion` — does the post let you judge the market?**
+
+Two posts from the same channel, same shape: a long write-up on a Valve content
+drought, dates and patch history cited, poll at the end.
+
+- *"524 days without a new case in CS2, 871 days without a new Arcana"* —
+  **analysis.** It says nothing tradeable shipped in that window, which is a
+  fact about supply. Supply bears on price.
+- *"CS2 turns three and there has been no content for two months"* —
+  **opinion.** The occasion is a birthday. The dates are decoration; nothing
+  about what to buy, sell or claim follows from them.
+
+The test is not "does it contain data" — both do — but **whether the data
+changes what a reader would buy, sell or claim.** A retrospective pegged to a
+calendar occasion is an opinion however well researched.
+
+No regex can draw this line, and no amount of per-source filtering can either:
+the two posts differ only in what their numbers are *about*. It belongs in the
+taxonomy, which is why it is here.
+
+**`freebie` vs `event` — do you keep it?** Settled in `v4.14.4`: `freebie` is
+something that stays yours after claiming; time-boxed access (a free weekend, a
+trial) is an `event`, which already meant "a start, a deadline, an active
+window".
 
 ### How resolve works
 
