@@ -17,10 +17,10 @@ const READ = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHi
  * звіті видно, чого в експорті немає.
  *
  * @param {import("discord.js").Guild} guild
- * @param {{ limit: number, onProgress?: (done: number, total: number) => void }} options
+ * @param {{ limit: number }} options
  * @returns {Promise<{ id: string, name: string, channels: object[] }>}
  */
-export async function collectGuild(guild, { limit, onProgress = () => {} }) {
+export async function collectGuild(guild, { limit }) {
   const me = await guild.members.fetchMe();
   const channels = [...(await guild.channels.fetch()).values()]
     .filter((channel) => channel && channelKind(channel.type) && channelKind(channel.type) !== "category");
@@ -31,12 +31,7 @@ export async function collectGuild(guild, { limit, onProgress = () => {} }) {
     record: { ...toChannelRecord(channel), truncatedThreads: truncated.has(channel.id) },
   }));
 
-  let done = 0;
-  await forEachLimit(entries, DISCORD_EXPORT_CONCURRENCY, async ({ channel, record }) => {
-    await fillMessages(channel, record, me, limit);
-    done += 1;
-    onProgress(done, entries.length);
-  });
+  await forEachLimit(entries, DISCORD_EXPORT_CONCURRENCY, ({ channel, record }) => fillMessages(channel, record, me, limit));
 
   return { id: guild.id, name: guild.name, channels: entries.map(({ record }) => record) };
 }

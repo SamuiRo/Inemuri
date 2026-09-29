@@ -122,10 +122,10 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   attached to the ephemeral reply when it fits `DISCORD_UPLOAD_LIMIT_MB`
   (20 MB, measured), gzipped otherwise. Attachment URLs inside it are signed CDN
   links and expire.
-- Progress is edited into the reply at most every 2 s. An interaction token
-  lives 15 minutes; a run longer than that still writes its files to disk and
-  logs their names — the reply is what is lost. (A log channel for this is
-  future work.)
+- No progress updates (v4.38.1): Discord already shows the deferred reply as
+  "thinking…", and every update would be one more request. An interaction
+  token lives 15 minutes; a run longer than that still writes its files to
+  disk and logs their names — the reply is what is lost.
 - **Missing Message Content intent is detected**, not just documented: when at
   least 80% of five or more human, non-system messages come back with no text,
   attachment, embed or sticker, the reply says to enable the intent. 80%, not
@@ -301,11 +301,14 @@ edits its own ephemeral message, so it cannot be pressed twice, and one apply
 runs per server at a time.
 
 Apply order: roles → role positions → categories → channels (create, update,
-adopt, restore, archive) → channel positions → state cleanup; messages,
-panels and AutoMod come later. **Each phase reads the server and the state
-again and recomputes the plan**, so later phases see the ids of what earlier
-ones created, and a rerun after a failure continues with whatever is left.
-A failed operation is logged and the rest of its phase still runs.
+adopt, restore, archive) → channel positions → AutoMod → messages → state
+cleanup. **After a phase that changed something, the server and the state
+are read again and the plan recomputed**, so later phases see the ids of what
+earlier ones created, and a rerun after a failure continues with whatever is
+left. A phase that changed nothing costs no extra read (v4.38.1): applying to
+a server that already matches is one read. A failed operation is logged and
+the rest of its phase still runs. Apply shows no progress updates, only the
+result.
 
 When a moved or restored channel has no overwrites of its own in the config,
 it is synced with its new category, as Discord does when a channel is dragged;

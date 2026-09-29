@@ -448,3 +448,14 @@ test("apply — a rule Discord will not let the bot edit fails clearly and is no
   assert.ok(!store.rows.some((r) => r.kind === "automod" && r.discord_id === "sys"), "невдале прийняття не записане в стан");
   assert.ok(guild.automodList.some((r) => r.name === "Scam"), "решта правил створена");
 });
+
+test("apply — phases that change nothing do not re-read the server", async () => {
+  const guild = new FakeGuild();
+  const store = memoryStore();
+  const desired = desiredOf(CONFIG);
+  await apply(guild, desired, store);
+
+  let reads = 0;
+  await applyProvision({ guild, desired, store, read: async (g) => { reads += 1; return g.snapshot(); } });
+  assert.equal(reads, 1, "сервер уже як у конфігу — одне читання на весь apply");
+});

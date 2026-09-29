@@ -253,8 +253,7 @@ test("collectGuild — chronological messages, skipped channels, archived thread
     },
   };
 
-  const progress = [];
-  const result = await collectGuild(guild, { limit: 2, onProgress: (done, total) => progress.push([done, total]) });
+  const result = await collectGuild(guild, { limit: 2 });
   const byId = Object.fromEntries(result.channels.map((c) => [c.id, c]));
 
   assert.deepEqual(Object.keys(byId).sort(), ["general", "old-thread", "staff"], "категорія — не канал експорту");
@@ -262,5 +261,4 @@ test("collectGuild — chronological messages, skipped channels, archived thread
   assert.equal(byId.general.truncatedThreads, true);
   assert.equal(byId.staff.skipped, "no access");
   assert.deepEqual(byId["old-thread"].messages.map((m) => m.id), ["t1"]);
-  assert.deepEqual(progress.at(-1), [3, 3]);
 });

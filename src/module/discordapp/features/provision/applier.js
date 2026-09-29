@@ -20,10 +20,12 @@ const NO_MENTIONS = { parse: [] };
 /**
  * Застосування плану провіжну (docs/DISCORDAPP.md, «Plan and apply»).
  *
- * Фази йдуть по черзі, і **кожна знімає сервер і стан наново й перераховує
- * план** (planner чистий і детермінований). Тож у фазі каналів уже відомі id
- * ролей і категорій, створених щойно, а повторний запуск після збою просто
- * продовжує з того, що лишилось: зроблене вже не з'являється в плані.
+ * Фази йдуть по черзі, і **після фази, яка щось змінила, сервер і стан
+ * знімаються наново й план перераховується** (planner чистий і
+ * детермінований). Тож у фазі каналів уже відомі id ролей і категорій,
+ * створених щойно, а повторний запуск після збою просто продовжує з того, що
+ * лишилось. Фаза без змін повторного читання не коштує — кожне читання це
+ * кілька запитів до Discord.
  *
  * Збій однієї операції записується в журнал і не зупиняє решту фази —
  * незалежні зміни не повинні чекати на одну невдалу.
@@ -38,17 +40,24 @@ const NO_MENTIONS = { parse: [] };
  */
 export async function applyProvision({ guild, desired, onPhase = () => {}, read = readGuild, store = DiscordResource }) {
   const log = [];
+  let snapshot = null;
   for (const phase of PHASES) {
     onPhase(phase.name);
-    const state = await store.forGuild(guild.id);
-    const current = await read(guild, state);
-    const plan = planProvision(desired, current, state);
+    if (!snapshot) {
+      const state = await store.forGuild(guild.id);
+      const current = await read(guild, state);
+      snapshot = { current, plan: planProvision(desired, current, state) };
+    }
+    const { current, plan } = snapshot;
     if (plan.errors.length) {
       log.push(...plan.errors.map((error) => ({ ok: false, text: error })));
       log.push({ ok: false, text: `Stopped before "${phase.name}".` });
       break;
     }
+    const before = log.length;
     await phase.run({ guild, desired, current, plan, log, store });
+    // Щось змінилось (або спробувало) — наступна фаза має бачити новий стан.
+    if (log.length !== before) snapshot = null;
   }
   print(`[DISCORDAPP] Provisioned ${guild.name}: ${log.filter((e) => e.ok).length} ok, ${log.filter((e) => !e.ok).length} failed`);
   return log;

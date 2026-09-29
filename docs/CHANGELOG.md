@@ -7,6 +7,25 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.38.1] - 2026-09-29
+
+Fewer Discord requests spent on showing status, at the operator's request.
+
+### Changed
+- `/export-chats` and `/provision apply` no longer edit progress into the
+  reply. Discord already shows the deferred reply as "thinking…"; each update
+  was one more request. The shared `progress.js` is gone.
+- The applier re-reads the server only after a phase that changed something.
+  Every read is several requests (roles, channels, the bot's member, AutoMod,
+  one per provisioned message); applying to a server that already matches the
+  config is now one read instead of eight.
+
+### Noted
+- The `EnrichWorker` suites failed once while the service was running: they
+  use the real `pot.sqlite`, and the live worker claimed the test's pending
+  posts. They pass again with the service stopped. Pre-existing; the tests
+  should get their own database.
+
 ## [4.38.0] - 2026-09-29
 
 discordapp step 7: `/provision export`. The work plan in DISCORDAPP.md is

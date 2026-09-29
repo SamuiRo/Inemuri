@@ -1,7 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 import { describeResult, exportChats, prepareAttachments } from "../features/export/ChatExporter.js";
 import { isServedGuild } from "../guard.js";
-import { throttledProgress } from "../progress.js";
 import { DISCORD_UPLOAD_LIMIT_MB } from "../../../config/app.config.js";
 
 /**
@@ -45,13 +44,9 @@ export default {
       : [interaction.guild];
     const label = scope === "all" ? "all" : interaction.guild.name;
 
-    const progress = throttledProgress(interaction);
-    const { snapshot, files } = await exportChats({
-      guilds, limit, format, label,
-      onProgress: ({ guild, done, total }) => progress.report(`⏳ Exporting **${guild}**: ${done}/${total} channels…`),
-    });
-    // Запізніле редагування прогресу не повинне перезаписати результат.
-    await progress.settle();
+    // Проміжного прогресу немає навмисно: Discord сам показує «думає…» на
+    // відкладеній відповіді, а кожне оновлення — ще один запит.
+    const { snapshot, files } = await exportChats({ guilds, limit, format, label });
 
     const { attachments, tooLarge } = prepareAttachments(files, DISCORD_UPLOAD_LIMIT_MB * 1024 * 1024);
     return {

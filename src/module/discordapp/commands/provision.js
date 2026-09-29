@@ -4,7 +4,6 @@ import { formatPlan } from "../features/provision/formatPlan.js";
 import { actionableOps, planFingerprint } from "../features/provision/planner.js";
 import { applyProvision, formatApplyLog } from "../features/provision/applier.js";
 import { buildCustomId, parseCustomId } from "../customId.js";
-import { throttledProgress } from "../progress.js";
 import { textReply } from "../reply.js";
 
 const PREFIX = "provision";
@@ -83,13 +82,7 @@ export const confirmComponent = {
           "Run `/provision apply` again to see the current plan.";
       }
 
-      const progress = throttledProgress(interaction);
-      const log = await applyProvision({
-        guild: interaction.guild,
-        desired,
-        onPhase: (phase) => progress.report(`⏳ Applying \`${config.file}\`: ${phase}…`),
-      });
-      await progress.settle();
+      const log = await applyProvision({ guild: interaction.guild, desired });
       return textReply(formatApplyLog(log, { guildName: interaction.guild.name }), "provision-result.md");
     });
   },

@@ -19,18 +19,14 @@ const SKIPPED_IN_REPLY = 10;
  * @param {number} options.limit                 1–100 повідомлень на канал.
  * @param {("md"|"json"|"both")} options.format
  * @param {string} options.label                 Для імені файлу: назва сервера або "all".
- * @param {(progress: { guild: string, done: number, total: number }) => void} [options.onProgress]
  * @returns {Promise<{ snapshot: object, files: { name: string, path: string, data: Buffer }[] }>}
  */
-export async function exportChats({ guilds, limit, format, label, onProgress = () => {} }) {
+export async function exportChats({ guilds, limit, format, label }) {
   const exportedAt = new Date();
   const snapshot = { exportedAt: exportedAt.toISOString(), limit, guilds: [] };
 
   for (const guild of guilds) {
-    snapshot.guilds.push(await collectGuild(guild, {
-      limit,
-      onProgress: (done, total) => onProgress({ guild: guild.name, done, total }),
-    }));
+    snapshot.guilds.push(await collectGuild(guild, { limit }));
   }
 
   await fs.mkdir(DISCORD_EXPORT_DIR, { recursive: true });
