@@ -9,6 +9,8 @@
 # docs/.archive/README.md for why each file was retired.
 /docs/.archive/
 /devtest
+# discordapp /export-chats output: other people's messages.
+/exports/
 
 # Logs
 logs

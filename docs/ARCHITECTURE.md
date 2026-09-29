@@ -70,7 +70,9 @@ Inemuri/
 │   │   │   ├── CommandRegistry.js         # Routes commands/components; access check; always ephemeral
 │   │   │   ├── guard.js                   # Pure: who may run what, in which guild
 │   │   │   ├── customId.js                # Pure: stateless component ids
-│   │   │   └── commands/                  # One file per slash command (index.js lists them)
+│   │   │   ├── commands/                  # One file per slash command (index.js lists them)
+│   │   │   └── features/
+│   │   │       └── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
 │   │   ├── filters/

@@ -7,6 +7,34 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.32.0] - 2026-09-29
+
+discordapp step 2: `/export-chats`.
+
+### Added
+- **`/export-chats limit:<1–100> format:<md|json|both> scope:<this|all>`**
+  (admin, ephemeral). Takes the latest `limit` messages of every text, announcement
+  and voice-chat channel and every thread — active and archived — the bot can
+  read, in chronological order, and writes them to the git-ignored `exports/`
+  directory. The file is attached to the reply as is, gzipped when it only fits
+  that way, or kept on disk only when it fits neither.
+  - Markdown (default) is one line per message, grouped server → category →
+    channel → thread, with replies, edits, attachments, embeds, stickers and
+    reactions marked; it leaves out attachment URLs, which are signed and
+    expire. JSON is the full snapshot, URLs and ids included.
+  - Channels the bot cannot read are listed as skipped, in the file and in the
+    reply, rather than silently missing.
+  - Archived threads are capped at one API page per channel; a channel with
+    more says so.
+  - A missing **Message Content** intent is detected from the result — Discord
+    then returns other people's messages empty and the export would look
+    successful — and the reply says to enable it.
+- `DISCORD_EXPORT_DIR`, `DISCORD_EXPORT_CONCURRENCY`,
+  `DISCORD_EXPORT_ARCHIVED_THREADS` constants; `/exports/` in `.gitignore`.
+- `test/discordapp-export.test.js` — 12 cases: normalizers, grouping and
+  ordering, the Markdown layout, attachment/gzip decisions, the result text,
+  and the collector against a fake guild.
+
 ## [4.31.0] - 2026-09-29
 
 discordapp step 1 (docs/DISCORDAPP.md): Discord delivery no longer needs the

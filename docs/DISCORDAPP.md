@@ -93,15 +93,25 @@ too, not only on the gateway.
 
 ## Feature: `/export-chats`
 
+> **Implemented (v4.32.0).** Code: `src/module/discordapp/commands/export-chats.js`,
+> `src/module/discordapp/features/export/` — `collector.js` (the only part that
+> calls Discord), `snapshot.js` and `format.js` (pure), `ChatExporter.js`.
+
 `/export-chats limit:<1–100> format:<md|json|both> scope:<this|all>`, admin.
-Defaults: `format: md`, `scope: this`.
+Defaults: `format: md`, `scope: this`. `scope: all` means every server in
+`DISCORD_GUILD_IDS` (or every server the bot is in, when that is empty).
 
 - Walks every text-bearing channel the bot can read: text, announcement, the
   text chat of voice channels, and **threads** — active and archived, which is
   the only place a forum channel has messages.
 - One REST request per channel: `limit` is at most 100, which is exactly one
   page of the API. Channels the bot cannot read are listed in the file as
-  `skipped: no access`, not silently dropped.
+  `skipped: no access`, not silently dropped. Three channels are read at a time
+  (`DISCORD_EXPORT_CONCURRENCY`).
+- Archived threads: one API page (100) per channel
+  (`DISCORD_EXPORT_ARCHIVED_THREADS`), private ones only where the bot has
+  `ManageThreads`. A channel with more is marked "older archived threads not
+  exported" rather than turning a large forum into thousands of requests.
 - Messages come newest first and are reversed into chronological order.
 - **Markdown** (default, for reading and for LLM analysis): server → category →
   channel headings, one line per message
@@ -112,8 +122,14 @@ Defaults: `format: md`, `scope: this`.
   attached to the ephemeral reply when it fits `DISCORD_UPLOAD_LIMIT_MB`
   (20 MB, measured), gzipped otherwise. Attachment URLs inside it are signed CDN
   links and expire.
-- Progress is edited into the reply. An interaction token lives 15 minutes; a
-  longer run reports its result in the log channel instead.
+- Progress is edited into the reply at most every 2 s. An interaction token
+  lives 15 minutes; a run longer than that still writes its files to disk and
+  logs their names — the reply is what is lost. (A log channel for this is
+  future work.)
+- **Missing Message Content intent is detected**, not just documented: when at
+  least 80% of five or more human, non-system messages come back with no text,
+  attachment, embed or sticker, the reply says to enable the intent. 80%, not
+  100%, because messages that mention the bot keep their text without it.
 
 The formatters are pure: `(guildSnapshot, messagesByChannel) → string`.
 
@@ -256,7 +272,7 @@ the first config is edited rather than written from scratch.
 |---|---|---|
 | 0 | This specification | Done (v4.30.2) |
 | 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | Done (v4.31.0) |
-| 2 | `/export-chats` | — |
+| 2 | `/export-chats` | Done (v4.32.0) |
 | 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | — |
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | — |
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | — |

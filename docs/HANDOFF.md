@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.31.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.32.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 8 migrations exist (`database/migrations/001`–`008`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 313 green `node --test` cases
+is clean on the dev database. `npm test` is 325 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -43,9 +43,10 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 
 **discordapp** — Discord server management inside Inemuri — is specified in
 [DISCORDAPP.md](DISCORDAPP.md); its work plan table at the end records
-per-step status. Step 1 is done (`v4.31.0`): Discord delivery is REST-only, so
-a Discord outage no longer stops the process, and discordapp starts last with
-its own login retry. **Not yet run against the live bot** — see next steps.
+per-step status. Steps 1–2 are done: Discord delivery is REST-only, so a
+Discord outage no longer stops the process, discordapp starts last with its
+own login retry (`v4.31.0`), and `/export-chats` exists (`v4.32.0`). **Neither
+has run against the live bot yet** — see next steps.
 
 ## Documentation
 
@@ -85,9 +86,10 @@ destinations is worse than not starting. A fresh clone now starts — before
    `discordapp started`, stale global commands removed once, and commands
    registered per server. A server that says "could not register commands"
    needs the bot re-invited with the `applications.commands` scope. Then
-   `/daily` should answer ephemerally and still deliver the report. Next build
-   step is `/export-chats` (DISCORDAPP.md step 2), which needs the **Message
-   Content** intent switched on in the Developer Portal.
+   `/daily` should answer ephemerally and still deliver the report. Before
+   trying `/export-chats`, switch on the **Message Content** intent in the
+   Developer Portal; start with a small `limit` on one server. Next build step
+   is provisioning (DISCORDAPP.md step 3).
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -139,6 +141,8 @@ destinations is worse than not starting. A fresh clone now starts — before
   pure functions.
 - Built step 1 (`v4.31.0`): REST-only Discord delivery, `DiscordGateway`,
   `DiscordApp` + `CommandRegistry`. Verified by tests and lint only.
+- Built step 2 (`v4.32.0`): `/export-chats`. Also tests and lint only; the
+  collector was exercised against a fake guild, not a real one.
 
 ### 2026-09-13
 

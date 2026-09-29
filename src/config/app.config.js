@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import pkg from "../../package.json" with { type: "json" };
 import CategoriesConfig from "./categories.json" with { type: "json" };
+import { fileURLToPath } from "url";
 import { loadLocalConfig } from "./localConfig.js";
 
 // ── Runtime ────────────────────────────────────────────────────────────────
@@ -114,6 +115,16 @@ export const ROUTING = loadLocalConfig(
 export const DISCORD_UPLOAD_LIMIT_MB = optionalNumber(
   "DISCORD_UPLOAD_LIMIT_MB", process.env.DISCORD_UPLOAD_LIMIT_MB, 20,
 );
+
+// ── discordapp: /export-chats ─────────────────────────────────────────────
+// Куди пишуться експорти. У .gitignore: там чужі повідомлення.
+export const DISCORD_EXPORT_DIR = fileURLToPath(new URL("../../exports/", import.meta.url));
+// Скільки каналів читаємо паралельно. Черга rate limit у @discordjs/rest
+// все одно вирівнює запити; більше — лише довші паузи на 429.
+export const DISCORD_EXPORT_CONCURRENCY = 3;
+// Архівних тредів на канал — одна сторінка API. Форум із тисячами тредів
+// інакше перетворив би експорт на тисячі запитів; обрізання видно у звіті.
+export const DISCORD_EXPORT_ARCHIVED_THREADS = 100;
 
 // ── Polling ────────────────────────────────────────────────────────────────
 export const POLLING_INTERVAL_MIN = positiveNumber(

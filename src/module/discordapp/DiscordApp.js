@@ -32,7 +32,7 @@ class DiscordApp {
       commands: COMMANDS,
       components: COMPONENTS,
       policy: { whitelist: config.whitelist, guildIds: config.guildIds },
-      ctx: { eventBus },
+      ctx: { eventBus, guildIds: config.guildIds },
     });
 
     this.listening = false;
