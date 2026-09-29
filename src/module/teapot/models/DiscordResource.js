@@ -13,7 +13,7 @@ import database from "../sqlite/sqlite_db.js";
 export const DiscordResource = database.sequelize.define("DiscordResource", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   guild_id: { type: DataTypes.STRING, allowNull: false },
-  kind: { type: DataTypes.STRING(16), allowNull: false, comment: "role | category | channel | message" },
+  kind: { type: DataTypes.STRING(16), allowNull: false, comment: "role | category | channel | message | automod" },
   key: { type: DataTypes.STRING, allowNull: false, comment: "key з конфігу сервера" },
   discord_id: { type: DataTypes.STRING, allowNull: false },
   content_hash: { type: DataTypes.STRING, allowNull: true, comment: "хеш payload повідомлення — видно, що текст змінився" },

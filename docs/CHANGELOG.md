@@ -7,6 +7,33 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.37.0] - 2026-09-29
+
+discordapp step 6: AutoMod rules as provisioned resources.
+
+### Added
+- **`automod` in server configs**: keyword, preset, spam and mention-spam
+  rules with block / alert / timeout actions and role and channel exemptions,
+  by key. Discord's caps (6 keyword rules, one of each other type, timeout only
+  where allowed, list sizes) are config errors. Rules are compared in a
+  canonical form, adopted by type when the server can hold only one of that
+  type, applied after channels, and never deleted.
+- The plan shows warnings (e.g. AutoMod unreadable without Manage Server) and
+  lists AutoMod rules outside the config.
+- `test/discordapp-automod.test.js` (5) and two AutoMod scenarios in
+  `discordapp-apply.test.js`.
+
+### Fixed (found on the live test server)
+- A rule Discord created itself (*Block Mention Spam* on a Community server)
+  returns 404 to every edit. Apply now says so and what to do, instead of a
+  bare `404: Not Found`, and an adoption is recorded in state only after its
+  edit succeeds — before, the failed rule stayed "managed" and every plan
+  proposed the same impossible edit.
+
+### Verified
+- On the test server: three rules created and re-planned clean; the default
+  mention-spam rule adopted by type, then refused by Discord as above.
+
 ## [4.36.0] - 2026-09-29
 
 discordapp from the terminal, and the first run against a real server.

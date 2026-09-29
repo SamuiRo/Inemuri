@@ -316,10 +316,42 @@ A category holds at most 50 channels, so the archive rolls over into
 
 ### AutoMod
 
-AutoMod rules (keyword, keyword preset, spam, mention spam) are another
-resource kind, applied last. They need `ManageGuild`, which apply already has.
-Discord caps how many rules of each type a guild may hold; the validator checks
-the caps before apply.
+> **Implemented (v4.37.0).** Code: `features/provision/automod.js` (pure).
+
+AutoMod rules are another resource kind, in the `automod` list of the config:
+
+```json
+{ "key": "scam-links", "name": "Scam links", "type": "keyword",
+  "keywords": ["*free nitro*"], "regex": ["disc[o0]rd\\.gift"], "allow": [],
+  "actions": [{ "type": "block", "message": "Looks like a scam" },
+              { "type": "alert", "channel": "mod-log" },
+              { "type": "timeout", "seconds": 600 }],
+  "exempt": { "roles": ["mod"], "channels": [] }, "enabled": true }
+```
+
+- Types: `keyword` (`keywords`, `regex`, `allow`), `preset` (`presets`:
+  `profanity`, `sexual-content`, `slurs`; `allow`), `spam`, `mention-spam`
+  (`limit` 1–50, `raidProtection`). A field that does not apply to the type is
+  an error. Discord's caps are checked before apply: 6 keyword rules, one of
+  each other type, `timeout` only on keyword and mention-spam, list sizes and
+  lengths. `alert` goes to a text channel of the config; `exempt` names roles
+  and channels by key.
+- Compared in a canonical form — sorted lists, the same shape for the config
+  and for what Discord returns — so a rule does not show up as changed
+  because Discord reordered its keywords.
+- A rule of a type the server can hold only one of is **adopted by type**,
+  whatever its name: a Community server already has one, and a second cannot
+  be created.
+- **Measured on a live server:** a rule Discord created itself (the default
+  *Block Mention Spam* of a Community server) can be read but not edited — the
+  API answers 404. Apply then fails that one rule with an explanation (delete
+  it in Server Settings → AutoMod and apply again, or drop it from the config)
+  and does **not** record it as managed, so the plan does not pretend
+  otherwise.
+- Reading rules needs Manage Server. Without Administrator the plan says it
+  could not read them (a warning, not an error); apply has Administrator.
+- Applied after channels, since alerts and exemptions need their ids. Never
+  deleted: a rule removed from the config is reported as orphaned.
 
 ### `/provision export`
 
@@ -395,5 +427,5 @@ with `--yes` it applies it, exactly like the Apply button.
 | 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | Done (v4.33.0) |
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | Done (v4.34.0) — migration and import landed with step 3 |
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | Done (v4.35.0) |
-| 6 | AutoMod as a resource | — |
+| 6 | AutoMod as a resource | Done (v4.37.0) |
 | 7 | `/provision export` | — |

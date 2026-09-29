@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { dangerousIn, describeBitsChange } from "./permissions.js";
 import { diffOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
 import { hashPayload, renderMessage } from "./messages.js";
+import { planAutomod } from "./automod.js";
 
 /**
  * Планувальник провіжну: (бажаний стан, поточний сервер, стан) → план.
@@ -30,7 +31,7 @@ export function planProvision(desired, current, state) {
     errors: [],
     warnings: [],
     ops: [],
-    unmanaged: { roles: [], categories: [], channels: [] },
+    unmanaged: { roles: [], categories: [], channels: [], automod: [] },
   };
 
   if (desired.guildId !== current.guildId) {
@@ -54,6 +55,7 @@ export function planProvision(desired, current, state) {
   planChannels(desired, current, stateOf, context, plan);
   planOrder(desired, current, context, plan);
   planMessages(desired, current, stateOf, context, plan);
+  planAutomod(desired, current, stateOf, context, plan);
   collectUnmanaged(current, state, context, plan);
 
   return { ...plan, context };

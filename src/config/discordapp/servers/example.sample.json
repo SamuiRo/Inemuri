@@ -59,5 +59,12 @@
         { "key": "mod-log", "name": "mod-log", "overwrites": { "role:mod": { "allow": ["ViewChannel"], "deny": ["SendMessages"] } } }
       ]
     }
+  ],
+
+  "automod": [
+    {"key": "scam-links", "name": "Scam links", "type": "keyword", "keywords": ["*free nitro*", "*steamcommunlty*", "*discord-gift*"], "regex": ["disc[o0]rd\\.(gift|gg)/[a-z0-9]+"], "actions": [{"type": "block", "message": "This looks like a scam link."}, {"type": "alert", "channel": "mod-log"}, {"type": "timeout", "seconds": 600}], "exempt": {"roles": ["admin", "mod"]}},
+    {"key": "slurs", "name": "Slurs", "type": "preset", "presets": ["slurs"], "actions": [{"type": "block"}, {"type": "alert", "channel": "mod-log"}]},
+    {"key": "spam", "name": "Spam", "type": "spam", "actions": [{"type": "block"}]},
+    {"_comment": "A Community server already has Discord's own 'Block Mention Spam', which the bot cannot edit: delete it in Server Settings → AutoMod first, or drop this rule.", "key": "mentions", "name": "Mention spam", "type": "mention-spam", "limit": 8, "raidProtection": true, "actions": [{"type": "block"}, {"type": "alert", "channel": "mod-log"}, {"type": "timeout", "seconds": 300}]}
   ]
 }

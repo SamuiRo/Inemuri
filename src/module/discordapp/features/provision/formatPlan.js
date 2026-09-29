@@ -22,6 +22,7 @@ const SECTIONS = [
   ["Channels", (op) => op.kind === "channel" && op.phase !== "report" && op.op !== "reorder"],
   ["Order", (op) => op.op === "reorder"],
   ["Messages", (op) => op.kind === "message" && op.phase !== "report"],
+  ["AutoMod", (op) => op.kind === "automod" && op.phase !== "report"],
   ["Left alone", (op) => op.phase === "report"],
 ];
 
@@ -48,6 +49,9 @@ export function formatPlan(plan, { configName, blockers = [] }) {
   const unmanaged = formatUnmanaged(plan.unmanaged);
   if (unmanaged.length) lines.push("", "**Not in the config (never touched)**", ...unmanaged);
 
+  if (plan.warnings.length) {
+    lines.push("", "**Warnings**", ...plan.warnings.map((warning) => `⚠ ${warning}`));
+  }
   if (plan.errors.length) {
     lines.push("", "**Errors — fix before applying**", ...plan.errors.map((error) => `✖ ${error}`));
   }
@@ -91,6 +95,7 @@ function formatOp(op) {
 
 function targetLabel(op) {
   if (op.kind === "message") return op.channel ? `💬 ${op.name} in #${op.channel}` : `💬 ${op.name}`;
+  if (op.kind === "automod") return `⛔ ${op.name}`;
   if (op.kind === "role") return `@${op.name}`;
   if (op.kind === "category") return `📁 ${op.name}`;
   return `${CHANNEL_ICON[op.spec?.kind] ?? "#"}${op.name}`;
@@ -99,7 +104,7 @@ function targetLabel(op) {
 // Голосовий канал з "#" читається як текстовий.
 const CHANNEL_ICON = { voice: "🔊 ", stage: "🎙 ", forum: "💬 ", announcement: "📢 #" };
 
-function formatUnmanaged({ roles, categories, channels }) {
+function formatUnmanaged({ roles, categories, channels, automod = [] }) {
   const lines = [];
   const list = (label, names, prefix) => {
     if (!names.length) return;
@@ -110,5 +115,6 @@ function formatUnmanaged({ roles, categories, channels }) {
   list("roles", roles, "@");
   list("categories", categories, "");
   list("channels", channels, "#");
+  list("AutoMod rules", automod, "⛔ ");
   return lines;
 }

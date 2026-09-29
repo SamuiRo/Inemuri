@@ -9,6 +9,7 @@ import {
 } from "./permissions.js";
 import { MAX_PANEL_ROLES } from "./messages.js";
 import { PANEL_MODES } from "../roles/rolePanel.js";
+import { parseAutomod } from "./automod.js";
 
 /**
  * Валідація конфігу сервера і нормалізація в «бажаний стан». Чиста функція:
@@ -25,7 +26,8 @@ import { PANEL_MODES } from "../roles/rolePanel.js";
  *     categories: [{ key, name, overwrites, requires, isArchive }],   // архів — останній
  *     channels:   [{ key, name, kind, parentKey, topic?, nsfw?, slowmode?, overwrites, requires }],
  *     messages:   [{ key, channelKey, kind: "text", file, embed: null|{ title?, color? } }
- *                | { key, channelKey, kind: "rolePanel", panel: { mode, text?, roles: [{ key, label?, emoji? }] } }] }
+ *                | { key, channelKey, kind: "rolePanel", panel: { mode, text?, roles: [{ key, label?, emoji? }] } }],
+ *     automod:    [правила — формат у automod.js] }
  *
  *   Текст повідомлень (`body`) тут не читається — функція чиста; його
  *   підвантажує Provisioner.js.
@@ -44,7 +46,7 @@ const EMOJI_RE = /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}])[\p{Ex
 const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
 
 const FIELDS = {
-  root: ["guildId", "archive", "presets", "roles", "categories", "channels"],
+  root: ["guildId", "archive", "presets", "roles", "categories", "channels", "automod"],
   archive: ["key", "name", "roles"],
   role: ["key", "name", "color", "hoist", "mentionable", "permissions"],
   category: ["key", "name", "overwrites", "requires", "optIn", "channels"],
@@ -130,6 +132,7 @@ export function validateServerConfig(raw) {
   v.unique(messages.map((message) => message.key), "messages", "message key");
   attachOptInsToPanels(optIns, messages, v);
   checkPanelRoles(messages, roles, v);
+  const automod = parseAutomod(raw.automod, { roleKeys, channels: channels.filter(Boolean) }, v);
 
   if (v.errors.length) return { errors: v.errors, desired: null };
   return {
@@ -141,6 +144,7 @@ export function validateServerConfig(raw) {
       categories,
       channels: channels.filter(Boolean),
       messages,
+      automod,
     },
   };
 }

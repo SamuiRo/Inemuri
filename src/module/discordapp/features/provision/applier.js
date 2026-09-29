@@ -4,6 +4,7 @@ import { readGuild } from "./readGuild.js";
 import { channelOrderPositions, planProvision, roleOrderPositions } from "./planner.js";
 import { finalOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
 import { hashPayload, renderMessage } from "./messages.js";
+import { automodOptions } from "./automod.js";
 import { DiscordResource } from "../../../teapot/models/index.js";
 import { print } from "../../../../shared/utils.js";
 
@@ -58,6 +59,7 @@ const PHASES = [
   { name: "categories", run: (ctx) => runOps(ctx, "categories", applyCategoryOp) },
   { name: "channels", run: (ctx) => runOps(ctx, "channels", applyChannelOp) },
   { name: "channel order", run: applyChannelOrder },
+  { name: "automod", run: (ctx) => runOps(ctx, "automod", applyAutomodOp) },
   { name: "messages", run: (ctx) => runOps(ctx, "messages", applyMessageOp) },
   { name: "state", run: (ctx) => runOps(ctx, "state", applyStateOp) },
 ];
@@ -76,6 +78,7 @@ async function runOps(ctx, phase, apply) {
 
 function opLabel(op) {
   if (op.kind === "message") return `${op.op} 💬 ${op.name} in #${op.channel}`;
+  if (op.kind === "automod") return `${op.op} ⛔ ${op.name}`;
   const prefix = { role: "@", category: "📁 ", channel: "#" }[op.kind] ?? "";
   return `${op.op} ${prefix}${op.name}`;
 }
@@ -253,6 +256,41 @@ async function applyChannelOrder({ guild, desired, current, plan, log }) {
   } catch (error) {
     log.push({ ok: false, text: `reorder channels: ${error.message}` });
   }
+}
+
+// ── AutoMod ────────────────────────────────────────────────────────────────
+
+async function applyAutomodOp(op, { guild, plan, store }) {
+  const { options, pending } = automodOptions(op.spec, plan.context);
+  if (pending.length) throw new Error(`${pending.join(", ")} do not exist — they failed to create`);
+
+  if (op.op === "create") {
+    const rule = await guild.autoModerationRules.create({ ...options, reason: REASON });
+    await store.remember(guild.id, "automod", op.key, rule.id);
+    return;
+  }
+  if (op.changes.length) {
+    // Тип тригера правила Discord змінити не дає — його й не передаємо.
+    const editable = { ...options, reason: REASON };
+    delete editable.triggerType;
+    try {
+      await guild.autoModerationRules.edit(op.id, editable);
+    } catch (error) {
+      // Виміряно на живому сервері: правило, яке Discord створив сам
+      // (стандартне "Block Mention Spam" Community-сервера), читається, але
+      // PATCH на нього дає 404. Змінити його бот не може ніяк.
+      if (error.status === 404) {
+        throw new Error(
+          `Discord does not let the bot edit "${op.currentName}" (a rule Discord or another app created). ` +
+            "Delete it in Server Settings → AutoMod and apply again, or leave this rule out of the config.",
+        );
+      }
+      throw error;
+    }
+  }
+  // Керованим правило стає лише після успішної правки: інакше план щоразу
+  // пропонував би ту саму правку, яка ніколи не пройде.
+  if (op.op === "adopt") await store.remember(guild.id, "automod", op.key, op.id);
 }
 
 // ── Повідомлення ───────────────────────────────────────────────────────────

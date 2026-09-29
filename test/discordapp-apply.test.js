@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { OverwriteType, PermissionFlagsBits as P } from "discord.js";
+import { AutoModerationRuleTriggerType as Trigger, OverwriteType, PermissionFlagsBits as P } from "discord.js";
 
 import { validateServerConfig } from "../src/module/discordapp/features/provision/schema.js";
 import { actionableOps, planProvision } from "../src/module/discordapp/features/provision/planner.js";
@@ -25,7 +25,25 @@ class FakeGuild {
     this.roleList = [{ id: BOT_ROLE, name: "Inemuri", color: 0, hoist: false, mentionable: false, permissions: 0n, position: 50, managed: true }];
     this.channelList = [];
     this.messageList = [];
+    this.automodList = [];
+    // Правила, які Discord не дає редагувати (створені ним самим).
+    this.lockedRules = new Set();
     this.calls = [];
+
+    this.autoModerationRules = {
+      create: async (options) => {
+        this.calls.push("automod.create");
+        const rule = { id: `a${this.nextId++}`, ...this.toRule(options) };
+        this.automodList.push(rule);
+        return rule;
+      },
+      edit: async (id, options) => {
+        this.calls.push("automod.edit");
+        if (this.lockedRules.has(id)) throw Object.assign(new Error("404: Not Found"), { status: 404 });
+        const rule = this.automodList.find((r) => r.id === id);
+        Object.assign(rule, this.toRule({ triggerType: rule.triggerType, ...options }));
+      },
+    };
 
     this.roles = {
       create: async (options) => {
@@ -112,6 +130,20 @@ class FakeGuild {
     }
   }
 
+  /** Опції discord.js → правило у форматі readGuild (channel → channelId). */
+  toRule({ name, enabled, triggerType, triggerMetadata, actions, exemptRoles, exemptChannels }) {
+    return {
+      name, enabled, triggerType,
+      triggerMetadata: structuredClone(triggerMetadata ?? {}),
+      actions: (actions ?? []).map(({ type, metadata = {} }) => ({
+        type,
+        metadata: { customMessage: metadata.customMessage ?? null, channelId: metadata.channel ?? null, durationSeconds: metadata.durationSeconds ?? null },
+      })),
+      exemptRoles: [...(exemptRoles ?? [])],
+      exemptChannels: [...(exemptChannels ?? [])],
+    };
+  }
+
   /** Знімок у форматі readGuild. */
   snapshot() {
     return structuredClone({
@@ -123,6 +155,7 @@ class FakeGuild {
       roles: this.roleList,
       channels: this.channelList,
       messages: this.messageList.map(({ id, channelId }) => ({ id, channelId })),
+      automod: this.automodList,
     });
   }
 
@@ -375,4 +408,43 @@ test("apply — messages are posted once, edited in place when the text changes,
   guild.messageList.splice(0, 1);
   const again = await remaining(guild, edited, store);
   assert.deepEqual(again.map((op) => `${op.op} ${op.key}`), ["post rules-main"]);
+});
+
+// ── AutoMod ────────────────────────────────────────────────────────────────
+
+const WITH_AUTOMOD = {
+  archive: { key: "archive", name: "ARCHIVE" },
+  roles: [{ key: "mod", name: "Mod" }],
+  channels: [{ key: "mod-log", name: "mod-log" }],
+  automod: [
+    { key: "scam", name: "Scam", type: "keyword", keywords: ["*free nitro*"],
+      actions: [{ type: "block" }, { type: "alert", channel: "mod-log" }], exempt: { roles: ["mod"] } },
+    { key: "mentions", name: "Mentions", type: "mention-spam", limit: 5, actions: [{ type: "block" }] },
+  ],
+};
+
+test("apply — AutoMod rules are created with real ids and a second plan is empty", async () => {
+  const guild = new FakeGuild();
+  const store = memoryStore();
+  const desired = desiredOf(WITH_AUTOMOD);
+  await apply(guild, desired, store);
+
+  const scam = guild.automodList.find((r) => r.name === "Scam");
+  assert.equal(scam.actions.find((a) => a.metadata.channelId).metadata.channelId, guild.byName("mod-log").id);
+  assert.deepEqual(scam.exemptRoles, [guild.roleList.find((r) => r.name === "Mod").id]);
+  assert.deepEqual(await remaining(guild, desired, store), []);
+});
+
+test("apply — a rule Discord will not let the bot edit fails clearly and is not taken over", async () => {
+  const guild = new FakeGuild();
+  guild.automodList.push({ id: "sys", ...guild.toRule({ name: "Block Mention Spam", enabled: true, triggerType: Trigger.MentionSpam,
+    triggerMetadata: { mentionTotalLimit: 20 }, actions: [{ type: 1 }] }) });
+  guild.lockedRules.add("sys");
+  const store = memoryStore();
+
+  const log = await applyProvision({ guild, desired: desiredOf(WITH_AUTOMOD), store, read: async (g) => g.snapshot() });
+  const failure = log.find((entry) => !entry.ok);
+  assert.match(failure.text, /does not let the bot edit "Block Mention Spam"/);
+  assert.ok(!store.rows.some((r) => r.kind === "automod" && r.discord_id === "sys"), "невдале прийняття не записане в стан");
+  assert.ok(guild.automodList.some((r) => r.name === "Scam"), "решта правил створена");
 });

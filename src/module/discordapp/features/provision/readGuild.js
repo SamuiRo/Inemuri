@@ -20,6 +20,7 @@ export async function readGuild(guild, state = []) {
   ]);
 
   const messages = await existingMessages(channels, state);
+  const automod = await automodRules(guild);
 
   return {
     guildId: guild.id,
@@ -65,7 +66,32 @@ export async function readGuild(guild, state = []) {
         })),
       })),
     messages,
+    automod,
   };
+}
+
+/**
+ * Правила AutoMod як прості дані, або null, якщо їх не видно: читати їх
+ * Discord дозволяє лише з Manage Server, а бот без Administrator його не має.
+ */
+async function automodRules(guild) {
+  let rules;
+  try {
+    rules = await guild.autoModerationRules.fetch();
+  } catch (error) {
+    if (error.code === RESTJSONErrorCodes.MissingPermissions || error.code === RESTJSONErrorCodes.MissingAccess) return null;
+    throw error;
+  }
+  return [...rules.values()].map((rule) => ({
+    id: rule.id,
+    name: rule.name,
+    enabled: rule.enabled,
+    triggerType: rule.triggerType,
+    triggerMetadata: { ...rule.triggerMetadata },
+    actions: rule.actions.map(({ type, metadata }) => ({ type, metadata: { ...metadata } })),
+    exemptRoles: [...rule.exemptRoles.keys()],
+    exemptChannels: [...rule.exemptChannels.keys()],
+  }));
 }
 
 /** Керовані повідомлення, які ще є в Discord: [{ id, channelId }]. */
