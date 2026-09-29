@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
-import { describeBitsChange } from "./permissions.js";
+import { dangerousIn, describeBitsChange } from "./permissions.js";
 import { diffOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
+import { hashPayload, renderMessage } from "./messages.js";
 
 /**
  * Планувальник провіжну: (бажаний стан, поточний сервер, стан) → план.
@@ -14,7 +15,8 @@ import { diffOverwrites, managedTargetIds, resolveOverwrites } from "./overwrite
  *   archive (прибраний з конфігу канал → в архів) · restore (з архіву назад)
  *   reorder (порядок ролей / каналів) · forget (канал видалено вручну — лише стан)
  *   skip (ресурс лише для Community на звичайному сервері)
- *   orphaned (роль/категорія зникла з конфігу — лишається як є)
+ *   orphaned (роль/категорія/повідомлення зникли з конфігу — лишаються як є)
+ *   post · edit (повідомлення: опублікувати / відредагувати на місці)
  *
  * **Нічого не видаляється.** Видалення в плані немає як операції взагалі.
  *
@@ -51,6 +53,7 @@ export function planProvision(desired, current, state) {
   planCategories(desired, current, stateOf, context, plan);
   planChannels(desired, current, stateOf, context, plan);
   planOrder(desired, current, context, plan);
+  planMessages(desired, current, stateOf, context, plan);
   collectUnmanaged(current, state, context, plan);
 
   return { ...plan, context };
@@ -324,6 +327,78 @@ export function channelOrderPositions(desired, current, context) {
     });
   }
   return result;
+}
+
+// ── Повідомлення ───────────────────────────────────────────────────────────
+
+/**
+ * Повідомлення порівнюються за хешем payload у стані — читати їхній текст
+ * не треба. Відредаговане повідомлення лишається на своєму місці; нове
+ * додається в кінець каналу (Discord не вставляє між наявними).
+ *
+ * **Повідомлення теж не видаляються.** Прибране з конфігу — orphaned;
+ * перенесене в інший канал — публікується там, стара копія лишається.
+ */
+function planMessages(desired, current, stateOf, context, plan) {
+  const existing = new Set((current.messages ?? []).map((message) => message.id));
+  const skippedChannels = new Set(plan.ops.filter((op) => op.op === "skip").map((op) => op.key));
+  const wanted = new Set(desired.messages.map((message) => message.key));
+  const channelName = (key) => desired.channels.find((channel) => channel.key === key)?.name ?? key;
+
+  checkPanelRoles(desired, current, context, plan);
+
+  for (const message of desired.messages) {
+    if (skippedChannels.has(message.channelKey)) {
+      plan.ops.push({ phase: "report", op: "skip", kind: "message", key: message.key, name: message.key });
+      continue;
+    }
+    const { payload, pending } = renderMessage(message, context);
+    const hash = pending.length ? null : hashPayload(payload);
+    const channelId = context.channelIds.get(message.channelKey) ?? null;
+    const saved = stateOf.get("message", message.key);
+    const base = { phase: "messages", kind: "message", key: message.key, name: message.key, channel: channelName(message.channelKey), spec: message };
+    const changes = pending.length ? [`buttons for ${pending.map((key) => `@${context.roleNames.get(key)}`).join(", ")} once the roles exist`] : [];
+
+    if (!saved) {
+      plan.ops.push({ ...base, op: "post", changes });
+    } else if (!existing.has(saved.discord_id)) {
+      plan.ops.push({ ...base, op: "post", changes: ["the posted copy was deleted — posting it again", ...changes] });
+    } else if (channelId && saved.parent_id !== channelId) {
+      plan.ops.push({ ...base, op: "post", changes: ["moved to another channel — the old copy stays where it is", ...changes] });
+    } else if (hash !== saved.content_hash) {
+      plan.ops.push({ ...base, op: "edit", id: saved.discord_id, changes: changes.length ? changes : [message.kind === "rolePanel" ? "panel" : `text of ${message.file}`] });
+    }
+  }
+
+  for (const saved of stateOf.all("message")) {
+    if (!wanted.has(saved.key) && existing.has(saved.discord_id)) {
+      plan.ops.push({ phase: "report", op: "orphaned", kind: "message", key: saved.key, name: saved.key });
+    }
+  }
+}
+
+/**
+ * Ролі панелей за їхнім станом на сервері (D10): schema.js бачить лише
+ * дозволи, задані в конфігу, а роль могла отримати небезпечні вручну.
+ */
+function checkPanelRoles(desired, current, context, plan) {
+  const byId = new Map(current.roles.map((role) => [role.id, role]));
+  const checked = new Set();
+  for (const message of desired.messages) {
+    if (message.kind !== "rolePanel") continue;
+    for (const { key } of message.panel.roles) {
+      if (checked.has(key)) continue;
+      checked.add(key);
+      const spec = desired.roles.find((role) => role.key === key);
+      const have = byId.get(context.roleIds.get(key));
+      // Дозволи, задані конфігом, перевірив schema.js, і apply їх поставить.
+      if (!have || spec?.permissions != null) continue;
+      const dangerous = dangerousIn(have.permissions);
+      if (dangerous.length) {
+        plan.errors.push(`@${have.name} is on a role panel but carries ${dangerous.join(", ")} — anyone could take it. Remove those permissions or the role from the panel.`);
+      }
+    }
+  }
 }
 
 // ── Некероване ─────────────────────────────────────────────────────────────

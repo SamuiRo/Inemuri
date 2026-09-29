@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { DISCORD_SERVERS_DIR } from "../../../../config/app.config.js";
+import { DISCORD_MESSAGES_DIR, DISCORD_SERVERS_DIR } from "../../../../config/app.config.js";
 
 /**
  * Конфіги серверів: src/config/discordapp/servers/<name>.json.
@@ -79,4 +79,22 @@ export async function resolveServerConfig(guildId, name = null) {
       "to `<name>.json` and set its guildId." +
       (broken.length ? `\nCould not read: ${broken.join(" ")}` : ""),
   );
+}
+
+/**
+ * Текст повідомлення з src/config/discordapp/messages/. Шлях уже перевірив
+ * schema.js; тут — ще раз, що він не вийшов за теку.
+ * @throws {Error} Людський текст: файлу немає.
+ */
+export async function loadMessageBody(file) {
+  const fullPath = path.resolve(DISCORD_MESSAGES_DIR, file);
+  if (!fullPath.startsWith(path.resolve(DISCORD_MESSAGES_DIR) + path.sep)) {
+    throw new Error(`${file} is outside the messages folder`);
+  }
+  try {
+    // Кінці рядків — як у Discord; BOM з Windows-редакторів — геть.
+    return (await fs.readFile(fullPath, "utf8")).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").trimEnd();
+  } catch {
+    throw new Error(`there is no \`messages/${file}\``);
+  }
 }

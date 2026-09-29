@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.34.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.35.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
-9 migrations exist (`database/migrations/001`–`009`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 358 green `node --test` cases
+10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 371 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -46,8 +46,9 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 per-step status. Steps 1–4 are done: Discord delivery is REST-only, so a
 Discord outage no longer stops the process, discordapp starts last with its
 own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so do
-`/provision plan` (`v4.33.0`) and `/provision apply` (`v4.34.0`). **None of it
-has run against the live bot yet** — see next steps.
+`/provision plan` (`v4.33.0`), `/provision apply` (`v4.34.0`), and provisioned
+messages with role panels (`v4.35.0`). **None of it has run against the live
+bot yet** — see next steps.
 
 ## Documentation
 
@@ -94,8 +95,11 @@ destinations is worse than not starting. A fresh clone now starts — before
    `src/config/discordapp/servers/example.sample.json` to `<name>.json`, set
    `guildId`, and run `/provision plan` — it changes nothing. Try
    `/provision apply` first on a **test server**, with the bot temporarily
-   holding a role with Administrator. Next build step is messages from `.md`,
-   role panels and opt-in groups (DISCORDAPP.md step 5).
+   holding a role with Administrator. Bot setup (portal, invite link, role
+   placement): [DISCORDAPP.md § Setup](DISCORDAPP.md#setup). Run
+   `npm run migrate` **before** starting the new version: the model now reads
+   `discord_resources.parent_id` (migration `010`). Next build steps: AutoMod
+   (step 6) and `/provision export` (step 7).
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -154,6 +158,8 @@ destinations is worse than not starting. A fresh clone now starts — before
   goes to a mandatory private archive category.
 - Built step 4 (`v4.34.0`): the applier and `/provision apply`. Verified
   end-to-end against an in-memory server, not a real one.
+- Built step 5 (`v4.35.0`): messages, role panels, opt-in groups. The operator
+  offered a test server; its setup is written down in DISCORDAPP.md § Setup.
 
 ### 2026-09-13
 

@@ -1,4 +1,4 @@
-import { OverwriteType, PermissionFlagsBits } from "discord.js";
+import { OverwriteType, PermissionFlagsBits, RESTJSONErrorCodes } from "discord.js";
 import { channelKind } from "../../channelKinds.js";
 
 /**
@@ -9,13 +9,17 @@ import { channelKind } from "../../channelKinds.js";
  * між фазами, і створене щойно має бути видно.
  *
  * @param {import("discord.js").Guild} guild
+ * @param {object[]} [state]  Рядки discord_resources: повідомлення з них
+ *   перевіряються на існування (по запиту на кожне — їх одиниці).
  */
-export async function readGuild(guild) {
+export async function readGuild(guild, state = []) {
   const [roles, channels, me] = await Promise.all([
     guild.roles.fetch(undefined, { force: true }),
     guild.channels.fetch(undefined, { force: true }),
     guild.members.fetchMe({ force: true }),
   ]);
+
+  const messages = await existingMessages(channels, state);
 
   return {
     guildId: guild.id,
@@ -60,5 +64,25 @@ export async function readGuild(guild) {
           deny: overwrite.deny.bitfield,
         })),
       })),
+    messages,
   };
+}
+
+/** Керовані повідомлення, які ще є в Discord: [{ id, channelId }]. */
+async function existingMessages(channels, state) {
+  const found = [];
+  for (const row of state.filter((r) => r.kind === "message" && r.parent_id)) {
+    const channel = channels.get(row.parent_id);
+    if (!channel?.messages) continue;
+    try {
+      await channel.messages.fetch({ message: row.discord_id, force: true });
+      found.push({ id: row.discord_id, channelId: row.parent_id });
+    } catch (error) {
+      // Лише «такого повідомлення немає» означає, що його видалили вручну, —
+      // тоді planner запропонує опублікувати знову. Мережевий збій чи брак
+      // прав виглядав би так само, і повтор apply дав би дублікат.
+      if (error.code !== RESTJSONErrorCodes.UnknownMessage) throw error;
+    }
+  }
+  return found;
 }

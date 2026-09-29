@@ -135,16 +135,26 @@ The formatters are pure: `(guildSnapshot, messagesByChannel) → string`.
 
 ## Feature: role panels
 
+> **Implemented (v4.35.0).** Code: `src/module/discordapp/features/roles/rolePanel.js`
+> (pure), `src/module/discordapp/components/role-panel.js` (the button),
+> `features/provision/messages.js` (renders the panel).
+
 A panel is a message with buttons, each toggling one role.
 
-- `customId` = `roles:<mode>:<panelKey>:<roleId>` (D11).
+- `customId` = `roles:<t|x>:<roleId>` (D11). The exclusive group is every
+  panel button on the same message, read from the message itself — there is
+  no panel table.
 - Modes: `toggle` (press to add, press again to remove) and `exclusive` (one
   role of the group at a time — pressing one removes the others).
-- More than 25 roles in a panel uses a select menu instead of buttons
-  (a message holds at most 5 rows of 5 buttons).
-- The reply is ephemeral: `Added: X · Removed: Y`.
+- At most 25 roles per panel (5 rows of 5 buttons); more is a config error.
+  A select menu for larger panels is future work.
+- Buttons are open to every member of a served server, not only admins. The
+  reply is ephemeral: `✅ Added @X` / `➖ Removed @Y`.
 - Panels are **declared in the provisioning config** as a message kind, not
   created by a separate command: a panel is part of the server's shape.
+- Button labels default to the role name; `{ "role": "key", "label": "…",
+  "emoji": "🦀" }` overrides either. Only plain emoji — a custom one has an id
+  that differs between servers.
 
 **Opt-in groups** are the main use: a narrow category that appears for members
 who press a button and disappears when they press it again. The config states
@@ -157,10 +167,18 @@ it once and the planner expands it:
 expands to `@everyone` deny `ViewChannel`, `topic-rust` allow `ViewChannel`,
 the bot's own overwrite, and a `topic-rust` button in the `topics` panel.
 
-Validation refuses (D10) a self-assign role that carries any of
-`Administrator`, `ManageGuild`, `ManageRoles`, `ManageChannels`,
-`ManageWebhooks`, `BanMembers`, `KickMembers`, `ModerateMembers`,
-`ManageMessages`, `MentionEveryone`, or sits at or above the bot's highest role.
+`optIn` keeps the category's other `@everyone` bits and only takes
+`ViewChannel` away; its channels inherit it like any category's overwrites.
+`panel` is optional — without it the role is handed out some other way.
+
+A self-assign role is refused (D10) if it carries any of `Administrator`,
+`ManageGuild`, `ManageRoles`, `ManageChannels`, `ManageWebhooks`,
+`ManageGuildExpressions`, `ManageEvents`, `ManageThreads`, `ManageMessages`,
+`ManageNicknames`, `BanMembers`, `KickMembers`, `ModerateMembers`,
+`MentionEveryone`, `ViewAuditLog`, is managed by an integration, or sits at or
+above the bot's highest role. Checked three times: by the validator for
+permissions the config sets, by the planner for the role's permissions on the
+server (someone may have added them by hand), and **on every button press**.
 
 ## Feature: provisioning (server as code)
 
@@ -173,9 +191,9 @@ content, role panels, AutoMod rules — is described in
 > `src/module/discordapp/features/provision/` — `schema.js`, `overwrites.js`,
 > `planner.js`, `formatPlan.js` (pure), `readGuild.js` (reads Discord),
 > `applier.js` (writes Discord), `configStore.js`, `Provisioner.js`; command
-> `commands/provision.js`. Messages, role panels and AutoMod are later
-> steps: the validator does not accept `messages`, `optIn` or `automod` yet.
-> A working starting point is `servers/example.sample.json`.
+> `commands/provision.js`. Messages and role panels since v4.35.0; AutoMod is
+> a later step and the validator does not accept `automod` yet. A working
+> starting point is `servers/example.sample.json` with `messages/rules.sample.md`.
 
 ### Config
 
@@ -210,7 +228,13 @@ content, role panels, AutoMod rules — is described in
   config loading, as a malformed local config already does.
 - `presets` keep a shared overwrite set in one place; overwrites refer to roles
   as `role:<key>` and to `@everyone` by name.
-- Message bodies live in `.md` files next to the config.
+- **Messages.** A text or announcement channel may carry `messages`: either
+  `{ "key", "file": "rules.md", "embed"?: true | { "title"?, "color"? } }`
+  with the text in `src/config/discordapp/messages/` (git-ignored except
+  `*.sample.md`), or `{ "key", "rolePanel": { "mode"?, "text"?, "roles" } }`.
+  Text over Discord's limit (2000, or 4096 in an embed) is a config error
+  before anything is read from the server. Provisioned messages never ping:
+  `@everyone` in a rules text is text.
 - `"requires": "community"` on a resource skips it on a non-Community server.
   Without the flag, a Community-only resource (announcement channels, rules and
   updates channels, onboarding) on a plain server is a **plan error** with the
@@ -263,6 +287,8 @@ content_hash, archived_at, archived_from)`.
 | `? orphaned` | Managed role or category no longer in the config — reported, never touched |
 | `· forget` | Managed channel deleted on Discord by hand — only its state row goes |
 | `⏭ skip` | `requires: community` on a plain server |
+| `+ post` | Message not posted yet, deleted by hand, or moved to another channel in the config (the old copy stays) — posted at the end of its channel |
+| `~ edit` | The rendered message differs from what was posted (compared by a hash in state, not by reading the message) — **edited in place**, never reposted |
 | `↕ reorder` | Roles or channels are not in config order. Order is applied by **slots**: the managed resources swap among the positions they already hold, so nothing outside the config moves |
 
 `/provision plan server:<name>` shows the ops and changes nothing.
@@ -300,6 +326,44 @@ the caps before apply.
 The reverse direction: snapshot an existing server into the config format, so
 the first config is edited rather than written from scratch.
 
+## Setup
+
+What the bot needs, once per server. The bot is private (D8); these steps
+are the operator's.
+
+**Developer Portal** (discord.com/developers → the application):
+
+- *Bot* → **Message Content Intent** on (for `/export-chats`). Server Members
+  and Presence intents stay off; nothing needs them.
+- *Bot* → **Public Bot** off, so only the owner can invite it. (Discord asks
+  for the Installation tab's install link to be set to *None* first.)
+
+**Invite link** — replace `APP_ID` with the application id (*General
+Information*):
+
+```text
+https://discord.com/oauth2/authorize?client_id=APP_ID&scope=bot%20applications.commands&permissions=17448422400
+```
+
+`17448422400` is the normal-operation set: `ViewChannel`, `SendMessages`,
+`EmbedLinks`, `AttachFiles`, `ReadMessageHistory`, `ManageRoles`,
+`ManageThreads` (the last one only so `/export-chats` can read private
+archived threads). Both scopes matter: without `applications.commands` the
+slash commands cannot be registered in that server.
+
+**In the server:**
+
+1. Server Settings → Roles: drag the bot's role (named like the bot) **above
+   every role the config manages or a panel hands out**. Administrator does
+   not bypass this.
+2. Create a role with `Administrator`, e.g. `Inemuri Setup`, placed below the
+   bot's role. Give it to the bot only for `/provision apply`, take it away
+   after.
+
+**`.env`:** the server id in `DISCORD_GUILD_IDS`, your user id in
+`DISCORD_COMMAND_WHITELIST` (Developer Mode → right-click → Copy ID). Restart.
+The log should list the server under "command(s) registered".
+
 ## Configuration
 
 | Variable | Default | Meaning |
@@ -319,6 +383,6 @@ the first config is edited rather than written from scratch.
 | 2 | `/export-chats` | Done (v4.32.0) |
 | 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | Done (v4.33.0) |
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | Done (v4.34.0) — migration and import landed with step 3 |
-| 5 | Messages from `.md` edited in place, role panels, opt-in groups | — |
+| 5 | Messages from `.md` edited in place, role panels, opt-in groups | Done (v4.35.0) |
 | 6 | AutoMod as a resource | — |
 | 7 | `/provision export` | — |

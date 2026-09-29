@@ -130,6 +130,8 @@ export const DISCORD_EXPORT_ARCHIVED_THREADS = 100;
 // Конфіги серверів (docs/DISCORDAPP.md): servers/<name>.json, у .gitignore.
 // Читаються на кожну команду, а не на старті — правка конфігу діє без рестарту.
 export const DISCORD_SERVERS_DIR = fileURLToPath(new URL("./discordapp/servers/", import.meta.url));
+// Тексти повідомлень, на які посилаються конфіги ("file": "rules.md").
+export const DISCORD_MESSAGES_DIR = fileURLToPath(new URL("./discordapp/messages/", import.meta.url));
 
 // ── Polling ────────────────────────────────────────────────────────────────
 export const POLLING_INTERVAL_MIN = positiveNumber(

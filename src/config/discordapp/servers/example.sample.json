@@ -1,5 +1,5 @@
 {
-  "_readme": "Copy to <name>.json in this folder and set guildId. Every key is a stable id: renaming a name is an edit, changing a key is a new resource. Full format: docs/DISCORDAPP.md.",
+  "_readme": "Copy to <name>.json in this folder and set guildId. Every key is a stable id: renaming a name is an edit, changing a key is a new resource. Message texts live in ../messages/. Full format: docs/DISCORDAPP.md.",
   "guildId": "000000000000000000",
 
   "archive": { "key": "archive", "name": "🗄 ARCHIVE", "roles": ["admin"] },
@@ -19,14 +19,19 @@
     { "key": "admin", "name": "Admin", "color": "#e74c3c", "hoist": true, "permissions": ["Administrator"] },
     { "key": "mod", "name": "Moderator", "color": "#e67e22", "hoist": true,
       "permissions": ["ManageMessages", "KickMembers", "ModerateMembers", "ViewAuditLog"] },
-    { "key": "member", "name": "Member", "color": "#95a5a6" }
+    { "key": "member", "name": "Member", "color": "#95a5a6" },
+    { "key": "topic-rust", "name": "Rust", "color": "#dea584", "permissions": [] },
+    { "key": "topic-web", "name": "Web", "color": "#3498db", "permissions": [] }
   ],
 
   "categories": [
     {
       "key": "info", "name": "📌 INFO", "overwrites": "readonly",
       "channels": [
-        { "key": "rules", "name": "rules", "topic": "Read before posting" },
+        { "key": "rules", "name": "rules", "topic": "Read before posting",
+          "messages": [{ "key": "rules-main", "file": "rules.sample.md", "embed": { "title": "Rules", "color": "#5865f2" } }] },
+        { "key": "get-roles", "name": "get-roles", "topic": "Pick the topics you want to see",
+          "messages": [{ "key": "topics", "rolePanel": { "mode": "toggle", "text": "Pick your topics — press again to leave:", "roles": [] } }] },
         { "key": "announcements", "name": "announcements", "type": "announcement", "requires": "community" }
       ]
     },
@@ -37,6 +42,15 @@
         { "key": "media", "name": "media", "slowmode": 30 },
         { "key": "voice", "name": "Voice", "type": "voice" }
       ]
+    },
+    {
+      "_comment": "Visible only to members who press the Rust button in #get-roles.",
+      "key": "rust", "name": "🦀 RUST", "optIn": { "role": "topic-rust", "panel": "topics" },
+      "channels": [{ "key": "rust-chat", "name": "rust-chat" }, { "key": "rust-help", "name": "rust-help" }]
+    },
+    {
+      "key": "web", "name": "🌐 WEB", "optIn": { "role": "topic-web", "panel": "topics" },
+      "channels": [{ "key": "web-chat", "name": "web-chat" }]
     },
     {
       "key": "staff", "name": "🛡 STAFF", "overwrites": "staff-only",

@@ -14,6 +14,8 @@
 # discordapp server configs are deployment data; the sample stays tracked.
 /src/config/discordapp/servers/*.json
 !/src/config/discordapp/servers/*.sample.json
+/src/config/discordapp/messages/*
+!/src/config/discordapp/messages/*.sample.md
 
 # Logs
 logs

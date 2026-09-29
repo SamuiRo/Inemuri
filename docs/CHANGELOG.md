@@ -7,6 +7,39 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.35.0] - 2026-09-29
+
+discordapp step 5: provisioned messages, role panels, opt-in channel groups.
+
+### Added
+- **Messages in the config.** A text or announcement channel carries
+  `messages`: text from a `.md` file in `src/config/discordapp/messages/`
+  (git-ignored except `*.sample.md`), optionally as an embed with a title and
+  color, or a role panel. Posted once; **edited in place** when the rendered
+  message changes (a hash in state, no read of the message); posted again if
+  deleted by hand. A message removed from the config is reported, not deleted.
+  Provisioned messages never ping.
+- **Role panels** (`rolePanel`: `toggle` or `exclusive`, up to 25 roles,
+  optional label and emoji per role). Buttons are stateless
+  (`roles:<t|x>:<roleId>`); an exclusive group is read from the message's own
+  buttons. Any member can press them; the reply is ephemeral.
+- **Self-assign safety**: a role carrying moderation or admin permissions,
+  managed by an integration, or above the bot is refused — by the validator,
+  by the planner against the server, and again on every press.
+- **Opt-in groups** — `optIn: { role, panel? }` on a category: `@everyone`
+  loses `ViewChannel`, the role gets it, and the role's button is added to the
+  named panel.
+- Migration `010-discord-resource-parent`: `discord_resources.parent_id`, the
+  channel of a provisioned message.
+- Setup section in `DISCORDAPP.md`: portal settings, the invite link with its
+  permission integer, role placement, the temporary Administrator role.
+- Tests: `discordapp-messages.test.js` (12) and a messages scenario in
+  `discordapp-apply.test.js`.
+
+### Fixed
+- Plan text printed a permission twice when discord.js knows it under a
+  deprecated alias as well (`ManageEmojisAndStickers`).
+
 ## [4.34.0] - 2026-09-29
 
 discordapp step 4: `/provision apply`.

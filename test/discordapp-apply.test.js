@@ -24,6 +24,7 @@ class FakeGuild {
     this.nextId = 1;
     this.roleList = [{ id: BOT_ROLE, name: "Inemuri", color: 0, hoist: false, mentionable: false, permissions: 0n, position: 50, managed: true }];
     this.channelList = [];
+    this.messageList = [];
     this.calls = [];
 
     this.roles = {
@@ -65,6 +66,25 @@ class FakeGuild {
         this.calls.push("channel.setPositions");
         for (const { channel, position } of list) this.channelList.find((c) => c.id === channel).position = position;
       },
+      // Як у discord.js: канал з кешу вміє надсилати й редагувати повідомлення.
+      cache: { get: (id) => this.channelList.some((c) => c.id === id) && this.textChannel(id) },
+    };
+  }
+
+  textChannel(channelId) {
+    return {
+      send: async (payload) => {
+        this.calls.push("message.send");
+        const message = { id: `m${this.nextId++}`, channelId, payload };
+        this.messageList.push(message);
+        return message;
+      },
+      messages: {
+        edit: async (id, payload) => {
+          this.calls.push("message.edit");
+          this.messageList.find((m) => m.id === id).payload = payload;
+        },
+      },
     };
   }
 
@@ -102,6 +122,7 @@ class FakeGuild {
       bot: { userId: "bot-user", roleId: BOT_ROLE, highestPosition: this.roleList.find((r) => r.id === BOT_ROLE).position, admin: true },
       roles: this.roleList,
       channels: this.channelList,
+      messages: this.messageList.map(({ id, channelId }) => ({ id, channelId })),
     });
   }
 
@@ -117,9 +138,9 @@ function memoryStore() {
   return {
     rows,
     forGuild: async (guildId) => rows.filter((r) => r.guild_id === guildId).map((r) => ({ ...r })),
-    remember: async (guildId, kind, key, discordId) => {
+    remember: async (guildId, kind, key, discordId, extra = {}) => {
       const row = find(guildId, kind, key) ?? rows[rows.push({ guild_id: guildId, kind, key }) - 1];
-      Object.assign(row, { discord_id: discordId, archived_at: null, archived_from: null });
+      Object.assign(row, { discord_id: discordId, archived_at: null, archived_from: null, ...extra });
     },
     markArchived: async (guildId, key, fromKey) => {
       Object.assign(find(guildId, "channel", key), { archived_at: new Date(), archived_from: fromKey ?? null });
@@ -130,9 +151,11 @@ function memoryStore() {
   };
 }
 
-function desiredOf(raw) {
+/** Бажаний стан; тексти повідомлень — з `bodies` замість файлів (їх читає Provisioner). */
+function desiredOf(raw, bodies = {}) {
   const { errors, desired } = validateServerConfig({ guildId: GUILD, ...raw });
   assert.deepEqual(errors, []);
+  for (const message of desired.messages) if (message.kind === "text") message.body = bodies[message.file] ?? `text of ${message.file}`;
   return desired;
 }
 
@@ -308,4 +331,48 @@ test("permissionEdit — explicit, sync on move, strip archive rights at the roo
   assert.deepEqual(permissionEdit({ op: "update" }, spec, { ...have, parentId: "info" }, "info", context), {});
   const explicit = permissionEdit({ op: "update" }, { overwrites: [{ target: "@everyone", allow: 0n, deny: P.SendMessages }] }, have, "info", context);
   assert.equal(explicit.permissionOverwrites.length, 2);
+});
+
+// ── Повідомлення і панелі ──────────────────────────────────────────────────
+
+const WITH_MESSAGES = {
+  archive: { key: "archive", name: "ARCHIVE" },
+  roles: [{ key: "rust", name: "Rust", permissions: [] }],
+  categories: [
+    { key: "info", name: "INFO", channels: [{ key: "rules", name: "rules", messages: [
+      { key: "rules-main", file: "rules.md", embed: true },
+      { key: "topics", rolePanel: { roles: [] } },
+    ] }] },
+    { key: "rust", name: "RUST", optIn: { role: "rust", panel: "topics" }, channels: [{ key: "rust-chat", name: "rust-chat" }] },
+  ],
+};
+
+test("apply — messages are posted once, edited in place when the text changes, reposted when deleted", async () => {
+  const guild = new FakeGuild();
+  const store = memoryStore();
+  const desired = desiredOf(WITH_MESSAGES, { "rules.md": "Be nice @everyone" });
+  await apply(guild, desired, store);
+
+  const rules = guild.byName("rules");
+  const [text, panel] = guild.messageList;
+  assert.equal(text.channelId, rules.id);
+  assert.deepEqual(text.payload.embeds, [{ description: "Be nice @everyone" }]);
+  assert.deepEqual(text.payload.allowedMentions, { parse: [] }, "@everyone у тексті нікого не пінгує");
+
+  const rust = guild.roleList.find((r) => r.name === "Rust");
+  assert.equal(panel.payload.components[0].components[0].custom_id, `roles:t:${rust.id}`, "кнопка несе справжній id ролі");
+  assert.ok(guild.byName("RUST").overwrites.some((o) => o.id === rust.id && (o.allow & P.ViewChannel)), "optIn: роль бачить групу");
+  assert.ok(guild.byName("RUST").overwrites.some((o) => o.id === GUILD && (o.deny & P.ViewChannel)), "optIn: інші не бачать");
+  assert.deepEqual(await remaining(guild, desired, store), []);
+
+  const edited = desiredOf(WITH_MESSAGES, { "rules.md": "Be very nice" });
+  await apply(guild, edited, store);
+  assert.equal(guild.messageList.length, 2, "правка — не нове повідомлення");
+  assert.equal(guild.messageList[0].id, text.id);
+  assert.deepEqual(guild.messageList[0].payload.embeds, [{ description: "Be very nice" }]);
+  assert.deepEqual(await remaining(guild, edited, store), []);
+
+  guild.messageList.splice(0, 1);
+  const again = await remaining(guild, edited, store);
+  assert.deepEqual(again.map((op) => `${op.op} ${op.key}`), ["post rules-main"]);
 });

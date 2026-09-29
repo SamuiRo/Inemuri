@@ -1,5 +1,14 @@
 import { hasTextName, PROVISIONABLE_KINDS } from "../../channelKinds.js";
-import { ARCHIVE_ROLE_ALLOW, BOT_CHANNEL_ALLOW, toBits, unknownPermissions, VIEW_CHANNEL } from "./permissions.js";
+import {
+  ARCHIVE_ROLE_ALLOW,
+  BOT_CHANNEL_ALLOW,
+  dangerousIn,
+  toBits,
+  unknownPermissions,
+  VIEW_CHANNEL,
+} from "./permissions.js";
+import { MAX_PANEL_ROLES } from "./messages.js";
+import { PANEL_MODES } from "../roles/rolePanel.js";
 
 /**
  * Валідація конфігу сервера і нормалізація в «бажаний стан». Чиста функція:
@@ -14,7 +23,12 @@ import { ARCHIVE_ROLE_ALLOW, BOT_CHANNEL_ALLOW, toBits, unknownPermissions, VIEW
  *   { guildId, archive: { key, name, roleKeys },
  *     roles:      [{ key, name, color?, hoist?, mentionable?, permissions: BigInt|null }],
  *     categories: [{ key, name, overwrites, requires, isArchive }],   // архів — останній
- *     channels:   [{ key, name, kind, parentKey, topic?, nsfw?, slowmode?, overwrites, requires }] }
+ *     channels:   [{ key, name, kind, parentKey, topic?, nsfw?, slowmode?, overwrites, requires }],
+ *     messages:   [{ key, channelKey, kind: "text", file, embed: null|{ title?, color? } }
+ *                | { key, channelKey, kind: "rolePanel", panel: { mode, text?, roles: [{ key, label?, emoji? }] } }] }
+ *
+ *   Текст повідомлень (`body`) тут не читається — функція чиста; його
+ *   підвантажує Provisioner.js.
  *
  *   overwrites = null (не керуються) | [{ target, allow: BigInt, deny: BigInt }],
  *   target     = "@everyone" | "@bot" | "role:<key>"
@@ -24,15 +38,27 @@ const KEY_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const SNOWFLAKE_RE = /^\d{17,20}$/;
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 const TARGET_RE = /^(@everyone|role:[a-z0-9][a-z0-9-]*)$/;
+// Звичайний emoji (не текст і не кастомний <:name:id>).
+const EMOJI_RE = /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}])[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}\u200d\ufe0f\u20e3]+$/u;
+// Шлях відносно src/config/discordapp/messages/, без виходу за теку.
+const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
 
 const FIELDS = {
   root: ["guildId", "archive", "presets", "roles", "categories", "channels"],
   archive: ["key", "name", "roles"],
   role: ["key", "name", "color", "hoist", "mentionable", "permissions"],
-  category: ["key", "name", "overwrites", "requires", "channels"],
-  channel: ["key", "name", "type", "topic", "nsfw", "slowmode", "overwrites", "requires"],
+  category: ["key", "name", "overwrites", "requires", "optIn", "channels"],
+  channel: ["key", "name", "type", "topic", "nsfw", "slowmode", "overwrites", "requires", "messages"],
   overwrite: ["allow", "deny"],
+  optIn: ["role", "panel"],
+  message: ["key", "file", "embed", "rolePanel"],
+  embed: ["title", "color"],
+  rolePanel: ["mode", "text", "roles"],
+  panelRole: ["role", "label", "emoji"],
 };
+
+// Види каналів, куди провіжн публікує повідомлення.
+const MESSAGE_KINDS = ["text", "announcement"];
 
 // Ліміти Discord.
 const MAX_ROLES = 250;
@@ -61,11 +87,18 @@ export function validateServerConfig(raw) {
 
   const categories = [];
   const channels = [];
+  const messages = [];
+  const optIns = [];
   for (const [i, category] of v.list(raw.categories, "categories").entries()) {
     const path = `categories[${i}]`;
     if (!v.object(category, path)) continue;
     v.fields(category, FIELDS.category, path);
-    const overwrites = parseOverwriteSpec(category.overwrites, presets, roleKeys, `${path}.overwrites`, v);
+    let overwrites = parseOverwriteSpec(category.overwrites, presets, roleKeys, `${path}.overwrites`, v);
+    const optIn = parseOptIn(category.optIn, roleKeys, `${path}.optIn`, v);
+    if (optIn) {
+      overwrites = withOptIn(overwrites, optIn.roleKey);
+      optIns.push(optIn);
+    }
     const parsed = {
       key: v.key(category.key, `${path}.key`),
       name: v.name(category.name, `${path}.name`),
@@ -80,15 +113,23 @@ export function validateServerConfig(raw) {
       v.error(`${path}.channels`, `Discord allows at most ${MAX_CHANNELS_PER_CATEGORY} channels per category`);
     }
     for (const [j, channel] of inner.entries()) {
-      channels.push(parseChannel(channel, parsed, overwrites, presets, roleKeys, `${path}.channels[${j}]`, v));
+      const channelPath = `${path}.channels[${j}]`;
+      const parsedChannel = parseChannel(channel, parsed, overwrites, presets, roleKeys, channelPath, v);
+      channels.push(parsedChannel);
+      messages.push(...parseMessages(channel, parsedChannel, roleKeys, channelPath, v));
     }
   }
   for (const [i, channel] of v.list(raw.channels, "channels").entries()) {
-    channels.push(parseChannel(channel, null, null, presets, roleKeys, `channels[${i}]`, v));
+    const parsedChannel = parseChannel(channel, null, null, presets, roleKeys, `channels[${i}]`, v);
+    channels.push(parsedChannel);
+    messages.push(...parseMessages(channel, parsedChannel, roleKeys, `channels[${i}]`, v));
   }
 
   if (archive) categories.push(archive.category);
-  v.unique([...categories, ...channels].map((item) => item.key), "categories/channels", "key");
+  v.unique([...categories, ...channels].map((item) => item?.key), "categories/channels", "key");
+  v.unique(messages.map((message) => message.key), "messages", "message key");
+  attachOptInsToPanels(optIns, messages, v);
+  checkPanelRoles(messages, roles, v);
 
   if (v.errors.length) return { errors: v.errors, desired: null };
   return {
@@ -99,6 +140,7 @@ export function validateServerConfig(raw) {
       roles,
       categories,
       channels: channels.filter(Boolean),
+      messages,
     },
   };
 }
@@ -193,6 +235,153 @@ function parseChannel(channel, category, categoryOverwrites, presets, roleKeys, 
     else v.error(`${path}.slowmode`, `must be whole seconds, 0–${MAX_SLOWMODE}`);
   }
   return parsed;
+}
+
+// ── Повідомлення і панелі ролей ────────────────────────────────────────────
+
+function parseMessages(channel, parsedChannel, roleKeys, path, v) {
+  if (!channel || typeof channel !== "object" || channel.messages === undefined) return [];
+  const list = v.list(channel.messages, `${path}.messages`);
+  if (list.length && parsedChannel && !MESSAGE_KINDS.includes(parsedChannel.kind)) {
+    v.error(`${path}.messages`, `messages can be posted only in ${MESSAGE_KINDS.join(" or ")} channels`);
+    return [];
+  }
+  return list.map((message, i) => parseMessage(message, parsedChannel?.key, roleKeys, `${path}.messages[${i}]`, v)).filter(Boolean);
+}
+
+function parseMessage(message, channelKey, roleKeys, path, v) {
+  if (!v.object(message, path)) return null;
+  v.fields(message, FIELDS.message, path);
+  const key = v.key(message.key, `${path}.key`);
+
+  if ((message.file === undefined) === (message.rolePanel === undefined)) {
+    v.error(path, 'needs exactly one of "file" (text from a .md file) or "rolePanel"');
+    return null;
+  }
+
+  if (message.file !== undefined) {
+    if (typeof message.file !== "string" || !FILE_RE.test(message.file)) {
+      v.error(`${path}.file`, "must be a .md path inside src/config/discordapp/messages/");
+    }
+    return { key, channelKey, kind: "text", file: message.file, embed: parseEmbed(message.embed, `${path}.embed`, v) };
+  }
+
+  if (message.embed !== undefined) v.error(`${path}.embed`, "applies to text messages only");
+  const panel = message.rolePanel;
+  const panelPath = `${path}.rolePanel`;
+  if (!v.object(panel, panelPath)) return null;
+  v.fields(panel, FIELDS.rolePanel, panelPath);
+
+  const mode = panel.mode ?? "toggle";
+  if (!PANEL_MODES.includes(mode)) v.error(`${panelPath}.mode`, `must be one of ${PANEL_MODES.join(", ")}`);
+  if (panel.text !== undefined && (typeof panel.text !== "string" || !panel.text.trim() || panel.text.length > 2000)) {
+    v.error(`${panelPath}.text`, "must be non-empty text up to 2000 characters");
+  }
+
+  const roles = v.list(panel.roles ?? [], `${panelPath}.roles`).map((entry, i) => parsePanelRole(entry, roleKeys, `${panelPath}.roles[${i}]`, v));
+  return { key, channelKey, kind: "rolePanel", panel: { mode, text: panel.text, roles: roles.filter(Boolean) } };
+}
+
+function parseEmbed(embed, path, v) {
+  if (embed === undefined || embed === false) return null;
+  if (embed === true) return {};
+  if (!v.object(embed, path)) return null;
+  v.fields(embed, FIELDS.embed, path);
+  const parsed = {};
+  if (embed.title !== undefined) {
+    if (typeof embed.title === "string" && embed.title.length <= 256) parsed.title = embed.title;
+    else v.error(`${path}.title`, "must be text up to 256 characters");
+  }
+  if (embed.color !== undefined) {
+    if (COLOR_RE.test(String(embed.color))) parsed.color = parseInt(embed.color.slice(1), 16);
+    else v.error(`${path}.color`, 'must look like "#e67e22"');
+  }
+  return parsed;
+}
+
+/** Роль у панелі: "key" або { role, label?, emoji? }. */
+function parsePanelRole(entry, roleKeys, path, v) {
+  const spec = typeof entry === "string" ? { role: entry } : entry;
+  if (!v.object(spec, path)) return null;
+  v.fields(spec, FIELDS.panelRole, path);
+  if (!roleKeys.has(spec.role)) {
+    v.error(path, `unknown role key "${spec.role}"`);
+    return null;
+  }
+  const parsed = { key: spec.role };
+  if (spec.label !== undefined) {
+    if (typeof spec.label === "string" && spec.label.trim() && spec.label.length <= 80) parsed.label = spec.label;
+    else v.error(`${path}.label`, "must be text up to 80 characters");
+  }
+  if (spec.emoji !== undefined) {
+    // Лише звичайні emoji: кастомні потребують id, який відрізняється між серверами.
+    if (typeof spec.emoji === "string" && spec.emoji.length <= 16 && EMOJI_RE.test(spec.emoji)) parsed.emoji = spec.emoji;
+    else v.error(`${path}.emoji`, "must be a plain emoji such as \"🦀\"");
+  }
+  return parsed;
+}
+
+/**
+ * optIn: категорію бачать лише ті, хто має роль. { role, panel? } —
+ * `panel` додає кнопку ролі в панель з цим key.
+ */
+function parseOptIn(optIn, roleKeys, path, v) {
+  if (optIn === undefined) return null;
+  if (!v.object(optIn, path)) return null;
+  v.fields(optIn, FIELDS.optIn, path);
+  if (!roleKeys.has(optIn.role)) {
+    v.error(`${path}.role`, `unknown role key "${optIn.role}"`);
+    return null;
+  }
+  return { roleKey: optIn.role, panelKey: optIn.panel ?? null, path };
+}
+
+/**
+ * Overwrites категорії з optIn: @everyone не бачить (інші його біти
+ * зберігаються), роль — бачить. Бот додається далі, як для будь-якого
+ * приватного.
+ */
+function withOptIn(overwrites, roleKey) {
+  const map = new Map(overwrites ?? []);
+  const everyone = map.get("@everyone") ?? { allow: 0n, deny: 0n };
+  map.set("@everyone", { allow: everyone.allow & ~VIEW_CHANNEL, deny: everyone.deny | VIEW_CHANNEL });
+  const role = map.get(`role:${roleKey}`) ?? { allow: 0n, deny: 0n };
+  map.set(`role:${roleKey}`, { allow: role.allow | VIEW_CHANNEL, deny: role.deny & ~VIEW_CHANNEL });
+  return map;
+}
+
+function attachOptInsToPanels(optIns, messages, v) {
+  for (const optIn of optIns) {
+    if (!optIn.panelKey) continue;
+    const panel = messages.find((message) => message.key === optIn.panelKey && message.kind === "rolePanel");
+    if (!panel) {
+      v.error(`${optIn.path}.panel`, `there is no rolePanel message with key "${optIn.panelKey}"`);
+      continue;
+    }
+    if (!panel.panel.roles.some((entry) => entry.key === optIn.roleKey)) panel.panel.roles.push({ key: optIn.roleKey });
+  }
+}
+
+/**
+ * Панелі: не порожні, не більше 25 ролей, без повторів і без ролей з
+ * небезпечними дозволами (D10). Роль, чиї дозволи конфіг не задає,
+ * перевіряє planner — за її поточними дозволами на сервері.
+ */
+function checkPanelRoles(messages, roles, v) {
+  const byKey = new Map(roles.map((role) => [role.key, role]));
+  for (const message of messages) {
+    if (message.kind !== "rolePanel") continue;
+    const path = `rolePanel "${message.key}"`;
+    const keys = message.panel.roles.map((entry) => entry.key);
+    if (!keys.length) v.error(path, "has no roles");
+    if (keys.length > MAX_PANEL_ROLES) v.error(path, `has ${keys.length} roles; a message holds at most ${MAX_PANEL_ROLES} buttons`);
+    v.unique(keys, path, "role");
+    for (const key of keys) {
+      const permissions = byKey.get(key)?.permissions;
+      const dangerous = permissions == null ? [] : dangerousIn(permissions);
+      if (dangerous.length) v.error(path, `role "${key}" carries ${dangerous.join(", ")} and cannot be self-assigned`);
+    }
+  }
 }
 
 function parseRequires(requires, path, v) {

@@ -3,6 +3,7 @@ import { channelType } from "../../channelKinds.js";
 import { readGuild } from "./readGuild.js";
 import { channelOrderPositions, planProvision, roleOrderPositions } from "./planner.js";
 import { finalOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
+import { hashPayload, renderMessage } from "./messages.js";
 import { DiscordResource } from "../../../teapot/models/index.js";
 import { print } from "../../../../shared/utils.js";
 
@@ -10,6 +11,9 @@ import { print } from "../../../../shared/utils.js";
 const REASON = "Inemuri provisioning";
 // Ліміт Discord на кількість каналів у категорії.
 const CATEGORY_CAPACITY = 50;
+// Провіжн-повідомлення нікого не пінгують: "@everyone" у тексті правил — це
+// текст, а не сповіщення всьому серверу на кожну правку.
+const NO_MENTIONS = { parse: [] };
 
 /**
  * Застосування плану провіжну (docs/DISCORDAPP.md, «Plan and apply»).
@@ -34,8 +38,8 @@ export async function applyProvision({ guild, desired, onPhase = () => {}, read 
   const log = [];
   for (const phase of PHASES) {
     onPhase(phase.name);
-    const current = await read(guild);
     const state = await store.forGuild(guild.id);
+    const current = await read(guild, state);
     const plan = planProvision(desired, current, state);
     if (plan.errors.length) {
       log.push(...plan.errors.map((error) => ({ ok: false, text: error })));
@@ -54,6 +58,7 @@ const PHASES = [
   { name: "categories", run: (ctx) => runOps(ctx, "categories", applyCategoryOp) },
   { name: "channels", run: (ctx) => runOps(ctx, "channels", applyChannelOp) },
   { name: "channel order", run: applyChannelOrder },
+  { name: "messages", run: (ctx) => runOps(ctx, "messages", applyMessageOp) },
   { name: "state", run: (ctx) => runOps(ctx, "state", applyStateOp) },
 ];
 
@@ -70,6 +75,7 @@ async function runOps(ctx, phase, apply) {
 }
 
 function opLabel(op) {
+  if (op.kind === "message") return `${op.op} 💬 ${op.name} in #${op.channel}`;
   const prefix = { role: "@", category: "📁 ", channel: "#" }[op.kind] ?? "";
   return `${op.op} ${prefix}${op.name}`;
 }
@@ -247,6 +253,31 @@ async function applyChannelOrder({ guild, desired, current, plan, log }) {
   } catch (error) {
     log.push({ ok: false, text: `reorder channels: ${error.message}` });
   }
+}
+
+// ── Повідомлення ───────────────────────────────────────────────────────────
+
+/**
+ * post — нове повідомлення в кінці каналу; edit — те саме повідомлення, на
+ * місці. Payload рендериться тут наново: у цій фазі ролі вже існують, тож
+ * кнопки панелей мають справжні id.
+ */
+async function applyMessageOp(op, { guild, plan, store }) {
+  const channelId = plan.context.channelIds.get(op.spec.channelKey);
+  const channel = channelId && guild.channels.cache.get(channelId);
+  if (!channel) throw new Error(`channel "${op.spec.channelKey}" does not exist — it failed to create`);
+
+  const { payload, pending } = renderMessage(op.spec, plan.context);
+  if (pending.length) throw new Error(`role(s) ${pending.join(", ")} do not exist — they failed to create`);
+  const extra = { content_hash: hashPayload(payload), parent_id: channelId };
+
+  if (op.op === "edit") {
+    await channel.messages.edit(op.id, { ...payload, allowedMentions: NO_MENTIONS });
+    await store.remember(guild.id, "message", op.key, op.id, extra);
+    return;
+  }
+  const message = await channel.send({ ...payload, allowedMentions: NO_MENTIONS });
+  await store.remember(guild.id, "message", op.key, message.id, extra);
 }
 
 // ── Стан ───────────────────────────────────────────────────────────────────

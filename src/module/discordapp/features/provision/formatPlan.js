@@ -12,6 +12,8 @@ const SYMBOL = {
   forget: "· forget ",
   orphaned: "⚠ orphaned",
   skip: "⏭ skip   ",
+  post: "+ post   ",
+  edit: "~ edit   ",
 };
 
 const SECTIONS = [
@@ -19,6 +21,7 @@ const SECTIONS = [
   ["Categories", (op) => op.kind === "category" && op.phase !== "report"],
   ["Channels", (op) => op.kind === "channel" && op.phase !== "report" && op.op !== "reorder"],
   ["Order", (op) => op.op === "reorder"],
+  ["Messages", (op) => op.kind === "message" && op.phase !== "report"],
   ["Left alone", (op) => op.phase === "report"],
 ];
 
@@ -85,6 +88,7 @@ function formatOp(op) {
 }
 
 function targetLabel(op) {
+  if (op.kind === "message") return op.channel ? `💬 ${op.name} in #${op.channel}` : `💬 ${op.name}`;
   if (op.kind === "role") return `@${op.name}`;
   if (op.kind === "category") return `📁 ${op.name}`;
   return `#${op.name}`;

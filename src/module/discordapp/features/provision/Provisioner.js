@@ -1,4 +1,5 @@
-import { resolveServerConfig } from "./configStore.js";
+import { loadMessageBody, resolveServerConfig } from "./configStore.js";
+import { bodyProblem } from "./messages.js";
 import { validateServerConfig } from "./schema.js";
 import { readGuild } from "./readGuild.js";
 import { applyBlockers, planProvision } from "./planner.js";
@@ -16,11 +17,34 @@ export async function preparePlan(guild, configName = null) {
   const config = await resolveServerConfig(guild.id, configName);
   const { errors, desired } = validateServerConfig(config.raw);
   if (errors.length) return { config, errors };
+  const bodyErrors = await attachBodies(desired);
+  if (bodyErrors.length) return { config, errors: bodyErrors };
 
-  const current = await readGuild(guild);
   const state = await DiscordResource.forGuild(guild.id);
+  const current = await readGuild(guild, state);
   const plan = planProvision(desired, current, state);
   return { config, errors: [], desired, current, plan, blockers: applyBlockers(current) };
+}
+
+/**
+ * Тексти повідомлень з .md-файлів → `message.body`. schema.js чиста й файлів
+ * не читає, тож це робиться тут; ліміти Discord перевіряються одразу, щоб не
+ * впасти посеред apply.
+ * @returns {Promise<string[]>} Помилки.
+ */
+async function attachBodies(desired) {
+  const errors = [];
+  for (const message of desired.messages.filter((m) => m.kind === "text")) {
+    try {
+      message.body = await loadMessageBody(message.file);
+    } catch (error) {
+      errors.push(`message "${message.key}": ${error.message}`);
+      continue;
+    }
+    const problem = bodyProblem(message);
+    if (problem) errors.push(`message "${message.key}": ${problem}`);
+  }
+  return errors;
 }
 
 /** Помилки валідації конфігу → текст. */

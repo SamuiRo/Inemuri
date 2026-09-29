@@ -45,6 +45,7 @@ Inemuri/
 │   │       └── daily.png                  # Image used by the daily crypto report
 │   ├── config/
 │   │   ├── discordapp/servers/            # discordapp server configs (<name>.json git-ignored; example.sample.json tracked)
+│   │   ├── discordapp/messages/           # Texts of provisioned messages (*.md git-ignored; *.sample.md tracked)
 │   │   ├── app.config.js                  # All env vars and hardcoded constants in one place
 │   │   ├── appearance.config.json         # UI/theme config used by helper assets
 │   │   ├── categories.json                # TheFlow taxonomy v1: topics, signals, routing
@@ -74,10 +75,12 @@ Inemuri/
 │   │   │   ├── channelKinds.js            # ChannelType ↔ kind names, shared by export and provisioning
 │   │   │   ├── reply.js                   # Long replies become an attached file
 │   │   │   ├── progress.js                # Throttled progress edits for long commands
-│   │   │   ├── commands/                  # One file per slash command (index.js lists them)
+│   │   │   ├── commands/                  # One file per slash command (index.js lists commands and components)
+│   │   │   ├── components/                # Button handlers not tied to a command (role-panel.js)
 │   │   │   └── features/
 │   │   │       ├── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
-│   │   │       └── provision/             # /provision: schema, overwrites, planner, formatPlan (pure); readGuild, applier, configStore, Provisioner
+│   │   │       ├── provision/             # /provision: schema, overwrites, messages, planner, formatPlan (pure); readGuild, applier, configStore, Provisioner
+│   │   │       └── roles/                 # Role panels: button ids, role change, self-assign safety (pure)
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
 │   │   ├── filters/

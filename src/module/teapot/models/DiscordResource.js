@@ -13,10 +13,11 @@ import database from "../sqlite/sqlite_db.js";
 export const DiscordResource = database.sequelize.define("DiscordResource", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   guild_id: { type: DataTypes.STRING, allowNull: false },
-  kind: { type: DataTypes.STRING(16), allowNull: false, comment: "role | category | channel" },
+  kind: { type: DataTypes.STRING(16), allowNull: false, comment: "role | category | channel | message" },
   key: { type: DataTypes.STRING, allowNull: false, comment: "key з конфігу сервера" },
   discord_id: { type: DataTypes.STRING, allowNull: false },
-  content_hash: { type: DataTypes.STRING, allowNull: true, comment: "для повідомлень (крок 5)" },
+  content_hash: { type: DataTypes.STRING, allowNull: true, comment: "хеш payload повідомлення — видно, що текст змінився" },
+  parent_id: { type: DataTypes.STRING, allowNull: true, comment: "канал повідомлення (міграція 010)" },
   archived_at: { type: DataTypes.DATE, allowNull: true },
   archived_from: { type: DataTypes.STRING, allowNull: true, comment: "key категорії, з якої архівовано" },
 }, {
