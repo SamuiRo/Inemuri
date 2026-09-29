@@ -7,6 +7,22 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.30.2] - 2026-09-29
+
+Specification for discordapp, the Discord server-management module. No code
+changed.
+
+### Added
+- **`docs/DISCORDAPP.md`** — decisions, module layout, permission model and
+  feature contracts for `/export-chats`, role panels with opt-in channel
+  groups, and provisioning a server from config (plan/apply, never delete —
+  removed channels move into a private archive), plus the work plan. The
+  central decisions: discordapp stays in the same process behind an
+  `EventBus`-only boundary; Discord *delivery* moves to REST so forwarding
+  never depends on the gateway session; every reply is ephemeral; business
+  logic is pure functions.
+- `CLAUDE.md` names discordapp and its boundary.
+
 ## [4.30.1] - 2026-09-29
 
 Documentation caught up with the pilot being configured, and channel identities

@@ -24,6 +24,7 @@ Inemuri/
 │   ├── CHANGELOG.md                       # Per-version record of what shipped and why
 │   ├── DEPLOYMENT.md                      # pm2 deploy and migration procedure
 │   ├── THEFLOW.md                         # TheFlow spec — Phase 0/1/1.5 implemented, 2+ specified
+│   ├── DISCORDAPP.md                      # discordapp spec — Discord server management
 │   ├── text_replacements.md               # Text preprocessing and replacement rules
 │   ├── media.md                           # Media pipeline, Discord embeds
 │   ├── .archive/                          # Retired docs, git-ignored — do not cite

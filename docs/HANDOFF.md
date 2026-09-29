@@ -41,6 +41,10 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 `flow` and `vision` included. Enabling the pilot is: import the live
 `src/config/sources.json`, switch the chosen sources on, export, reseed.
 
+**discordapp** — Discord server management inside Inemuri — is specified in
+[DISCORDAPP.md](DISCORDAPP.md) as of `v4.30.2`; its work plan table at the end
+records per-step status.
+
 ## Documentation
 
 Everything under `docs/` is English. Four superseded Ukrainian documents were

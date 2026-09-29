@@ -31,6 +31,12 @@ per-task status).
 
 Never describe TheFlow as standing alongside or on top of Inemuri; it is inside it.
 
+**discordapp is the Discord server-management module of Inemuri** — slash
+commands, channel export, role panels, server provisioning from config. Call it
+discordapp, not "the bot" or "discordbot". It runs in the same process and
+talks to the core only through `EventBus`; Discord *delivery* is not part of it
+and must never depend on it. See [docs/DISCORDAPP.md](docs/DISCORDAPP.md).
+
 ## Documentation
 
 - **All documentation is written in English.** This applies to `README.md`,
