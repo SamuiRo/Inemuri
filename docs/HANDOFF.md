@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.33.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.34.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 9 migrations exist (`database/migrations/001`–`009`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 350 green `node --test` cases
+is clean on the dev database. `npm test` is 358 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -43,11 +43,11 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 
 **discordapp** — Discord server management inside Inemuri — is specified in
 [DISCORDAPP.md](DISCORDAPP.md); its work plan table at the end records
-per-step status. Steps 1–3 are done: Discord delivery is REST-only, so a
+per-step status. Steps 1–4 are done: Discord delivery is REST-only, so a
 Discord outage no longer stops the process, discordapp starts last with its
-own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so does
-`/provision plan` over server configs (`v4.33.0`). **None of it has run
-against the live bot yet** — see next steps.
+own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so do
+`/provision plan` (`v4.33.0`) and `/provision apply` (`v4.34.0`). **None of it
+has run against the live bot yet** — see next steps.
 
 ## Documentation
 
@@ -92,8 +92,10 @@ destinations is worse than not starting. A fresh clone now starts — before
    Developer Portal; start with a small `limit` on one server. For
    provisioning: `npm run migrate` (migration `009`), copy
    `src/config/discordapp/servers/example.sample.json` to `<name>.json`, set
-   `guildId`, and run `/provision plan` — it changes nothing. Next build step
-   is `/provision apply` (DISCORDAPP.md step 4).
+   `guildId`, and run `/provision plan` — it changes nothing. Try
+   `/provision apply` first on a **test server**, with the bot temporarily
+   holding a role with Administrator. Next build step is messages from `.md`,
+   role panels and opt-in groups (DISCORDAPP.md step 5).
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -150,6 +152,8 @@ destinations is worse than not starting. A fresh clone now starts — before
 - Built step 3 (`v4.33.0`): configs, validator, planner, `/provision plan`.
   The operator settled on no deletion at all: a channel leaving the config
   goes to a mandatory private archive category.
+- Built step 4 (`v4.34.0`): the applier and `/provision apply`. Verified
+  end-to-end against an in-memory server, not a real one.
 
 ### 2026-09-13
 

@@ -394,6 +394,7 @@ There is also a discordapp slash command:
 - `/daily`: manually triggers the daily report for whitelisted users. The reply is visible only to the caller, like every discordapp reply.
 - `/export-chats limit:<1–100> [format:md|json|both] [scope:this|all]`: exports the latest messages of every channel and thread the bot can read into `exports/` (git-ignored) and attaches the file to the reply — gzipped when it exceeds `DISCORD_UPLOAD_LIMIT_MB`. Needs the **Message Content** intent enabled for the bot in the Discord Developer Portal; without it Discord returns other people's messages empty, and the reply warns about it. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-export-chats).
 - `/provision plan [server:<name>]`: compares the server with its config in `src/config/discordapp/servers/<name>.json` (git-ignored; start from `example.sample.json`) and shows what applying would create, update, adopt, archive or reorder. Changes nothing. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-provisioning-server-as-code).
+- `/provision apply [server:<name>]`: the same plan with an **Apply** button. Nothing is ever deleted — a channel removed from the config moves into the private archive category. Needs the bot to hold Administrator for the duration: give it a role with Administrator, apply, take the role away.
 
 ## CLI commands
 

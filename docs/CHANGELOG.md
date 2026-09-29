@@ -7,6 +7,38 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.34.0] - 2026-09-29
+
+discordapp step 4: `/provision apply`.
+
+### Added
+- **`/provision apply [server:]`** (admin, ephemeral): shows the plan with
+  **Apply** / **Cancel** buttons — only when there is something to apply, no
+  plan error and the bot holds Administrator. The button carries the plan's
+  fingerprint; if the server or config changed before the click, nothing is
+  applied. It edits its own message, so it cannot be pressed twice, and one
+  apply runs per server at a time.
+- **Applier** (`applier.js`): roles → role order → categories → channels →
+  channel order → state. Each phase re-reads the server and state and
+  recomputes the plan, so a phase sees what the previous one created and a
+  rerun continues from what is left. A failed operation is logged and the rest
+  of the phase still runs. Archiving moves the channel into the archive and
+  syncs it with the archive's rights; a full archive (50 channels) rolls over
+  into `<name> 2`. Restoring moves it back and resyncs it with its category.
+- `CommandRegistry`: component handlers with `update: true` edit the message
+  they sit on (buttons and attachments cleared) instead of replying anew.
+- `src/module/discordapp/progress.js` — the throttled progress editor, now
+  shared by `/export-chats` and apply.
+- `test/discordapp-apply.test.js` — 7 cases against an in-memory server:
+  empty server to configured, with an empty second plan and a no-op second
+  apply; archive then restore of the same channel; adoption without
+  duplicates with a per-member overwrite surviving; archive rollover; a failed
+  operation not stopping its phase.
+
+### Changed
+- `topic` on a voice or stage channel is now a config error rather than a
+  Discord error halfway through apply.
+
 ## [4.33.0] - 2026-09-29
 
 discordapp step 3: server-as-code configs and `/provision plan`. Nothing is

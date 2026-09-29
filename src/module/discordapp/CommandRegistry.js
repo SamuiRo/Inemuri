@@ -13,16 +13,21 @@ const MAX_CONTENT = 2000;
  * ephemeral: відповідь уже відкладена як ephemeral, а editReply цього не змінює.
  *
  * @param {(string|object|undefined|null)} result
+ * @param {{ replacesMessage?: boolean }} [options]
+ *   replacesMessage — відповідь замінює повідомлення з кнопками (компонент з
+ *   `update: true`): його кнопки й вкладення прибираються, якщо обробник не
+ *   дав нових.
  * @returns {object}
  */
-export function toReply(result) {
-  if (result == null) return { content: "✅ Done." };
-  if (typeof result === "string") {
-    return {
-      content: result.length > MAX_CONTENT ? `${result.slice(0, MAX_CONTENT - 1)}…` : result,
-    };
-  }
-  return result;
+export function toReply(result, { replacesMessage = false } = {}) {
+  let reply;
+  if (result == null) reply = { content: "✅ Done." };
+  else if (typeof result === "string") {
+    reply = { content: result.length > MAX_CONTENT ? `${result.slice(0, MAX_CONTENT - 1)}…` : result };
+  } else reply = result;
+
+  if (!replacesMessage) return reply;
+  return { components: [], attachments: [], ...reply };
 }
 
 /**
@@ -35,7 +40,12 @@ export function toReply(result) {
  *  - помилка обробника — ephemeral-повідомлення і лог, не падіння процесу.
  *
  * Команда:    { data: SlashCommandBuilder, admin?: boolean, execute(interaction, ctx) }
- * Компонент:  { prefix: string,           admin?: boolean, execute(interaction, ctx) }
+ * Компонент:  { prefix: string,           admin?: boolean, update?: boolean, execute(interaction, ctx) }
+ *
+ * `update: true` — компонент редагує повідомлення, на якому він стоїть,
+ * замість нової відповіді, і прибирає з нього кнопки. Лише для кнопок на
+ * ephemeral-повідомленнях: так повідомлення лишається ephemeral (D5), а
+ * кнопку «Apply» неможливо натиснути вдруге.
  */
 class CommandRegistry {
   /**
@@ -100,15 +110,17 @@ class CommandRegistry {
       }
 
       print(`[DISCORDAPP] ${label} by ${interaction.user.tag}`);
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const updates = handler.update === true && interaction.isMessageComponent();
+      if (updates) await interaction.deferUpdate();
+      else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       try {
         const result = await handler.execute(interaction, this.ctx);
-        await interaction.editReply(toReply(result));
+        await interaction.editReply(toReply(result, { replacesMessage: updates }));
       } catch (error) {
         print(`[DISCORDAPP] ${label} failed: ${error.message}`, "error");
         console.error(error);
-        await interaction.editReply({ content: `❌ ${error.message}` });
+        await interaction.editReply(toReply(`❌ ${error.message}`, { replacesMessage: updates }));
       }
     } catch (error) {
       // Сюди потрапляє те, що зламалось у самій відповіді: протермінований

@@ -169,10 +169,11 @@ content, role panels, AutoMod rules — is described in
 `src/config/discordapp/servers/<name>.json` and applied Terraform-style:
 **plan, then apply**.
 
-> **Plan implemented (v4.33.0).** Code: `src/module/discordapp/features/provision/`
-> — `schema.js`, `overwrites.js`, `planner.js`, `formatPlan.js` (pure),
-> `readGuild.js` (reads Discord), `configStore.js`, `Provisioner.js`;
-> command `commands/provision.js`. Messages, role panels and AutoMod are later
+> **Plan implemented (v4.33.0), apply (v4.34.0).** Code:
+> `src/module/discordapp/features/provision/` — `schema.js`, `overwrites.js`,
+> `planner.js`, `formatPlan.js` (pure), `readGuild.js` (reads Discord),
+> `applier.js` (writes Discord), `configStore.js`, `Provisioner.js`; command
+> `commands/provision.js`. Messages, role panels and AutoMod are later
 > steps: the validator does not accept `messages`, `optIn` or `automod` yet.
 > A working starting point is `servers/example.sample.json`.
 
@@ -265,11 +266,24 @@ content_hash, archived_at, archived_from)`.
 | `↕ reorder` | Roles or channels are not in config order. Order is applied by **slots**: the managed resources swap among the positions they already hold, so nothing outside the config moves |
 
 `/provision plan server:<name>` shows the ops and changes nothing.
-`/provision apply server:<name>` recomputes the plan, shows it, and runs it only
-after an ephemeral confirm button. Apply order: roles → role positions →
-categories → channels with overwrites → channel positions → messages and
-panels → AutoMod. Every step is idempotent; a rerun after a failure continues
-where the last one stopped.
+`/provision apply server:<name>` shows the same plan with **Apply** and
+**Cancel** buttons, and only when there is something to apply, no plan error
+and nothing blocking (Administrator). The Apply button carries a fingerprint of
+the plan it was shown under; if the server or the config changed before the
+click, nothing is applied and the plan has to be looked at again. The button
+edits its own ephemeral message, so it cannot be pressed twice, and one apply
+runs per server at a time.
+
+Apply order: roles → role positions → categories → channels (create, update,
+adopt, restore, archive) → channel positions → state cleanup; messages,
+panels and AutoMod come later. **Each phase reads the server and the state
+again and recomputes the plan**, so later phases see the ids of what earlier
+ones created, and a rerun after a failure continues with whatever is left.
+A failed operation is logged and the rest of its phase still runs.
+
+When a moved or restored channel has no overwrites of its own in the config,
+it is synced with its new category, as Discord does when a channel is dragged;
+restored to no category, it only loses the archive's rights.
 
 A category holds at most 50 channels, so the archive rolls over into
 `archive-2`, `archive-3`, … under the same permissions.
@@ -304,7 +318,7 @@ the first config is edited rather than written from scratch.
 | 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | Done (v4.31.0) |
 | 2 | `/export-chats` | Done (v4.32.0) |
 | 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | Done (v4.33.0) |
-| 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | — |
+| 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | Done (v4.34.0) — migration and import landed with step 3 |
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | — |
 | 6 | AutoMod as a resource | — |
 | 7 | `/provision export` | — |

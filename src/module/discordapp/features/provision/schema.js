@@ -178,7 +178,9 @@ function parseChannel(channel, category, categoryOverwrites, presets, roleKeys, 
   };
 
   if (channel.topic !== undefined) {
-    if (typeof channel.topic === "string" && channel.topic.length <= MAX_TOPIC) parsed.topic = channel.topic;
+    // Discord приймає topic лише в текстових каналах — інакше помилка посеред apply.
+    if (!hasTextName(kind)) v.error(`${path}.topic`, `a ${kind} channel has no topic`);
+    else if (typeof channel.topic === "string" && channel.topic.length <= MAX_TOPIC) parsed.topic = channel.topic;
     else v.error(`${path}.topic`, `must be text up to ${MAX_TOPIC} characters`);
   }
   if (channel.nsfw !== undefined) {

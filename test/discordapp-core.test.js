@@ -142,6 +142,18 @@ test("CommandRegistry — components are routed by customId prefix", async () =>
   assert.deepEqual(interaction.calls.at(-1), ["editReply", { content: "topics,42" }]);
 });
 
+test("CommandRegistry — an update component edits its own message and clears its buttons", async () => {
+  const registry = new CommandRegistry({
+    commands: [],
+    components: [{ prefix: "confirm", update: true, execute: async () => "done" }],
+    policy: POLICY,
+  });
+  const interaction = fakeInteraction({ customId: "confirm:yes" });
+  interaction.deferUpdate = async () => interaction.calls.push(["deferUpdate"]);
+  await registry.dispatch(interaction);
+  assert.deepEqual(interaction.calls, [["deferUpdate"], ["editReply", { components: [], attachments: [], content: "done" }]]);
+});
+
 test("CommandRegistry — unknown command gets an ephemeral answer", async () => {
   const registry = new CommandRegistry({ commands: [], policy: POLICY });
   const interaction = fakeInteraction({ commandName: "gone" });

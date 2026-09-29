@@ -30,3 +30,22 @@ export function formatConfigErrors(config, errors) {
     ...errors.map((error) => `✖ ${error}`),
   ].join("\n");
 }
+
+// Сервери, на яких саме йде apply.
+const applying = new Set();
+
+/**
+ * Один apply на сервер за раз. Два паралельні apply бачили б той самий план
+ * і обидва створили б ті самі канали.
+ */
+export async function withGuildLock(guildId, fn) {
+  if (applying.has(guildId)) {
+    return "⏳ An apply is already running on this server — wait for it to finish.";
+  }
+  applying.add(guildId);
+  try {
+    return await fn();
+  } finally {
+    applying.delete(guildId);
+  }
+}

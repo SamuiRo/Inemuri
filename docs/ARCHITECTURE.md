@@ -73,10 +73,11 @@ Inemuri/
 │   │   │   ├── customId.js                # Pure: stateless component ids
 │   │   │   ├── channelKinds.js            # ChannelType ↔ kind names, shared by export and provisioning
 │   │   │   ├── reply.js                   # Long replies become an attached file
+│   │   │   ├── progress.js                # Throttled progress edits for long commands
 │   │   │   ├── commands/                  # One file per slash command (index.js lists them)
 │   │   │   └── features/
 │   │   │       ├── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
-│   │   │       └── provision/             # /provision: schema, overwrites, planner, formatPlan (pure); readGuild, configStore, Provisioner
+│   │   │       └── provision/             # /provision: schema, overwrites, planner, formatPlan (pure); readGuild, applier, configStore, Provisioner
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
 │   │   ├── filters/
