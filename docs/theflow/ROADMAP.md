@@ -40,12 +40,16 @@ migration **adopts** it. Both paths must work from the same file.
 All active. 8 polling, 6 listener (`mode` absent in `sources.json` defaults to
 `listener`).
 
+Channel names and ids live in the git-ignored `sources.json`, never here; this
+plan refers to sources by their shape. Labels `S1`–`S8` below are this
+document's own, ordered by volume, and mean nothing outside it.
+
 | Cluster | Sources |
 |---|---|
-| Steam / games | Source J `listener`, Source N `polling`, Source D `listener`, Source L `listener` |
-| Crypto / trading | Source G `polling`, Source I `polling`, Source A `listener`, Source K `listener`, Source F `polling` |
-| Airdrops / farming | Source M `polling`, Source H `listener`, Source B `polling`, Source C `polling` |
-| Mixed | Source E `polling` |
+| Steam / games | 4 — one `polling`, three `listener` |
+| Crypto / trading | 5 — three `polling`, two `listener` |
+| Airdrops / farming | 4 — three `polling`, one `listener` |
+| Mixed | 1 `polling` |
 
 Five facts from this data that change the plan:
 
@@ -88,7 +92,7 @@ carry over into the regex stage unchanged.
 
 Two smaller items worth cleaning up in passing: the `[Sponsored]…[/Sponsored]`
 and `@techchannel` replacement pair is copy-pasted into 12 sources and almost
-certainly never matches anything; and Source J carries an empty-pattern
+certainly never matches anything; and one source carries an empty-pattern
 replacement (`"pattern": ""` with `is_regex: true`), which is junk config even
 though it is a harmless no-op.
 
@@ -97,16 +101,16 @@ though it is a harmless no-op.
 `source_states.last_message_id` is a Telegram per-channel sequence number. The
 backup pins its value for 8 channels at 2026-06-07:
 
-| Source | `last_message_id` at 2026-06-07 |
-|---|---|
-| Source G | 12283 |
-| Source B | 8196 |
-| Source M | 5027 |
-| Source F | 4353 |
-| Source C | 3789 |
-| Source N | 3031 |
-| Source I | 2745 |
-| Source E | 2675 |
+| Source | Cluster | `last_message_id` at 2026-06-07 |
+|---|---|---|
+| S1 | crypto | 12283 |
+| S2 | airdrop | 8196 |
+| S3 | airdrop | 5027 |
+| S4 | crypto | 4353 |
+| S5 | airdrop | 3789 |
+| S6 | steam | 3031 |
+| S7 | crypto | 2745 |
+| S8 | mixed | 2675 |
 
 This backup is the most recent one, so there is no second snapshot to diff
 against — but none is needed. **GramJS can read the current last message id for
@@ -119,14 +123,14 @@ messages/day  =  (current_id - baseline_id) / days_since(row.updatedAt)
 
 Using each row's own `updatedAt` rather than the backup date matters — the rows
 were written between 2026-05-01 and 2026-06-07, so a single shared denominator
-would understate the busy channels and wildly overstate Source M. Task 2.1 does
+would understate the busy channels and wildly overstate S3. Task 2.1 does
 this.
 
 The figure counts every message in the channel, deleted and service messages
 included, so it is an upper bound rather than an exact post count. For sizing a
 provider tier that is the right direction to be wrong in.
 
-One anomaly the same table already shows: **Source M has not advanced since
+One anomaly the same table already shows: **S3 has not advanced since
 2026-05-01**, more than a month before the backup, while every other polling
 source updated within two days of it. Either the channel is dead or polling for
 it is broken. Worth checking before it is considered for the pilot.
@@ -456,7 +460,7 @@ confirms candidates, it does not trust them — but the rate must be priced in.
 `flow:export` — sanitized JSONL sample for local prompt work.
 
 Hardening, same task: carry `caseSensitive` into `RegexStage` (latent bug, see
-1.1d); drop the copy-pasted no-op replacements and the empty pattern in Source J.
+1.1d); drop the copy-pasted no-op replacements and the empty pattern in 1.1.
 
 ### 2.9 Enable the pilot (`S`)
 
@@ -464,17 +468,17 @@ Concrete recommendation from 1.1, all polling so restarts cannot punch holes:
 
 | Source | Why |
 |---|---|
-| **Source G** | Highest message id — the volume baseline |
-| **Source B** | Second highest, airdrop domain, a likely screenshot channel |
-| **Source N** | Steam drops with the richest blacklist — the `promo_code` / `freebie` case |
-| **Source E** | Giveaway noise — the material `#unsorted` will be made of |
-| **Source C** *(optional)* | Overlaps Source B and Source M — the cross-source repost case |
+| **S1** | Highest message id — the volume baseline |
+| **S2** | Second highest, airdrop domain, a likely screenshot channel |
+| **S6** | Steam drops with the richest blacklist — the `promo_code` / `freebie` case |
+| **S8** | Giveaway noise — the material `#unsorted` will be made of |
+| **S5** *(optional)* | Overlaps S2 and S3 — the cross-source repost case |
 
 Leave the Steam listener channels forwarding classically. If a screenshot-heavy
 channel turns out to be listener-mode, switch it to `both` rather than
 `polling` — that keeps latency and gains a checkpoint.
 
-Do **not** include Source M until the stale checkpoint from 1.2 is explained.
+Do **not** include S3 until the stale checkpoint from 1.2 is explained.
 
 > **Editor ready (v4.14.0).** `SourceBuilder.html` now has a TheFlow section
 > per source — the toggle, `topics` chips, `min_confidence`,
@@ -487,6 +491,28 @@ Do **not** include Source M until the stale checkpoint from 1.2 is explained.
 Import the live `src/config/sources.json` into the editor, switch the pilot
 sources on, export, and reseed. The remaining work here is **operator
 judgement, not code**: which channels, and reading what comes out.
+
+> **Done (v4.30.1) — configured, not yet observed.** Three sources are
+> flow-enabled in the git-ignored config and seeded: a promo-code /`freebie`
+> channel, a meme-heavy one, and a giveaway-noise one. Vision is on for the
+> promo-code channel only — it posts codes as screenshots, which is the case
+> 1.5 exists for — and off on the meme-heavy one, where OCR of a meme is
+> noise. `filters.reject_shouty` is on for the two whose ritual posts it
+> targets, checked first against saved real posts so no useful post matched.
+>
+> Two deviations from the recommendation above, both deliberate:
+>
+> - The pilot was chosen by **filter tuning material** — channels whose noise
+>   was already characterised post by post — rather than by message volume.
+>   Volume sizing (2.1) still has to run.
+> - **Two of the three are `listener` mode**, which 1.1a argues against: a
+>   listener source loses everything posted while the process is down, and for
+>   a corpus that is a hole, not a missed forward. Switch them to `both`
+>   before treating the corpus as complete.
+>
+> Nothing has flowed yet — source config is read at startup, so this takes
+> effect on the next restart. What remains is reading `flow stats` and
+> `flow review`.
 
 ### Phase 0.5 exit criteria
 
@@ -916,7 +942,7 @@ Within one channel that is correct. For the same story appearing word-for-word
 on a second channel it is not — that is precisely the tier 1 case, and "also
 reported by N more channels" is a feature. As written, `members_count`
 undercounts exactly the duplicates that were cheapest to detect. The overlap
-between Source B, Source C, and Source M makes this immediate, and
+between the three airdrop sources (1.2) makes this immediate, and
 news sites in phase 3.5 make it severe.
 
 1. **Scope the ingest-time check to the source**, and let stage 3 tier 1 handle
@@ -1074,7 +1100,7 @@ gray-zone volume.
 
 | When | What |
 |---|---|
-| Now | Why Source M's checkpoint has not advanced since 2026-05-01 — dead channel or broken polling |
+| Now | Why S3's checkpoint has not advanced since 2026-05-01 — dead channel or broken polling |
 | Before 2.3 | The app root path on the VPS, for `ecosystem.config.cjs` and `docs/DEPLOYMENT.md` |
 | Before 2.9 | Confirmation that forwarding may pause on the pilot sources, and which channel is the screenshot-heavy one |
 | Before phase 1 | ~~The OpenRouter model ids you intend to use, and whether your account exposes embeddings~~ **Decided v4.25.0:** Gemini primary, OpenRouter text-only fallback; OpenRouter has embeddings but they stay unused (3.1). Still open: the OpenRouter complete model id, which must support `json_schema` output |
@@ -1235,9 +1261,9 @@ blacklists (1.1c) name the signal types you already reject by hand.
 
 | Topic | Covers | Sources |
 |---|---|---|
-| `steam` | Steam and game drops, sales, inventory, releases, patches | Source J, Source N, Source D, Source L |
-| `airdrop` | Testnets, retrodrops, farming tasks, allocations, snapshots | Source M, Source H, Source B, Source C, Source G |
-| `crypto` | Listings, on-chain specifics, market moves, analysis | Source I, Source A, Source K, Source F |
+| `steam` | Steam and game drops, sales, inventory, releases, patches | The 4 steam / games sources (1.1) |
+| `airdrop` | Testnets, retrodrops, farming tasks, allocations, snapshots | The 4 airdrop sources, plus the highest-volume crypto one |
+| `crypto` | Listings, on-chain specifics, market moves, analysis | The remaining 4 crypto / trading sources |
 | `tools` | Free offers, service discounts, non-obvious technical solutions | any |
 | `other` | Fits nothing above → `#unsorted` | — |
 
@@ -1272,7 +1298,7 @@ added to the enum:
    different incident.
 
 That this matters is visible in the source list: three of the fourteen channels
-are named Source I, Source A, and Source K. Scam and breach reporting
+name scam reporting in their own channel titles. Scam and breach reporting
 is already a large share of the incoming stream — it is currently mixed into the
 same firehose as giveaway spam.
 
@@ -1293,7 +1319,7 @@ configuration. When those channels are created, `security` is the one that
 justifies a channel of its own before any other: it is the category where a
 missed post has a cost beyond annoyance.
 
-One tension to resolve at the phase 1 checkpoint: Source I blacklists
+One tension to resolve at the phase 1 checkpoint: one crypto source blacklists
 `<filter>` / `<filter>`, while `tools` is *defined* as discounts and free offers.
 Discounts are noise on one source and signal on another. That is a per-source
 `flow.topics` restriction, not a category description problem — which is exactly

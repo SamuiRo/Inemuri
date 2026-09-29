@@ -7,6 +7,48 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.30.1] - 2026-09-29
+
+Documentation caught up with the pilot being configured, and channel identities
+were taken out of the repository. No code changed.
+
+### Added
+- **README: "Enabling a source into TheFlow"** — the `flow` block was
+  configurable but undocumented outside the roadmap. Every field with what it
+  decides, that a partial block merges with the defaults, and the consequence
+  that surprises people: a flow-enabled source **stops forwarding**, because
+  the two pipelines are exclusive. Its `destinations` should stay in the config
+  regardless — they are what it returns to when the flag goes back off.
+- **README: "Seeding sources"** — `npm run seed` matches on
+  `platform` + `channel_id`, so the same channel written as `@username` where
+  the stored row holds its numeric id is imported as a *second* source and the
+  channel is then polled twice. This happened while enabling the pilot and was
+  caught with `node src/cli.js list`. Also: the file wins on every field it
+  defines, so destinations that live only in the database are erased by a
+  reseed.
+- `flow` and a `channel_id` caveat in the source-field table.
+
+### Changed
+- **Channel names and ids are no longer in `docs/`.** They are deployment
+  data — the config that holds them has been git-ignored since `v4.17.0`, and
+  the plan had been quoting them since before that. `theflow/ROADMAP.md` now
+  refers to sources by shape (cluster, mode, volume rank) with labels `S1`–`S8`
+  defined in §1.2 and meaningless outside it; the example channel id in
+  `text_replacements.md` is a placeholder.
+- `HANDOFF.md` — state refreshed: 8 migrations rather than 5, the stale
+  "119 green" audit line replaced, the provider key and pilot now configured,
+  and the restart requirement called out, since source config is read once at
+  startup.
+- `THEFLOW.md` — phase 1.5 marked implemented with what it actually does;
+  phase 1 no longer "dormant" unconditionally; the vision-provider and
+  quota-sizing open questions closed with what was measured.
+- `theflow/ROADMAP.md` §2.9 records the pilot as configured but not yet
+  observed, including two deviations from the recommendation in that section:
+  the sources were picked for the filter-tuning material they had, not by
+  volume, and two of the three run `listener` mode, which §1.1a argues against
+  for flow sources — a listener source loses everything posted while the
+  process is down, which for a corpus is a hole rather than a missed forward.
+
 ## [4.30.0] - 2026-09-13
 
 Real free-tier limits, read from the pilot project's AI Studio page, overturned

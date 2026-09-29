@@ -23,7 +23,7 @@ Inemuri/
 │   ├── HANDOFF.md                         # Current state and next steps — read first
 │   ├── CHANGELOG.md                       # Per-version record of what shipped and why
 │   ├── DEPLOYMENT.md                      # pm2 deploy and migration procedure
-│   ├── THEFLOW.md                         # TheFlow spec — Phase 0/1 implemented, 1.5+ specified
+│   ├── THEFLOW.md                         # TheFlow spec — Phase 0/1/1.5 implemented, 2+ specified
 │   ├── text_replacements.md               # Text preprocessing and replacement rules
 │   ├── media.md                           # Media pipeline, Discord embeds
 │   ├── .archive/                          # Retired docs, git-ignored — do not cite
@@ -230,8 +230,10 @@ ingestion pipeline.
 `posts` / `clusters` tables, the deterministic regex stage
 (`src/module/theflow/RegexStage.js`), and stage-1 ingest
 (`src/module/theflow/FlowIngest.js`) wired into
-`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phases 0.5 through
-5 are still specification — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
+`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phase 0.5 is
+done; phases 2 through 5 are specification apart from the resolve stage
+(`src/module/theflow/ResolveStage.js`), which is built and waiting on the
+destination channels — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
 
 **Phase 1 (LLM gateway + enrichment, shadow mode) is implemented but dormant.**
 `src/services/ai/` (the gateway, providers, schema and prompt) and
@@ -242,7 +244,16 @@ drains `pending` → `enriched` (writing `topic` / `signal_type` / `confidence`
 / `analysis` / `model_used` / `taxonomy_version` / `embedding`), and nothing
 reads the verdicts — in phase 1 shadow mode is structural, not a flag: the
 routing consumer that would act on a verdict does not exist until phase 2.
-Provider decisions and RPD measurement (ROADMAP §3.1, §11) are still open.
+The provider decisions and the free-tier limits behind them are settled
+(ROADMAP §3.1).
+
+**Phase 1.5 (vision) is implemented**, off on every source until
+`flow.vision.enabled` is set. `src/module/theflow/VisionStage.js` runs inside
+the worker between ingest and enrichment — ingest itself still makes no
+outbound calls — and writes `posts.text_ocr` before enrichment, so a retry
+never pays for a transcription twice. Near-identical images are matched by
+perceptual hash against `vision_cache` (migration `008`) instead of being
+sent again.
 
 Two design points that shape the remaining work:
 

@@ -215,7 +215,7 @@ en dash and em dash, because channels are inconsistent about which they use.
 ```json
 {
   "platform": "telegram",
-  "channel_id": "-1001317658512",
+  "channel_id": "-1001234567890",
   "channel_name": "Gaming News",
   "is_active": true,
   "text_replacements": {

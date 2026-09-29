@@ -152,7 +152,7 @@ outbound network calls" invariant. `has_media` is recorded at ingest;
 `image_hash` is filled by a separate pass — `scripts/backfill-image-hash.js`
 (dHash via `sharp`, rate-limited, resumable).
 
-### Phase 1 — gateway plus enrichment in shadow mode ✅ implemented, dormant
+### Phase 1 — gateway plus enrichment in shadow mode ✅ implemented
 
 `LLMGateway` (provider registry, RPM/RPD limits, cache, circuit breaker,
 priority queue, fallback matrix), `categories.json` v1, and the enrichment
@@ -161,13 +161,15 @@ full breakdown per task. Verdicts are written to `posts`, but **routing
 ignores them**, and the worker itself does not start without a primary
 provider API key in `.env`.
 
-**Still open before this phase is actually running:** the provider decisions
-in §11/§3.1 — which Gemini and OpenRouter model ids, whether the OpenRouter
-account exposes embeddings, a vision provider, and measured RPD/RPM.
+The provider decisions that used to block this phase are settled (§3.1):
+Gemini is primary for text, embeddings and vision, with OpenRouter as a
+text-only fallback, and the free-tier limits are measured rather than guessed.
+The worker still does not start without a primary key in `.env`, so a
+deployment with no key ingests into `pending` and stops there.
 
-Exit gate: a week of comparing verdicts against your own judgment before
-enabling enforcement. Without it there is no basis for trusting the
-classification.
+Exit gate: a week of comparing verdicts against your own judgment
+(`node src/cli.js flow review` writes the labels) before enabling enforcement.
+Without it there is no basis for trusting the classification.
 
 ### Phase 2 — content-based routing
 
@@ -197,11 +199,20 @@ Built on the existing `CronScheduler`, which already emits synthetic messages
 onto the same bus. Reactions to posts write labels into the database, which
 later become few-shot examples.
 
-### Phase 1.5 — vision for screenshots (was phase 6)
+### Phase 1.5 — vision for screenshots (was phase 6) ✅ implemented
 
 Transcription of image-only posts on selected sources, so that screenshots of
 tweets and announcements stop being invisible to the pipeline. See
 [theflow/VISION.md](theflow/VISION.md).
+
+`VisionStage` runs inside the worker, between ingest and enrichment — never
+during ingest, which makes no outbound calls. It takes photos and
+image-documents (a screenshot sent as a file, to dodge Telegram's
+compression), downscales, hashes perceptually, and reuses a near-identical
+image's transcription instead of paying for it twice. The result lands in
+`posts.text_ocr` before enrichment runs, so a failed enrichment retry does not
+re-transcribe. Enabled per source with `flow.vision.enabled`, off everywhere
+by default.
 
 Originally placed last, to avoid tuning transcription quality and classification
 quality simultaneously with no way to tell which one produced a bad result. It
@@ -231,11 +242,11 @@ channels get `vision.enabled`.
 | Question | State |
 |---|---|
 | Display language | English as canonical is settled. If posts should be read in Ukrainian, the same enrichment call can return both `text_en` and `summary_uk` — a few extra output tokens, no additional request |
-| Quota against real volume | The full stream now reaches the AI, not the remainder after keyword filtering. Roughly 200+ posts per day times 2 requests is 400–600 per day. The daily limit will bind before the per-minute one; verify provider RPD before phase 1 |
+| Quota against real volume | ~~Verify provider RPD before phase 1~~ **Measured (v4.30.0).** Free-tier limits are per model: the complete/vision model allows RPD 500 / RPM 15, the embedding model RPD 1000 / RPM 100. A text post costs one complete call plus one embedding, a screenshot post two complete calls — roughly 250–500 posts a day. As predicted, the daily limit binds first, and it resets on Pacific midnight |
 | Similarity thresholds | Can only be tuned on real data. This is the direct argument for phase 0 |
 | Deduplication window | Differs per category: a promo code is current for hours, market analysis for days |
 | Moving to a paid tier | Free tiers are fine while tuning. Thanks to the gateway, switching later is an adapter swap rather than a pipeline rewrite |
-| Vision provider | May be a **third** provider, separate from text and embeddings — the gateway routes per capability. Free vision tiers exist and suit the tuning period. Limits are established in [theflow/ROADMAP.md](theflow/ROADMAP.md) §3.1 |
+| Vision provider | ~~May be a third provider~~ **Decided (v4.25.0–v4.30.0).** The same Gemini model serves complete and vision, so both draw on one budget, as the provider itself counts them. The capability seam stays: a separate vision provider is a config change, not a code change |
 | AI-assisted screening | Raised, not specified: cheap AI triage of the incoming stream, potentially covering classic sources too. It is a gateway consumer like any other and runs worker-side — ingestion makes no outbound calls. See [theflow/ROADMAP.md](theflow/ROADMAP.md) §13.8 |
 
 The **engineering** open questions — batch claiming, embedding identity, the

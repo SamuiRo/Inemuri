@@ -2,33 +2,39 @@
 
 ## Current state
 
-`v4.30.0`. TheFlow Phase 0 (persistence, no AI) and Phase 1 (LLM gateway and
-enrichment, shadow mode) are both **implemented in code, and have never yet
-run on real data** — the corpus is empty, no source is flow-enabled, and no
-provider key is set. Phase 1 is **dormant**:
-`src/module/theflow/EnrichWorker.js` only starts when a primary provider API
-key is set in `.env` (`ENRICH_WORKER_ENABLED` + `LLM_PROVIDERS[LLM_PRIMARY].apiKey`
-in `src/config/app.config.js`); without one, flow-enabled sources ingest into
-`posts` as `pending` and nothing else happens. Classic (non-TheFlow) forwarding
-is untouched throughout. 5 migrations exist (`database/migrations/001`–`005`);
-`npm run migrate:status` is clean on the dev database. `npm test` is 292 green
-`node --test` cases (`--test-concurrency=1` — some suites touch the real
-SQLite file). See [CHANGELOG.md](CHANGELOG.md) for the version-by-version
-detail and [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task
-status (every finished task there carries a `> **Done (vX.Y.Z).**` note).
+`v4.30.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
+Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
+8 migrations exist (`database/migrations/001`–`008`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 292 green `node --test` cases
+(`--test-concurrency=1` — some suites touch the real SQLite file). See
+[CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
+[theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
+finished task there carries a `> **Done (vX.Y.Z).**` note).
 
-The dev copy's database and its own live `src/config/sources.json` (14
-sources, none yet flow-enabled) are git-ignored — only what's under
-`database/migrations/` is version-controlled.
+**The pilot is configured but has not run yet.** On the dev copy, three
+sources are flow-enabled in the git-ignored `sources.json` — one of them with
+`flow.vision.enabled`, two with `filters.reject_shouty` — and a Gemini key is
+in `.env`, so `EnrichWorker` starts on the next boot. Nothing has flowed
+through the pipeline: `posts`, `post_feedback` and `provider_quota` are still
+empty, and **a running process will not pick the change up** — source config
+is read at startup. Until that restart, and a first pass of
+`node src/cli.js flow stats`, treat "implemented" as "the code exists and its
+units pass", not as "it works against a live provider".
 
-Audited against the code on 2026-09-11: all five migrations are applied on the
-dev database, `npm test` is 119 green, and every `Done` note in
-[theflow/ROADMAP.md](theflow/ROADMAP.md) matches what is actually in the tree.
-What the docs cannot show is that `posts`, `post_feedback` and `provider_quota`
-are all **empty** — nothing has flowed through the pipeline yet. Treat "Phase 1
-implemented" as "the code exists and its units pass", not as "it works against
-a live provider"; the first real run is still ahead and is what the next steps
-below are for.
+Phase 1 is still **dormant without a key**: `src/module/theflow/EnrichWorker.js`
+starts only when `ENRICH_WORKER_ENABLED` and
+`LLM_PROVIDERS[LLM_PRIMARY].apiKey` are both set
+(`src/config/app.config.js`); without one, flow-enabled sources ingest into
+`posts` as `pending` and nothing else happens. Classic (non-TheFlow)
+forwarding is untouched throughout — except on a source that is itself
+flow-enabled, which stops forwarding by design (see
+[README.md](../README.md#enabling-a-source-into-theflow)).
+
+The dev copy's database and its own live `sources.json` (14 sources, 3
+flow-enabled) are git-ignored — only what is under `database/migrations/` is
+version-controlled. Channel names and ids are deployment data and are kept out
+of `docs/` entirely.
 
 `SourceBuilder.html` (the source-config editor, opened straight from the
 filesystem — no build step) covers the whole source shape as of `v4.14.0`,
@@ -75,32 +81,57 @@ destinations is worse than not starting. A fresh clone now starts — before
    flash-lite calls. A backlog drains quickly and then waits for Pacific
    midnight. Optional: an OpenRouter fallback (`OPENROUTER_API_KEY` plus a
    model supporting `json_schema` output); leave `OPENROUTER_EMBED_MODEL` empty.
-2. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
+2. **Restart the service and watch the first day.** The pilot config is in
+   place but only takes effect on boot. After a restart the log must show
+   `Starting TheFlow enrichment worker...`; then
+   `node src/cli.js flow stats` for the per-source split (how much is
+   `skipped_*` versus `enriched`) and `node src/cli.js flow review` to label
+   verdicts into `post_feedback`. A week of that labelling is Phase 1's exit
+   gate.
+3. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
    against the live session; deploy to the VPS per
    [DEPLOYMENT.md](DEPLOYMENT.md) — on an empty database run
-   `npm run db:bootstrap` before `npm run migrate`; enable `flow.enabled` on the
-   pilot sources.
-3. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
+   `npm run db:bootstrap` before `npm run migrate`.
+4. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
    Resolve (§5.2) is built and waiting on them.
-4. **Phase 1.5 (vision) is built and off everywhere.** Turn it on per source
-   with `flow.vision.enabled` — but only where `node src/cli.js flow stats`
-   shows a high "has_media & len<200" share, and **not** on meme-heavy channels
-   (Source N), where OCR of a meme is noise. A promo-code channel posting code
-   screenshots is the intended case. With nothing enabled the stage costs
-   nothing: the gate refuses before any download.
-5. **The plan now needs real enriched posts.** The §5.4 message template is
+5. **Vision stays per source.** `flow.vision.enabled` belongs where
+   `flow stats` shows a high "has_media & len<200" share — a channel posting
+   code screenshots is the intended case — and **not** on meme-heavy ones,
+   where OCR of a meme is noise. Where it is off the stage costs nothing: the
+   gate refuses before any download.
+6. **The plan now needs real enriched posts.** The §5.4 message template is
    deliberately designed against real material, and routing waits on §5.1.
 
 ## Open questions
 
-- Why has the `Source M` source's polling checkpoint not advanced since
-  2026-05-01 — dead channel, or broken polling? (ROADMAP §1.2, §11)
+- Why has the stale polling source's checkpoint not advanced since
+  2026-05-01 — dead channel, or broken polling? (`S3` in ROADMAP §1.2, §11)
 - The VPS app-root path, needed to finish `ecosystem.config.cjs` for real.
 - The new destination channels for Phase 2, and which existing channel (if
   any) is the screenshot-heavy one Phase 1.5's vision gate should target
   first.
 
 ## Session log
+
+### 2026-09-13
+
+- Live free-tier limits overturned two provider defaults (`v4.30.0`): the
+  complete/vision model moved to a flash-lite one after the previous default
+  turned out to allow 20 requests a day, and the quota ledger became per
+  model rather than per provider.
+- Enabled the pilot in the git-ignored `sources.json`: three sources
+  flow-enabled, vision on the one that posts code screenshots, `reject_shouty`
+  on the two whose ritual posts it targets. Applied with `npm run seed`.
+- **`npm run seed` matches on `platform` + `channel_id`, so the same channel
+  written as `@username` when the database row holds its numeric id is
+  imported as a second source** — the channel would then be polled twice.
+  Caught with `node src/cli.js list`; the duplicate row was deleted (it had no
+  posts and no checkpoint) and the config aligned to the numeric id.
+- Seeding also overwrites `destinations` from the file, so a source whose
+  destinations live only in the database loses them on the next reseed. The
+  pilot's were copied into the config before reseeding.
+- Scrubbed channel names and ids out of `docs/` (`v4.30.1`); the plan refers
+  to sources by shape and by the `S1`–`S8` labels defined in ROADMAP §1.2.
 
 ### 2026-09-10
 

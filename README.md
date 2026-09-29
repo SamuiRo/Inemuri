@@ -210,7 +210,7 @@ Example:
 | Field | Description |
 | --- | --- |
 | `platform` | Source platform. The current runtime primarily uses `telegram`, but the model is designed around source platforms rather than a single hardcoded flow. |
-| `channel_id` | Telegram chat/channel ID as a string-compatible value. |
+| `channel_id` | Telegram chat/channel ID as a string-compatible value. It is also the identity the seeder matches on — see [Seeding](#seeding-sources) before changing it on an existing source. |
 | `channel_name` | Friendly name used in logs and routed message metadata. |
 | `is_active` | Enables or disables the source. |
 | `mode` | `listener`, `polling`, or `both`. |
@@ -218,7 +218,8 @@ Example:
 | `extra_media_types` | Optional. Media types to download for this source in addition to the global `DOWNLOADABLE_MEDIA_TYPES`, e.g. `["audio"]`. Additive only. |
 | `text_replacements` | Preprocessing rules applied before filters. |
 | `filters` | Keyword/blacklist rules, plus the optional `reject_shouty` rule. |
-| `destinations` | Target Telegram/Discord destination IDs. |
+| `destinations` | Target Telegram/Discord destination IDs. Ignored while the source is flow-enabled. |
+| `flow` | Optional. Puts the source through TheFlow instead of classic forwarding — see [below](#enabling-a-source-into-theflow). Absent means `{ "enabled": false }`. |
 
 ### Source modes
 
@@ -253,6 +254,64 @@ configuration alone is not relied on for that.
 
 A flow-enabled source records rejected posts as `skipped_shouty` rather than
 discarding them, so `flow stats` can show how much the rule is catching.
+
+### Enabling a source into TheFlow
+
+`flow` on a source decides which of the two pipelines it uses. Omit the block
+and the source forwards classically, exactly as before TheFlow existed.
+
+```json
+"flow": {
+  "enabled": true,
+  "topics": null,
+  "min_confidence": 0.6,
+  "dedup_window_hours": null,
+  "vision": { "enabled": false, "text_threshold": 200, "max_images_per_post": 2 }
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `enabled` | Route this source through TheFlow. Default `false`. |
+| `topics` | Restrict the source to these topics (`categories.json`), or `null` for all of them. Use it where a topic is signal on one channel and noise on another. |
+| `min_confidence` | Below this the verdict goes to `#unsorted` instead of a topic channel. |
+| `dedup_window_hours` | Per-source override of the per-topic window. `null` keeps the topic's own. |
+| `vision.enabled` | Transcribe screenshots on this source (phase 1.5). Off by default. |
+| `vision.text_threshold` | Skip transcription when the post already has more than this many characters — the image is then decorative. |
+| `vision.max_images_per_post` | Cap on images transcribed per post, so an album cannot drain the daily quota. |
+
+The seeder merges a partial block with those defaults, so `{"enabled": true}`
+is a complete configuration.
+
+**A flow-enabled source stops forwarding.** The two pipelines are exclusive:
+its posts are persisted, enriched and (from phase 2) routed by content, and
+`destinations` is not used meanwhile. Keep the destinations in the config
+anyway — they are what the source returns to when `flow.enabled` goes back to
+`false`, and a reseed would otherwise erase them.
+
+Without a provider key the source still ingests: posts accumulate as `pending`
+and wait. Enrichment starts the first time the service boots with a key set.
+
+Turning it on is: edit `sources.json` → `npm run seed` → **restart the
+service**, since source config is read once at startup. Then
+`node src/cli.js flow stats`.
+
+### Seeding sources
+
+`npm run seed` imports `sources.json` into the database, matching each record
+on `platform` + `channel_id` — updating that row if it exists, creating one if
+it does not. Two consequences are easy to get wrong:
+
+- **`channel_id` is the identity.** The same channel written as `@username`
+  where the stored row holds its numeric id is imported as a *second* source,
+  and the channel is then polled twice. After seeding, check
+  `node src/cli.js list` for duplicates.
+- **The file wins on every field it defines**, `destinations` included. A
+  source whose destinations were only ever set in the database loses them on
+  the next reseed.
+
+`npm run seed:fresh` clears all sources first and reseeds; it drops anything
+that exists only in the database.
 
 ### Polling schedule
 
@@ -480,7 +539,8 @@ events across channels, and routing by content instead of by source.
 **Phase 0 (persistence without AI) is implemented.** A `flow` column on each
 source (default `{ enabled: false }`), the `posts` / `clusters` tables, a
 deterministic regex stage, and stage-1 ingest. No AI calls yet. Enable it per
-source with `"flow": { "enabled": true }` in `sources.json`, then
+source as described in
+[Enabling a source into TheFlow](#enabling-a-source-into-theflow), then
 `npm run migrate` once. Classic forwarding is unchanged and stays
 available per source; sources without `flow.enabled` behave exactly as before.
 
@@ -489,12 +549,19 @@ dormant.** The provider layer, `LLMGateway`, `categories.json` v1, and the
 enrichment worker all exist and are wired into `src/inemuri.js` — but the
 worker only starts once a primary provider API key is set in `.env`; without
 one, `pending` posts simply accumulate and nothing else changes. Even running,
-routing still ignores its verdicts (`LLM_SHADOW_MODE`). See
-[docs/theflow/ROADMAP.md](docs/theflow/ROADMAP.md) §3 for what's built versus
-what still needs live provider decisions.
+routing still ignores its verdicts (`LLM_SHADOW_MODE`). The provider
+decisions and their measured free-tier limits are settled — see
+[docs/theflow/ROADMAP.md](docs/theflow/ROADMAP.md) §3.
 
-Phase 1.5 and phases 2–5 (vision, content routing, deduplication, entity
-extraction, digests) are still specification.
+**Phase 1.5 (vision) is implemented.** Screenshots on a source with
+`flow.vision.enabled` are transcribed into `posts.text_ocr` between ingest and
+enrichment — photos and image documents alike, deduplicated by perceptual hash
+so a repost of the same image costs no second call. Off on every source by
+default.
+
+Phase 2's resolve stage is built and waiting on destination channels; the rest
+of phases 2–5 (content routing, deduplication, entity extraction, digests) is
+still specification.
 
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped
 - [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases, current status

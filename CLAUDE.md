@@ -21,9 +21,11 @@ what shipped and why.
 
 **TheFlow is a subsystem of Inemuri**, not a separate product or a peer system.
 It is the part responsible for producing a stream of validated, categorized,
-deduplicated posts. Phase 0 (persistence) and Phase 1 (LLM gateway and
-enrichment, shadow mode, dormant without a provider key) are **implemented**;
-later phases are still specification — see [docs/THEFLOW.md](docs/THEFLOW.md)
+deduplicated posts. Phase 0 (persistence), Phase 1 (LLM gateway and
+enrichment, shadow mode, dormant without a provider key) and Phase 1.5
+(vision, off per source by default) are **implemented**, as is Phase 2's
+resolve stage; the rest is still specification — see
+[docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
 per-task status).
 
