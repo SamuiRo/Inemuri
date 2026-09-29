@@ -14,6 +14,8 @@ const SYMBOL = {
   skip: "⏭ skip   ",
   post: "+ post   ",
   edit: "~ edit   ",
+  hide: "→ hide   ",
+  keep: "· keep   ",
 };
 
 const SECTIONS = [
@@ -78,6 +80,8 @@ const NOTE = {
   forget: " — deleted on Discord, dropping it from state",
   orphaned: " — no longer in the config",
   skip: " — Community servers only",
+  hide: " — not in the config; made private like the archive (a category cannot go into it)",
+  keep: " — not in the config, but the server uses it (rules, updates, system or AFK channel); left in place",
   // Позиції нових і переміщених ресурсів відомі лише після змін вище.
   reorder: " — checked after the changes above, applied only if off",
 };
@@ -86,6 +90,7 @@ function formatOp(op) {
   let head = `\`${SYMBOL[op.op] ?? op.op}\` ${op.op === "reorder" ? op.name : targetLabel(op)}`;
   if (op.op === "create" && op.spec?.parentKey) head += ` in "${op.spec.parentKey}"`;
   if (op.op === "archive" && op.parentKey) head += ` (from "${op.parentKey}")`;
+  if (op.op === "archive" && op.unmanaged) head += " — not in the config";
   head += NOTE[op.op] ?? "";
 
   const changes = (op.changes ?? []).map((change) => `    · ${change}`);
@@ -98,7 +103,7 @@ function targetLabel(op) {
   if (op.kind === "automod") return `⛔ ${op.name}`;
   if (op.kind === "role") return `@${op.name}`;
   if (op.kind === "category") return `📁 ${op.name}`;
-  return `${CHANNEL_ICON[op.spec?.kind] ?? "#"}${op.name}`;
+  return `${CHANNEL_ICON[op.spec?.kind ?? op.channelKind] ?? "#"}${op.name}`;
 }
 
 // Голосовий канал з "#" читається як текстовий.

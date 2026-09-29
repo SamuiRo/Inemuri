@@ -3,6 +3,8 @@
   "guildId": "000000000000000000",
 
   "archive": { "key": "archive", "name": "🗄 ARCHIVE", "roles": ["admin"] },
+  "_archiveUnmanaged": "true moves every channel that is not in this config into the archive and hides categories that are not in it. Server channels (rules, updates, system, AFK) stay.",
+  "archiveUnmanaged": false,
 
   "presets": {
     "readonly": {

@@ -159,6 +159,7 @@ async function applyCategoryOp(op, { guild, current, plan, store }) {
 
 async function applyChannelOp(op, ctx) {
   if (op.op === "archive") return archiveChannel(op, ctx);
+  if (op.op === "hide") return hideCategory(op, ctx);
 
   const { guild, current, plan, store } = ctx;
   const spec = op.spec;
@@ -228,7 +229,18 @@ export function permissionEdit(op, spec, have, parentId, context) {
 async function archiveChannel(op, ctx) {
   const archiveId = await archiveWithSpace(ctx);
   await ctx.guild.channels.edit(op.id, { parent: archiveId, lockPermissions: true, reason: REASON });
-  await ctx.store.markArchived(ctx.guild.id, op.key, op.parentKey);
+  // Рукотворний канал (archiveUnmanaged) у стан не йде: він і далі не з конфігу.
+  if (!op.unmanaged) await ctx.store.markArchived(ctx.guild.id, op.key, op.parentKey);
+}
+
+/**
+ * archiveUnmanaged: рукотворна категорія отримує рівно права архіву — її
+ * бачать лише ролі архіву й бот. Категорію не вкласти в архів, а видаляти
+ * провіжн не видаляє нічого.
+ */
+async function hideCategory(op, { guild, desired, plan }) {
+  const archiveSpec = desired.categories.find((category) => category.isArchive);
+  await guild.channels.edit(op.id, { permissionOverwrites: explicitOverwrites(archiveSpec, [], plan.context), reason: REASON });
 }
 
 /**

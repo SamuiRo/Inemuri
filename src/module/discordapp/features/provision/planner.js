@@ -18,6 +18,8 @@ import { planAutomod } from "./automod.js";
  *   skip (ресурс лише для Community на звичайному сервері)
  *   orphaned (роль/категорія/повідомлення зникли з конфігу — лишаються як є)
  *   post · edit (повідомлення: опублікувати / відредагувати на місці)
+ *   hide · keep (archiveUnmanaged: рукотворна категорія стає приватною;
+ *                системний канал лишається на місці)
  *
  * **Нічого не видаляється.** Видалення в плані немає як операції взагалі.
  *
@@ -53,6 +55,7 @@ export function planProvision(desired, current, state) {
   planRoles(desired, current, stateOf, context, plan);
   planCategories(desired, current, stateOf, context, plan);
   planChannels(desired, current, stateOf, context, plan);
+  if (desired.archiveUnmanaged) planUnmanagedArchive(desired, current, stateOf, context, plan);
   planOrder(desired, current, context, plan);
   planMessages(desired, current, stateOf, context, plan);
   planAutomod(desired, current, stateOf, context, plan);
@@ -239,7 +242,7 @@ function planChannels(desired, current, stateOf, context, plan) {
     } else if (!saved.archived_at) {
       // Зі стану, а не з конфігу: категорію могли прибрати з конфігу разом з каналом.
       const parentKey = stateOf.all("category").find((row) => row.discord_id === have.parentId)?.key ?? null;
-      plan.ops.push({ phase: "channels", op: "archive", kind: "channel", key: saved.key, name: have.name, id: have.id, parentKey });
+      plan.ops.push({ phase: "channels", op: "archive", kind: "channel", channelKind: have.kind, key: saved.key, name: have.name, id: have.id, parentKey });
     }
   }
 }
@@ -274,6 +277,54 @@ function diffPermissions(want, have, context) {
   const labelOf = (id) => labelForId(id, context);
   return diffOverwrites(resolveOverwrites(want.overwrites, context), have.overwrites, managedTargetIds(context), labelOf)
     .map((change) => `permissions ${change.label}: ${change.detail}`);
+}
+
+// ── archiveUnmanaged ───────────────────────────────────────────────────────
+
+/**
+ * `archiveUnmanaged: true` — прибрати з очей усе, що створено вручну, не
+ * видаляючи: канал поза конфігом і станом переїжджає в архів, як канал,
+ * прибраний з конфігу; категорія (у категорію її не вкласти) отримує права
+ * архіву й зникає для учасників. Системні канали сервера лишаються на
+ * місці — разом з категорією, де лежать.
+ *
+ * У стан нічого не пишеться: такий канал і далі «не з конфігу», а повернути
+ * його можна, додавши в конфіг — план прийме його за назвою.
+ */
+function planUnmanagedArchive(desired, current, stateOf, context, plan) {
+  const special = new Set(current.specialChannelIds ?? []);
+  const managed = new Set([
+    ...context.channelIds.values(),
+    ...context.categoryIds.values(),
+    ...stateOf.ids("channel"),
+    ...stateOf.ids("category"),
+  ]);
+  const inArchive = (channel) => context.archiveCategoryIds.includes(channel.parentId);
+  const categoryName = (id) => current.channels.find((c) => c.id === id)?.name ?? null;
+
+  for (const channel of current.channels) {
+    if (channel.kind === "category" || managed.has(channel.id) || inArchive(channel)) continue;
+    const base = { kind: "channel", channelKind: channel.kind, key: `unmanaged:${channel.id}`, name: channel.name, id: channel.id, unmanaged: true };
+    if (special.has(channel.id)) {
+      plan.ops.push({ ...base, phase: "report", op: "keep" });
+    } else {
+      plan.ops.push({ ...base, phase: "channels", op: "archive", parentKey: categoryName(channel.parentId) });
+    }
+  }
+
+  const archiveSpec = desired.categories.find((category) => category.isArchive);
+  const { resolved, pending } = resolveOverwrites(archiveSpec.overwrites, context);
+  for (const category of current.channels.filter((c) => c.kind === "category")) {
+    if (managed.has(category.id) || context.archiveCategoryIds.includes(category.id)) continue;
+    const holdsSpecial = current.channels.some((c) => c.parentId === category.id && special.has(c.id));
+    if (holdsSpecial) continue;
+    // Порівняння точне: у прихованої категорії не лишається нічиїх overwrites, крім архівних.
+    const everyone = new Set([...category.overwrites.map((ow) => ow.id), ...resolved.map((ow) => ow.id)]);
+    const differs = pending.length || diffOverwrites({ resolved, pending: [] }, category.overwrites, everyone, (id) => id).length;
+    if (differs) {
+      plan.ops.push({ phase: "channels", op: "hide", kind: "category", key: `unmanaged:${category.id}`, name: category.name, id: category.id, unmanaged: true });
+    }
+  }
 }
 
 // ── Порядок ────────────────────────────────────────────────────────────────
@@ -412,6 +463,8 @@ function collectUnmanaged(current, state, context, plan) {
     ...context.roleIds.values(),
     ...context.categoryIds.values(),
     ...context.channelIds.values(),
+    // archiveUnmanaged: те, що саме ховається, окремим рядком «не чіпається» не є.
+    ...plan.ops.filter((op) => op.unmanaged).map((op) => op.id),
   ]);
   for (const role of current.roles) {
     if (!role.managed && !managed.has(role.id)) plan.unmanaged.roles.push(role.name);

@@ -67,6 +67,16 @@ export async function readGuild(guild, state = []) {
       })),
     messages,
     automod,
+    // Канали, які сервер використовує для себе (правила Community, оновлення,
+    // привітання, AFK). Провіжн не переносить їх в архів: Community-налаштування
+    // зламались би, а учасники втратили б правила.
+    specialChannelIds: [
+      guild.rulesChannelId,
+      guild.publicUpdatesChannelId,
+      guild.safetyAlertsChannelId,
+      guild.systemChannelId,
+      guild.afkChannelId,
+    ].filter(Boolean),
   };
 }
 

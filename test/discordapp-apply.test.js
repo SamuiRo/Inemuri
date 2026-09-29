@@ -26,6 +26,7 @@ class FakeGuild {
     this.channelList = [];
     this.messageList = [];
     this.automodList = [];
+    this.specialChannelIds = [];
     // Правила, які Discord не дає редагувати (створені ним самим).
     this.lockedRules = new Set();
     this.calls = [];
@@ -156,6 +157,7 @@ class FakeGuild {
       channels: this.channelList,
       messages: this.messageList.map(({ id, channelId }) => ({ id, channelId })),
       automod: this.automodList,
+      specialChannelIds: this.specialChannelIds,
     });
   }
 
@@ -458,4 +460,54 @@ test("apply — phases that change nothing do not re-read the server", async () 
   let reads = 0;
   await applyProvision({ guild, desired, store, read: async (g) => { reads += 1; return g.snapshot(); } });
   assert.equal(reads, 1, "сервер уже як у конфігу — одне читання на весь apply");
+});
+
+// ── archiveUnmanaged ───────────────────────────────────────────────────────
+
+function manualChannel(guild, id, name, kind, parentId = null) {
+  guild.channelList.push({ id, name, kind, parentId, position: guild.channelList.length, topic: null, nsfw: false, slowmode: 0,
+    overwrites: [{ id: "member-1", type: "member", allow: P.ViewChannel, deny: 0n }] });
+}
+
+test("apply — archiveUnmanaged moves hand-made channels to the archive and hides empty hand-made categories", async () => {
+  const guild = new FakeGuild({ community: true });
+  manualChannel(guild, "k-old", "Old stuff", "category");
+  manualChannel(guild, "c-random", "random", "text", "k-old");
+  manualChannel(guild, "k-sys", "Server", "category");
+  manualChannel(guild, "c-rules", "rules", "text", "k-sys");
+  manualChannel(guild, "c-top", "chit-chat", "text");
+  manualChannel(guild, "c-kept", "general", "text");
+  guild.specialChannelIds = ["c-rules"];
+  const store = memoryStore();
+  const desired = desiredOf({
+    archive: { key: "archive", name: "ARCHIVE" },
+    archiveUnmanaged: true,
+    channels: [{ key: "general", name: "general" }],
+  });
+
+  const plan = planProvision(desired, guild.snapshot(), []);
+  assert.deepEqual(plan.ops.filter((op) => op.unmanaged).map((op) => `${op.op} ${op.name}`).sort(),
+    ["archive chit-chat", "archive random", "hide Old stuff", "keep rules"]);
+
+  await apply(guild, desired, store);
+  const archive = guild.byName("ARCHIVE");
+  for (const name of ["random", "chit-chat"]) {
+    assert.equal(guild.byName(name).parentId, archive.id, `${name} в архіві`);
+    assert.deepEqual(guild.byName(name).overwrites, archive.overwrites, `${name} з правами архіву — ручний доступ учасника знято`);
+  }
+  assert.deepEqual(guild.byName("Old stuff").overwrites, archive.overwrites, "порожня рукотворна категорія прихована, не видалена");
+  assert.equal(guild.byName("rules").parentId, "k-sys", "системний канал на місці");
+  assert.notDeepEqual(guild.byName("Server").overwrites, archive.overwrites, "категорія з системним каналом лишається видимою");
+  assert.equal(guild.byName("general").id, "c-kept", "канал з конфігу прийнято, не заархівовано");
+  assert.ok(!store.rows.some((r) => r.key.startsWith("unmanaged:")), "рукотворне в стан не пишеться");
+
+  assert.deepEqual(await remaining(guild, desired, store), [], "другий план порожній");
+});
+
+test("archiveUnmanaged — off by default: hand-made channels are only reported", () => {
+  const guild = new FakeGuild();
+  manualChannel(guild, "c-top", "chit-chat", "text");
+  const plan = planProvision(desiredOf({ archive: { key: "archive", name: "ARCHIVE" } }), guild.snapshot(), []);
+  assert.ok(!plan.ops.some((op) => op.unmanaged));
+  assert.deepEqual(plan.unmanaged.channels, ["chit-chat"]);
 });

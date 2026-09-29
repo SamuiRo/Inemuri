@@ -322,6 +322,25 @@ restored to no category, it only loses the archive's rights.
 A category holds at most 50 channels, so the archive rolls over into
 `archive-2`, `archive-3`, … under the same permissions.
 
+### `archiveUnmanaged`
+
+> **Implemented (v4.40.0).**
+
+`"archiveUnmanaged": true` at the root of a config clears away what was made by
+hand, still without deleting anything — for rebuilding a server after its
+structure changed:
+
+| On the server, not in the config or state | What happens |
+|---|---|
+| A channel | `→ archive`: moved into the archive, synced with its rights |
+| A category | `→ hide`: gets exactly the archive's overwrites, so members no longer see it (a category cannot be put inside another) |
+| A channel the server uses itself — Community rules, public updates, safety alerts, the system (welcome) channel, the AFK channel | `· keep`: left in place, and so is its category. Moving it would break Community settings and take the rules away from members |
+| A role, an AutoMod rule | Reported only — there is no archive for them, and stripping a role's permissions is not "archiving" |
+
+Nothing of this goes into state: an archived hand-made channel stays "not from
+the config", and bringing it back is adding it to the config — the plan
+adopts it by name. Off by default.
+
 ### AutoMod
 
 > **Implemented (v4.37.0).** Code: `features/provision/automod.js` (pure).

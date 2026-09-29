@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.40.0] - 2026-09-29
+
+`archiveUnmanaged`: move everything made by hand out of sight.
+
+### Added
+- **`"archiveUnmanaged": true`** in a server config. Channels that are neither
+  in the config nor in state are archived (moved, synced with the archive's
+  rights); hand-made categories are hidden with the archive's overwrites,
+  since a category cannot go into another. Channels the server itself uses —
+  rules, public updates, safety alerts, system, AFK — are kept, with their
+  category. Roles and AutoMod rules are only reported. Nothing is deleted and
+  nothing is written to state. Off by default; the sample config shows it.
+- `readGuild` reports the server's own channels (`specialChannelIds`).
+- Plan ops `→ hide` and `· keep`; archived channels show their kind's icon.
+- Two apply scenarios in `discordapp-apply.test.js`.
+
+### Verified
+- Planned (not applied) on the test server: its hand-made text and voice
+  channels to the archive, both default categories hidden, and
+  `#moderator-only` — the Community updates channel — kept.
+
 ## [4.39.0] - 2026-09-29
 
 `/export-chats` delivers to disk and Telegram, not to Discord.

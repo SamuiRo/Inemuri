@@ -21,7 +21,7 @@ import { parseAutomod } from "./automod.js";
  * керується завжди. Ключі, що починаються з `_`, — коментарі й ігноруються.
  *
  * Бажаний стан:
- *   { guildId, archive: { key, name, roleKeys },
+ *   { guildId, archive: { key, name, roleKeys }, archiveUnmanaged: boolean,
  *     roles:      [{ key, name, color?, hoist?, mentionable?, permissions: BigInt|null }],
  *     categories: [{ key, name, overwrites, requires, isArchive }],   // архів — останній
  *     channels:   [{ key, name, kind, parentKey, topic?, nsfw?, slowmode?, overwrites, requires }],
@@ -46,7 +46,7 @@ const EMOJI_RE = /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}])[\p{Ex
 const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
 
 const FIELDS = {
-  root: ["guildId", "archive", "presets", "roles", "categories", "channels", "automod"],
+  root: ["guildId", "archive", "archiveUnmanaged", "presets", "roles", "categories", "channels", "automod"],
   archive: ["key", "name", "roles"],
   role: ["key", "name", "color", "hoist", "mentionable", "permissions"],
   category: ["key", "name", "overwrites", "requires", "optIn", "channels"],
@@ -86,6 +86,9 @@ export function validateServerConfig(raw) {
   v.unique(roles.map((role) => role.key), "roles", "role key");
 
   const archive = parseArchive(raw.archive, roleKeys, v);
+  // Усе, чого немає в конфігу, — в архів (канали) або приховати (категорії).
+  const archiveUnmanaged = raw.archiveUnmanaged ?? false;
+  if (typeof archiveUnmanaged !== "boolean") v.error("archiveUnmanaged", "must be true or false");
 
   const categories = [];
   const channels = [];
@@ -140,6 +143,7 @@ export function validateServerConfig(raw) {
     desired: {
       guildId: String(raw.guildId),
       archive: { key: archive.category.key, name: archive.category.name, roleKeys: archive.roleKeys },
+      archiveUnmanaged,
       roles,
       categories,
       channels: channels.filter(Boolean),
