@@ -4,6 +4,7 @@ import { AutoModerationRuleTriggerType as Trigger, OverwriteType, PermissionFlag
 
 import { validateServerConfig } from "../src/module/discordapp/features/provision/schema.js";
 import { actionableOps, planProvision } from "../src/module/discordapp/features/provision/planner.js";
+import { formatPlan } from "../src/module/discordapp/features/provision/formatPlan.js";
 import { applyProvision, formatApplyLog, permissionEdit, roleFields } from "../src/module/discordapp/features/provision/applier.js";
 import { channelKind } from "../src/module/discordapp/channelKinds.js";
 
@@ -502,6 +503,16 @@ test("apply — archiveUnmanaged moves hand-made channels to the archive and hid
   assert.ok(!store.rows.some((r) => r.key.startsWith("unmanaged:")), "рукотворне в стан не пишеться");
 
   assert.deepEqual(await remaining(guild, desired, store), [], "другий план порожній");
+
+  const after = planProvision(desired, guild.snapshot(), await store.forGuild(GUILD));
+  assert.deepEqual(after.unmanaged.archived.map((c) => c.name).sort(), ["chit-chat", "random"], "заархівоване — окремою групою");
+  assert.deepEqual(after.unmanaged.hidden, ["Old stuff"]);
+  assert.deepEqual(after.unmanaged.categories, ["Server"], "у «як лежало» — лише те, що справді не чіпали");
+  assert.deepEqual(after.unmanaged.channels, []);
+  const text = formatPlan(after, { configName: "t.json" });
+  assert.match(text, /🗄 in the archive: #(chit-chat|random), #(chit-chat|random)/);
+  assert.match(text, /🙈 hidden like the archive: 📁 Old stuff/);
+  assert.match(text, /\? categories, left as they are: Server/);
 });
 
 test("archiveUnmanaged — off by default: hand-made channels are only reported", () => {

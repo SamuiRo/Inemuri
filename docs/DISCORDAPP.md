@@ -341,6 +341,10 @@ Nothing of this goes into state: an archived hand-made channel stays "not from
 the config", and bringing it back is adding it to the config — the plan
 adopts it by name. Off by default.
 
+The plan's **Not in the config** section keeps three groups apart (v4.40.1):
+`?` left as they are, `🗄` in the archive, `🙈` categories hidden with the
+archive's rights — so what was put away does not read as "never touched".
+
 ### AutoMod
 
 > **Implemented (v4.37.0).** Code: `features/provision/automod.js` (pure).

@@ -49,7 +49,7 @@ export function formatPlan(plan, { configName, blockers = [] }) {
   }
 
   const unmanaged = formatUnmanaged(plan.unmanaged);
-  if (unmanaged.length) lines.push("", "**Not in the config (never touched)**", ...unmanaged);
+  if (unmanaged.length) lines.push("", "**Not in the config**", ...unmanaged);
 
   if (plan.warnings.length) {
     lines.push("", "**Warnings**", ...plan.warnings.map((warning) => `⚠ ${warning}`));
@@ -109,17 +109,24 @@ function targetLabel(op) {
 // Голосовий канал з "#" читається як текстовий.
 const CHANNEL_ICON = { voice: "🔊 ", stage: "🎙 ", forum: "💬 ", announcement: "📢 #" };
 
-function formatUnmanaged({ roles, categories, channels, automod = [] }) {
+/**
+ * Те, чого немає в конфігу, трьома групами: лежить як лежало; уже в архіві;
+ * категорії, приховані з правами архіву. Перше — «не чіпається», решта —
+ * вже прибрана з очей (archiveUnmanaged або вручну).
+ */
+function formatUnmanaged({ roles, categories, channels, automod = [], archived = [], hidden = [] }) {
   const lines = [];
-  const list = (label, names, prefix) => {
+  const list = (symbol, label, names, prefix) => {
     if (!names.length) return;
     const shown = names.slice(0, UNMANAGED_SHOWN).map((name) => `${prefix}${name}`).join(", ");
     const more = names.length > UNMANAGED_SHOWN ? ` …+${names.length - UNMANAGED_SHOWN}` : "";
-    lines.push(`? ${label}: ${shown}${more}`);
+    lines.push(`${symbol} ${label}: ${shown}${more}`);
   };
-  list("roles", roles, "@");
-  list("categories", categories, "");
-  list("channels", channels, "#");
-  list("AutoMod rules", automod, "⛔ ");
+  list("?", "roles, left as they are", roles, "@");
+  list("?", "categories, left as they are", categories, "");
+  list("?", "channels, left as they are", channels, "#");
+  list("?", "AutoMod rules, left as they are", automod, "⛔ ");
+  list("🗄", "in the archive", archived.map(({ name, kind }) => `${CHANNEL_ICON[kind] ?? "#"}${name}`), "");
+  list("🙈", "hidden like the archive", hidden, "📁 ");
   return lines;
 }

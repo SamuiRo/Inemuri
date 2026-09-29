@@ -33,7 +33,10 @@ export function planProvision(desired, current, state) {
     errors: [],
     warnings: [],
     ops: [],
-    unmanaged: { roles: [], categories: [], channels: [], automod: [] },
+    // Не з конфігу. archived / hidden — те, що вже прибране з очей: канали в
+    // архіві й категорії з правами архіву (archiveUnmanaged), окремо від того,
+    // що лежить як лежало.
+    unmanaged: { roles: [], categories: [], channels: [], automod: [], archived: [], hidden: [] },
   };
 
   if (desired.guildId !== current.guildId) {
@@ -59,7 +62,7 @@ export function planProvision(desired, current, state) {
   planOrder(desired, current, context, plan);
   planMessages(desired, current, stateOf, context, plan);
   planAutomod(desired, current, stateOf, context, plan);
-  collectUnmanaged(current, state, context, plan);
+  collectUnmanaged(desired, current, state, context, plan);
 
   return { ...plan, context };
 }
@@ -312,19 +315,26 @@ function planUnmanagedArchive(desired, current, stateOf, context, plan) {
     }
   }
 
-  const archiveSpec = desired.categories.find((category) => category.isArchive);
-  const { resolved, pending } = resolveOverwrites(archiveSpec.overwrites, context);
   for (const category of current.channels.filter((c) => c.kind === "category")) {
     if (managed.has(category.id) || context.archiveCategoryIds.includes(category.id)) continue;
     const holdsSpecial = current.channels.some((c) => c.parentId === category.id && special.has(c.id));
     if (holdsSpecial) continue;
-    // Порівняння точне: у прихованої категорії не лишається нічиїх overwrites, крім архівних.
-    const everyone = new Set([...category.overwrites.map((ow) => ow.id), ...resolved.map((ow) => ow.id)]);
-    const differs = pending.length || diffOverwrites({ resolved, pending: [] }, category.overwrites, everyone, (id) => id).length;
-    if (differs) {
+    if (!hiddenLikeArchive(category, desired, context)) {
       plan.ops.push({ phase: "channels", op: "hide", kind: "category", key: `unmanaged:${category.id}`, name: category.name, id: category.id, unmanaged: true });
     }
   }
+}
+
+/**
+ * Чи має категорія рівно права архіву — тобто вже прихована. Порівняння
+ * точне: у прихованої категорії не лишається нічиїх overwrites, крім архівних.
+ */
+function hiddenLikeArchive(category, desired, context) {
+  const archiveSpec = desired.categories.find((c) => c.isArchive);
+  const { resolved, pending } = resolveOverwrites(archiveSpec.overwrites, context);
+  if (pending.length) return false;
+  const everyone = new Set([...category.overwrites.map((ow) => ow.id), ...resolved.map((ow) => ow.id)]);
+  return diffOverwrites({ resolved, pending: [] }, category.overwrites, everyone, (id) => id).length === 0;
 }
 
 // ── Порядок ────────────────────────────────────────────────────────────────
@@ -457,7 +467,7 @@ function checkPanelRoles(desired, current, context, plan) {
 
 // ── Некероване ─────────────────────────────────────────────────────────────
 
-function collectUnmanaged(current, state, context, plan) {
+function collectUnmanaged(desired, current, state, context, plan) {
   const managed = new Set([
     ...state.map((row) => row.discord_id),
     ...context.roleIds.values(),
@@ -471,8 +481,12 @@ function collectUnmanaged(current, state, context, plan) {
   }
   for (const channel of current.channels) {
     if (managed.has(channel.id)) continue;
-    if (channel.kind === "category") plan.unmanaged.categories.push(channel.name);
-    else plan.unmanaged.channels.push(channel.name);
+    if (channel.kind === "category") {
+      (hiddenLikeArchive(channel, desired, context) ? plan.unmanaged.hidden : plan.unmanaged.categories).push(channel.name);
+    } else {
+      if (context.archiveCategoryIds.includes(channel.parentId)) plan.unmanaged.archived.push({ name: channel.name, kind: channel.kind });
+      else plan.unmanaged.channels.push(channel.name);
+    }
   }
 }
 

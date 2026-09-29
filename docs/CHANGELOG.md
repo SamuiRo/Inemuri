@@ -7,6 +7,21 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.40.1] - 2026-09-29
+
+### Changed
+- The plan's "Not in the config" section splits what was put away from what
+  was left alone: `?` left as they are, `🗄` in the archive, `🙈` categories
+  hidden with the archive's rights. After `archiveUnmanaged` ran on the test
+  server, its archived channels and hidden categories were still listed as
+  "never touched". Archived voice channels show 🔊.
+
+### Applied
+- `archiveUnmanaged` on the test server, at the operator's request: three
+  hand-made channels archived, two default categories hidden,
+  `#moderator-only` (Community updates) kept. The only open item left there is
+  the undeletable-by-bot *Block Mention Spam* AutoMod rule.
+
 ## [4.40.0] - 2026-09-29
 
 `archiveUnmanaged`: move everything made by hand out of sight.
