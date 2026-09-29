@@ -7,6 +7,32 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.36.0] - 2026-09-29
+
+discordapp from the terminal, and the first run against a real server.
+
+### Added
+- **`scripts/discordapp.js`**: `check <guildId> [config]` (read-only) reports
+  the bot's identity, its role's position and missing permissions, registered
+  slash commands, whether Message Content works, and the provisioning plan;
+  `apply <guildId> [config] --yes` applies the plan like the Apply button
+  (without `--yes` it only shows it). Its own gateway session does not listen
+  to interactions, so it is safe next to the running service.
+- `preparePlan` takes an optional state loader; `check` plans with an empty
+  state when `discord_resources` is not migrated yet, instead of failing.
+
+### Changed
+- The plan shows 🔊/🎙/💬/📢 for voice, stage, forum and announcement channels
+  instead of `#`, and says that `reorder` is checked after the other changes.
+
+### Verified
+- On the operator's test server (Community): an empty-ish server provisioned
+  from the sample config in one apply (25 changes, none failed) — including
+  adopting the existing `#rules` and `#general` — then a second plan reported
+  nothing to do. Removing `#media` from the config archived it; editing the
+  rules text edited the posted embed in place; putting `#media` back restored
+  it into its category. Every run ended with an empty plan.
+
 ## [4.35.0] - 2026-09-29
 
 discordapp step 5: provisioned messages, role panels, opt-in channel groups.

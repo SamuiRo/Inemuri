@@ -364,6 +364,17 @@ slash commands cannot be registered in that server.
 `DISCORD_COMMAND_WHITELIST` (Developer Mode → right-click → Copy ID). Restart.
 The log should list the server under "command(s) registered".
 
+**Check it from the terminal** — read-only, safe next to the running service:
+
+```bash
+node scripts/discordapp.js check <guildId> [config]
+```
+
+It reports the bot's identity, where its role sits and what it lacks, the
+registered slash commands, whether Message Content works, and the provisioning
+plan. `node scripts/discordapp.js apply <guildId> [config]` shows the plan;
+with `--yes` it applies it, exactly like the Apply button.
+
 ## Configuration
 
 | Variable | Default | Meaning |

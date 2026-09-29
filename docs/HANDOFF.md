@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.35.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.36.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
@@ -47,8 +47,11 @@ per-step status. Steps 1–4 are done: Discord delivery is REST-only, so a
 Discord outage no longer stops the process, discordapp starts last with its
 own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so do
 `/provision plan` (`v4.33.0`), `/provision apply` (`v4.34.0`), and provisioned
-messages with role panels (`v4.35.0`). **None of it has run against the live
-bot yet** — see next steps.
+messages with role panels (`v4.35.0`). **Provisioning has been run against a
+real server** (the operator's test server, `v4.36.0`): create, adopt, archive,
+edit-in-place and restore all worked and left an empty plan. Not yet exercised
+live: slash commands and buttons inside Discord (the service has not been
+restarted with the server in `DISCORD_GUILD_IDS`), and `/export-chats`.
 
 ## Documentation
 
@@ -97,9 +100,9 @@ destinations is worse than not starting. A fresh clone now starts — before
    `/provision apply` first on a **test server**, with the bot temporarily
    holding a role with Administrator. Bot setup (portal, invite link, role
    placement): [DISCORDAPP.md § Setup](DISCORDAPP.md#setup). Run
-   `npm run migrate` **before** starting the new version: the model now reads
-   `discord_resources.parent_id` (migration `010`). Next build steps: AutoMod
-   (step 6) and `/provision export` (step 7).
+   `npm run migrate` **before** starting the new version — done on the dev
+   copy on 2026-09-29 (backup in `database/backups/`). Next build steps:
+   AutoMod (step 6) and `/provision export` (step 7).
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -160,6 +163,10 @@ destinations is worse than not starting. A fresh clone now starts — before
   end-to-end against an in-memory server, not a real one.
 - Built step 5 (`v4.35.0`): messages, role panels, opt-in groups. The operator
   offered a test server; its setup is written down in DISCORDAPP.md § Setup.
+- Added `scripts/discordapp.js` (`v4.36.0`) and ran provisioning on the test
+  server with the git-ignored `servers/test.json` (the sample with its
+  guildId) — see CHANGELOG 4.36.0 "Verified". Applied migrations 009–010 to
+  the dev database for it.
 
 ### 2026-09-13
 

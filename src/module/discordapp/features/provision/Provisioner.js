@@ -11,16 +11,18 @@ import { DiscordResource } from "../../../teapot/models/index.js";
  *
  * @param {import("discord.js").Guild} guild
  * @param {string|null} configName  Явне ім'я конфігу або null — знайти за guildId.
+ * @param {{ loadState?: (guildId: string) => Promise<object[]> }} [options]
+ *   Звідки брати стан; за замовчуванням — таблиця discord_resources.
  * @returns {Promise<{ config, errors: string[] } | { config, errors: [], desired, current, plan, blockers: string[] }>}
  */
-export async function preparePlan(guild, configName = null) {
+export async function preparePlan(guild, configName = null, { loadState = (id) => DiscordResource.forGuild(id) } = {}) {
   const config = await resolveServerConfig(guild.id, configName);
   const { errors, desired } = validateServerConfig(config.raw);
   if (errors.length) return { config, errors };
   const bodyErrors = await attachBodies(desired);
   if (bodyErrors.length) return { config, errors: bodyErrors };
 
-  const state = await DiscordResource.forGuild(guild.id);
+  const state = await loadState(guild.id);
   const current = await readGuild(guild, state);
   const plan = planProvision(desired, current, state);
   return { config, errors: [], desired, current, plan, blockers: applyBlockers(current) };

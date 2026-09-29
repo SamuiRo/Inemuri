@@ -74,6 +74,8 @@ const NOTE = {
   forget: " — deleted on Discord, dropping it from state",
   orphaned: " — no longer in the config",
   skip: " — Community servers only",
+  // Позиції нових і переміщених ресурсів відомі лише після змін вище.
+  reorder: " — checked after the changes above, applied only if off",
 };
 
 function formatOp(op) {
@@ -91,8 +93,11 @@ function targetLabel(op) {
   if (op.kind === "message") return op.channel ? `💬 ${op.name} in #${op.channel}` : `💬 ${op.name}`;
   if (op.kind === "role") return `@${op.name}`;
   if (op.kind === "category") return `📁 ${op.name}`;
-  return `#${op.name}`;
+  return `${CHANNEL_ICON[op.spec?.kind] ?? "#"}${op.name}`;
 }
+
+// Голосовий канал з "#" читається як текстовий.
+const CHANNEL_ICON = { voice: "🔊 ", stage: "🎙 ", forum: "💬 ", announcement: "📢 #" };
 
 function formatUnmanaged({ roles, categories, channels }) {
   const lines = [];
