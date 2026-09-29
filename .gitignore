@@ -11,6 +11,9 @@
 /devtest
 # discordapp /export-chats output: other people's messages.
 /exports/
+# discordapp server configs are deployment data; the sample stays tracked.
+/src/config/discordapp/servers/*.json
+!/src/config/discordapp/servers/*.sample.json
 
 # Logs
 logs

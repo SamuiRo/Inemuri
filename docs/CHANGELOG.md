@@ -7,6 +7,42 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.33.0] - 2026-09-29
+
+discordapp step 3: server-as-code configs and `/provision plan`. Nothing is
+applied yet — that is step 4.
+
+### Added
+- **Server configs** in `src/config/discordapp/servers/<name>.json`
+  (git-ignored; `example.sample.json` is tracked and validates). Roles,
+  categories, channels, permission overwrites with reusable `presets`, and a
+  mandatory private archive category. Read on every command, so edits need no
+  restart.
+- **Validator** (`schema.js`): unknown fields, unknown permission names,
+  unknown presets and role references, duplicate or malformed keys, and a
+  permission both allowed and denied are all errors with a path — a typo must
+  not silently do nothing. Only fields that are set are managed. A private
+  category or channel gets an overwrite for the bot automatically, so the bot
+  keeps seeing it after Administrator is taken away.
+- **Planner** (`planner.js`, pure): create, adopt (existing resource matched by
+  name), update, archive, restore, reorder, forget, skip, orphaned.
+  **There is no delete operation.** Overwrites of targets the config does not
+  manage — a per-member overwrite, a role outside the config — are preserved.
+  Ordering swaps managed resources among the positions they already hold, so
+  nothing outside the config moves. Errors instead of guesses: two resources
+  with the same name, a role at or above the bot's, a Community-only channel
+  on a plain server, a config for another server.
+- **`/provision plan [server:]`** (admin, ephemeral): the plan as text, or as an
+  attached file when long, plus what would block apply (Administrator).
+- Migration `009-discord-resources` and the `DiscordResource` model: the
+  config key → Discord id state that makes a rename an edit. The service's
+  startup `sync()` also creates the table.
+- `test/discordapp-provision.test.js` — 25 cases.
+
+### Changed
+- ChannelType ↔ kind mapping moved from the export feature into
+  `src/module/discordapp/channelKinds.js`, shared with provisioning.
+
 ## [4.32.0] - 2026-09-29
 
 discordapp step 2: `/export-chats`.

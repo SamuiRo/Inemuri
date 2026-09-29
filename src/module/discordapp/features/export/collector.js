@@ -1,11 +1,6 @@
 import { PermissionFlagsBits } from "discord.js";
-import {
-  channelKind,
-  holdsMessages,
-  holdsThreads,
-  toChannelRecord,
-  toMessageRecord,
-} from "./snapshot.js";
+import { toChannelRecord, toMessageRecord } from "./snapshot.js";
+import { channelKind, holdsMessages, holdsThreads } from "../../channelKinds.js";
 import {
   DISCORD_EXPORT_ARCHIVED_THREADS,
   DISCORD_EXPORT_CONCURRENCY,

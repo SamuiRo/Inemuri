@@ -1,0 +1,49 @@
+{
+  "_readme": "Copy to <name>.json in this folder and set guildId. Every key is a stable id: renaming a name is an edit, changing a key is a new resource. Full format: docs/DISCORDAPP.md.",
+  "guildId": "000000000000000000",
+
+  "archive": { "key": "archive", "name": "🗄 ARCHIVE", "roles": ["admin"] },
+
+  "presets": {
+    "readonly": {
+      "@everyone": { "allow": ["ViewChannel", "ReadMessageHistory"], "deny": ["SendMessages", "CreatePublicThreads"] }
+    },
+    "staff-only": {
+      "@everyone": { "deny": ["ViewChannel"] },
+      "role:admin": { "allow": ["ViewChannel"] },
+      "role:mod": { "allow": ["ViewChannel"] }
+    }
+  },
+
+  "roles": [
+    { "key": "admin", "name": "Admin", "color": "#e74c3c", "hoist": true, "permissions": ["Administrator"] },
+    { "key": "mod", "name": "Moderator", "color": "#e67e22", "hoist": true,
+      "permissions": ["ManageMessages", "KickMembers", "ModerateMembers", "ViewAuditLog"] },
+    { "key": "member", "name": "Member", "color": "#95a5a6" }
+  ],
+
+  "categories": [
+    {
+      "key": "info", "name": "📌 INFO", "overwrites": "readonly",
+      "channels": [
+        { "key": "rules", "name": "rules", "topic": "Read before posting" },
+        { "key": "announcements", "name": "announcements", "type": "announcement", "requires": "community" }
+      ]
+    },
+    {
+      "key": "chat", "name": "💬 CHAT",
+      "channels": [
+        { "key": "general", "name": "general" },
+        { "key": "media", "name": "media", "slowmode": 30 },
+        { "key": "voice", "name": "Voice", "type": "voice" }
+      ]
+    },
+    {
+      "key": "staff", "name": "🛡 STAFF", "overwrites": "staff-only",
+      "channels": [
+        { "key": "staff-chat", "name": "staff-chat" },
+        { "key": "mod-log", "name": "mod-log", "overwrites": { "role:mod": { "allow": ["ViewChannel"], "deny": ["SendMessages"] } } }
+      ]
+    }
+  ]
+}

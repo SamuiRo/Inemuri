@@ -44,6 +44,7 @@ Inemuri/
 │   │   └── images/
 │   │       └── daily.png                  # Image used by the daily crypto report
 │   ├── config/
+│   │   ├── discordapp/servers/            # discordapp server configs (<name>.json git-ignored; example.sample.json tracked)
 │   │   ├── app.config.js                  # All env vars and hardcoded constants in one place
 │   │   ├── appearance.config.json         # UI/theme config used by helper assets
 │   │   ├── categories.json                # TheFlow taxonomy v1: topics, signals, routing
@@ -70,9 +71,12 @@ Inemuri/
 │   │   │   ├── CommandRegistry.js         # Routes commands/components; access check; always ephemeral
 │   │   │   ├── guard.js                   # Pure: who may run what, in which guild
 │   │   │   ├── customId.js                # Pure: stateless component ids
+│   │   │   ├── channelKinds.js            # ChannelType ↔ kind names, shared by export and provisioning
+│   │   │   ├── reply.js                   # Long replies become an attached file
 │   │   │   ├── commands/                  # One file per slash command (index.js lists them)
 │   │   │   └── features/
-│   │   │       └── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
+│   │   │       ├── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
+│   │   │       └── provision/             # /provision: schema, overwrites, planner, formatPlan (pure); readGuild, configStore, Provisioner
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
 │   │   ├── filters/
@@ -98,7 +102,8 @@ Inemuri/
 │   │   │   │   ├── Post.js                # TheFlow: one row per ingested message
 │   │   │   │   ├── Cluster.js             # TheFlow: one row per deduplicated event
 │   │   │   │   ├── PostFeedback.js        # TheFlow: a human's label on a post
-│   │   │   │   └── ProviderQuota.js       # LLM gateway: per-provider daily request ledger
+│   │   │   │   ├── ProviderQuota.js       # LLM gateway: per-provider daily request ledger
+│   │   │   │   └── DiscordResource.js     # discordapp: provisioning state, config key → Discord id
 │   │   │   └── sqlite/
 │   │   │       └── sqlite_db.js           # Sequelize SQLite connection singleton
 │   │   └── telegram/

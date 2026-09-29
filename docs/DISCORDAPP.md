@@ -169,6 +169,13 @@ content, role panels, AutoMod rules — is described in
 `src/config/discordapp/servers/<name>.json` and applied Terraform-style:
 **plan, then apply**.
 
+> **Plan implemented (v4.33.0).** Code: `src/module/discordapp/features/provision/`
+> — `schema.js`, `overwrites.js`, `planner.js`, `formatPlan.js` (pure),
+> `readGuild.js` (reads Discord), `configStore.js`, `Provisioner.js`;
+> command `commands/provision.js`. Messages, role panels and AutoMod are later
+> steps: the validator does not accept `messages`, `optIn` or `automod` yet.
+> A working starting point is `servers/example.sample.json`.
+
 ### Config
 
 ```json
@@ -209,6 +216,24 @@ content, role panels, AutoMod rules — is described in
   reason — never a failure halfway through apply. The planner reads
   `guild.features`.
 - The archive block is **mandatory**; a config without it does not validate.
+- **Only what is set is managed.** A role without `color` keeps whatever color
+  it has; a channel without `topic` keeps its topic; a category or channel
+  whose chain declares no `overwrites` keeps its permissions. The name is
+  always managed. Fields starting with `_` are comments.
+- **Overwrites inherit.** A channel's effective overwrites are its category's
+  plus its own, its own winning for the same target. A channel that declares
+  none is therefore in sync with its category.
+- **Overwrites of targets the config does not manage are kept.** Managed
+  targets are `@everyone`, the bot and the config's roles; for those the
+  config is authoritative, and an extra overwrite is removed. A manual
+  per-member overwrite or one for a role outside the config is carried over
+  untouched — Discord replaces a channel's overwrites as a whole, so the
+  applier passes them back explicitly.
+- Text-like channel names are compared the way Discord stores them — lowercase,
+  spaces as dashes — so `"Staff Chat"` does not show up as a rename forever.
+- Configs are read on every command, not at startup: edit, plan, apply, no
+  restart. `server:` picks a config by file name; without it the one whose
+  `guildId` matches the server is used.
 
 ### State
 
@@ -219,7 +244,8 @@ content_hash, archived_at, archived_from)`.
 - `content_hash` makes a message **edited in place** when its `.md` changes,
   never reposted.
 - The first plan on an existing server **imports**: resources matching config
-  entries by name are adopted into state.
+  entries by name are adopted into state (`⇄ adopt`). Two resources with the
+  same name are a plan error — adoption never guesses.
 
 ### Plan and apply
 
@@ -228,11 +254,15 @@ content_hash, archived_at, archived_from)`.
 | Op | Meaning |
 |---|---|
 | `+ create` | In config, not on the server |
+| `⇄ adopt` | Exists on the server under the configured name, not yet in state: taken over, then updated like any managed resource |
 | `~ update` | Managed, differs from the config |
 | `→ archive` | Managed channel no longer in the config: moved into the archive, permissions synced to it, previous parent recorded |
 | `← restore` | Archived channel back in the config: moved to its declared place, overwrites reapplied |
 | `? unmanaged` | On the server, not in state — reported, never touched |
-| `? orphaned` | Managed role no longer in the config — reported, never touched |
+| `? orphaned` | Managed role or category no longer in the config — reported, never touched |
+| `· forget` | Managed channel deleted on Discord by hand — only its state row goes |
+| `⏭ skip` | `requires: community` on a plain server |
+| `↕ reorder` | Roles or channels are not in config order. Order is applied by **slots**: the managed resources swap among the positions they already hold, so nothing outside the config moves |
 
 `/provision plan server:<name>` shows the ops and changes nothing.
 `/provision apply server:<name>` recomputes the plan, shows it, and runs it only
@@ -273,7 +303,7 @@ the first config is edited rather than written from scratch.
 | 0 | This specification | Done (v4.30.2) |
 | 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | Done (v4.31.0) |
 | 2 | `/export-chats` | Done (v4.32.0) |
-| 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | — |
+| 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | Done (v4.33.0) |
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | — |
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | — |
 | 6 | AutoMod as a resource | — |

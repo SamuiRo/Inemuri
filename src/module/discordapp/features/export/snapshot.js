@@ -1,4 +1,4 @@
-import { ChannelType } from "discord.js";
+import { channelKind } from "../../channelKinds.js";
 
 /**
  * Перетворення об'єктів discord.js на прості дані експорту. Чисті функції:
@@ -11,34 +11,6 @@ import { ChannelType } from "discord.js";
  *   ExportChannel = { id, name, kind, position, category, parentId, topic,
  *                     skipped, truncatedThreads, messages: [ExportMessage] }
  */
-
-/** Тип каналу Discord → вид у експорті, або null, якщо каналу там не місце. */
-const KIND_BY_TYPE = {
-  [ChannelType.GuildText]: "text",
-  [ChannelType.GuildAnnouncement]: "announcement",
-  [ChannelType.GuildVoice]: "voice",
-  [ChannelType.GuildStageVoice]: "stage",
-  [ChannelType.PublicThread]: "thread",
-  [ChannelType.PrivateThread]: "private-thread",
-  [ChannelType.AnnouncementThread]: "thread",
-  [ChannelType.GuildForum]: "forum",
-  [ChannelType.GuildMedia]: "media",
-  [ChannelType.GuildCategory]: "category",
-};
-
-export function channelKind(type) {
-  return KIND_BY_TYPE[type] ?? null;
-}
-
-/** Чи бувають у каналі цього виду власні повідомлення. */
-export function holdsMessages(kind) {
-  return ["text", "announcement", "voice", "stage", "thread", "private-thread"].includes(kind);
-}
-
-/** Чи бувають у каналі цього виду треди. */
-export function holdsThreads(kind) {
-  return ["text", "announcement", "forum", "media"].includes(kind);
-}
 
 /**
  * @param {object} channel  GuildChannel або ThreadChannel.

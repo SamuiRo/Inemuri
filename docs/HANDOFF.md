@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.32.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.33.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
-8 migrations exist (`database/migrations/001`–`008`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 325 green `node --test` cases
+9 migrations exist (`database/migrations/001`–`009`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 350 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -43,10 +43,11 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 
 **discordapp** — Discord server management inside Inemuri — is specified in
 [DISCORDAPP.md](DISCORDAPP.md); its work plan table at the end records
-per-step status. Steps 1–2 are done: Discord delivery is REST-only, so a
+per-step status. Steps 1–3 are done: Discord delivery is REST-only, so a
 Discord outage no longer stops the process, discordapp starts last with its
-own login retry (`v4.31.0`), and `/export-chats` exists (`v4.32.0`). **Neither
-has run against the live bot yet** — see next steps.
+own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so does
+`/provision plan` over server configs (`v4.33.0`). **None of it has run
+against the live bot yet** — see next steps.
 
 ## Documentation
 
@@ -88,8 +89,11 @@ destinations is worse than not starting. A fresh clone now starts — before
    needs the bot re-invited with the `applications.commands` scope. Then
    `/daily` should answer ephemerally and still deliver the report. Before
    trying `/export-chats`, switch on the **Message Content** intent in the
-   Developer Portal; start with a small `limit` on one server. Next build step
-   is provisioning (DISCORDAPP.md step 3).
+   Developer Portal; start with a small `limit` on one server. For
+   provisioning: `npm run migrate` (migration `009`), copy
+   `src/config/discordapp/servers/example.sample.json` to `<name>.json`, set
+   `guildId`, and run `/provision plan` — it changes nothing. Next build step
+   is `/provision apply` (DISCORDAPP.md step 4).
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -143,6 +147,9 @@ destinations is worse than not starting. A fresh clone now starts — before
   `DiscordApp` + `CommandRegistry`. Verified by tests and lint only.
 - Built step 2 (`v4.32.0`): `/export-chats`. Also tests and lint only; the
   collector was exercised against a fake guild, not a real one.
+- Built step 3 (`v4.33.0`): configs, validator, planner, `/provision plan`.
+  The operator settled on no deletion at all: a channel leaving the config
+  goes to a mandatory private archive category.
 
 ### 2026-09-13
 

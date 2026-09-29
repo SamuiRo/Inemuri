@@ -126,6 +126,11 @@ export const DISCORD_EXPORT_CONCURRENCY = 3;
 // інакше перетворив би експорт на тисячі запитів; обрізання видно у звіті.
 export const DISCORD_EXPORT_ARCHIVED_THREADS = 100;
 
+// ── discordapp: провіжн ───────────────────────────────────────────────────
+// Конфіги серверів (docs/DISCORDAPP.md): servers/<name>.json, у .gitignore.
+// Читаються на кожну команду, а не на старті — правка конфігу діє без рестарту.
+export const DISCORD_SERVERS_DIR = fileURLToPath(new URL("./discordapp/servers/", import.meta.url));
+
 // ── Polling ────────────────────────────────────────────────────────────────
 export const POLLING_INTERVAL_MIN = positiveNumber(
   "POLLING_INTERVAL_MIN", process.env.POLLING_INTERVAL_MIN, 5,

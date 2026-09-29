@@ -3,10 +3,8 @@ import assert from "node:assert/strict";
 import { gunzipSync } from "zlib";
 import { ChannelType } from "discord.js";
 
+import { channelKind, holdsMessages, holdsThreads } from "../src/module/discordapp/channelKinds.js";
 import {
-  channelKind,
-  holdsMessages,
-  holdsThreads,
   looksLikeMissingContentIntent,
   toChannelRecord,
   toMessageRecord,
