@@ -118,10 +118,15 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   `[2026-09-29 14:02] author: text`, with reply, attachment and reaction
   markers. **JSON**: the full structure with ids, reply targets, attachments,
   reactions and thread parentage.
-- The file is always written to the git-ignored `exports/` directory, and is
-  attached to the ephemeral reply when it fits `DISCORD_UPLOAD_LIMIT_MB`
-  (20 MB, measured), gzipped otherwise. Attachment URLs inside it are signed CDN
-  links and expire.
+- The file is written to the git-ignored `exports/` directory and, when
+  `DISCORD_EXPORT_TELEGRAM_CHAT` is set, also sent to that Telegram chat
+  (v4.39.0). **It is not attached in Discord** — a whole server's messages
+  should not sit as an attachment there; the Discord reply is a short summary.
+  The Telegram copy goes through `EventBus` → `MessageRouter` →
+  `TelegramDestination`, the same path as forwarding (D1: discordapp does not
+  call Telegram itself), so its failures land in the same log. Telegram's
+  limit is 2 GB, so nothing is compressed. Attachment URLs inside the export
+  are signed CDN links and expire.
 - No progress updates (v4.38.1): Discord already shows the deferred reply as
   "thinking…", and every update would be one more request. An interaction
   token lives 15 minutes; a run longer than that still writes its files to
@@ -446,7 +451,8 @@ with `--yes` it applies it, exactly like the Apply button.
 | `DISCORD_APP_ENABLED` | `true` | `false` skips the gateway session entirely. Delivery is unaffected. |
 | `DISCORD_GUILD_IDS` | empty | Comma-separated guilds discordapp serves (D8). Empty = every guild the bot is in. |
 | `DISCORD_COMMAND_WHITELIST` | empty | Comma-separated user ids allowed to run admin commands (D7). Empty = nobody. |
-| `DISCORD_UPLOAD_LIMIT_MB` | `20` | Largest file sent as an attachment, by delivery and by export. |
+| `DISCORD_UPLOAD_LIMIT_MB` | `20` | Largest file Discord delivery sends as an attachment. |
+| `DISCORD_EXPORT_TELEGRAM_CHAT` | empty | Telegram chat id or `@username` that also receives `/export-chats` files. Empty = disk only. |
 
 ## Work plan
 

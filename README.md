@@ -145,7 +145,8 @@ After a successful login, Inemuri can print a new `TELEGRAM_SESSION` string. Sav
 | `DISCORD_COMMAND_WHITELIST` | Optional | Comma-separated Discord user IDs allowed to run admin commands. **Empty = nobody** (since `v4.31.0`). |
 | `DISCORD_GUILD_IDS` | Optional | Comma-separated servers discordapp serves. Empty = every server the bot is in. |
 | `DISCORD_APP_ENABLED` | Optional | `false` skips discordapp's gateway session. Delivery is unaffected. Default `true`. |
-| `DISCORD_UPLOAD_LIMIT_MB` | Optional | Largest file sent as an attachment. Default `20`. |
+| `DISCORD_UPLOAD_LIMIT_MB` | Optional | Largest file Discord delivery sends as an attachment. Default `20`. |
+| `DISCORD_EXPORT_TELEGRAM_CHAT` | Optional | Telegram chat id or `@username` that also receives `/export-chats` files. Empty = disk only. |
 | `POLLING_INTERVAL_MIN` | Yes if polling is used | Polling interval, in minutes. |
 | `POLLING_FETCH_LIMIT` | Yes if polling is used | Number of Telegram messages fetched per polling cycle. |
 
@@ -392,7 +393,7 @@ It:
 There is also a discordapp slash command:
 
 - `/daily`: manually triggers the daily report for whitelisted users. The reply is visible only to the caller, like every discordapp reply.
-- `/export-chats limit:<1–100> [format:md|json|both] [scope:this|all]`: exports the latest messages of every channel and thread the bot can read into `exports/` (git-ignored) and attaches the file to the reply — gzipped when it exceeds `DISCORD_UPLOAD_LIMIT_MB`. Needs the **Message Content** intent enabled for the bot in the Discord Developer Portal; without it Discord returns other people's messages empty, and the reply warns about it. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-export-chats).
+- `/export-chats limit:<1–100> [format:md|json|both] [scope:this|all]`: exports the latest messages of every channel and thread the bot can read into `exports/` (git-ignored), and sends the file to Telegram when `DISCORD_EXPORT_TELEGRAM_CHAT` is set. Nothing is attached in Discord — the reply is a summary. Needs the **Message Content** intent enabled for the bot in the Discord Developer Portal; without it Discord returns other people's messages empty, and the reply warns about it. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-export-chats).
 - `/provision plan [server:<name>]`: compares the server with its config in `src/config/discordapp/servers/<name>.json` (git-ignored; start from `example.sample.json`) and shows what applying would create, update, adopt, archive or reorder. Changes nothing. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-provisioning-server-as-code). Inviting the bot and the permissions it needs: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#setup).
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]`: the same from a terminal — `check` verifies the bot's setup on a server (role position, permissions, Message Content, commands) and prints the plan; `apply --yes` applies it; `export` writes the server as a config.
 - Role panels: buttons that give or take a role, published by provisioning (`rolePanel` messages). Any member can press them; roles with moderation or admin permissions are refused. Categories with `optIn` are visible only to members holding the role.

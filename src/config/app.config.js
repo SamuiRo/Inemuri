@@ -122,6 +122,10 @@ export const DISCORD_EXPORT_DIR = fileURLToPath(new URL("../../exports/", import
 // Скільки каналів читаємо паралельно. Черга rate limit у @discordjs/rest
 // все одно вирівнює запити; більше — лише довші паузи на 429.
 export const DISCORD_EXPORT_CONCURRENCY = 3;
+// Куди ще надсилати файли /export-chats, крім диска: id або @username чату
+// Telegram. Не задано — лише диск. У Discord експорт не надсилається: там
+// лишається тільки коротка відповідь.
+export const DISCORD_EXPORT_TELEGRAM_CHAT = process.env.DISCORD_EXPORT_TELEGRAM_CHAT?.trim() || null;
 // Архівних тредів на канал — одна сторінка API. Форум із тисячами тредів
 // інакше перетворив би експорт на тисячі запитів; обрізання видно у звіті.
 export const DISCORD_EXPORT_ARCHIVED_THREADS = 100;

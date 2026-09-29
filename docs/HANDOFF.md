@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.38.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.39.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`

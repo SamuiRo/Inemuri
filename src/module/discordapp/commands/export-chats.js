@@ -1,11 +1,15 @@
 import { SlashCommandBuilder } from "discord.js";
-import { describeResult, exportChats, prepareAttachments } from "../features/export/ChatExporter.js";
+import { describeResult, exportCaption, exportChats, exportDeliveryMessage } from "../features/export/ChatExporter.js";
 import { isServedGuild } from "../guard.js";
-import { DISCORD_UPLOAD_LIMIT_MB } from "../../../config/app.config.js";
+import { DISCORD_EXPORT_TELEGRAM_CHAT } from "../../../config/app.config.js";
 
 /**
  * /export-chats — останні N повідомлень з кожного каналу й треду, до яких
  * бот має доступ, одним файлом (docs/DISCORDAPP.md, «Feature: /export-chats»).
+ *
+ * Файл пишеться на диск і, якщо задано DISCORD_EXPORT_TELEGRAM_CHAT,
+ * надсилається в Telegram. У Discord — лише коротка відповідь: чужі
+ * повідомлення з усього сервера не мають лежати вкладенням у Discord.
  */
 export default {
   data: new SlashCommandBuilder()
@@ -34,7 +38,7 @@ export default {
       )),
   admin: true,
 
-  async execute(interaction, { guildIds }) {
+  async execute(interaction, { eventBus, guildIds }) {
     const limit = interaction.options.getInteger("limit", true);
     const format = interaction.options.getString("format") ?? "md";
     const scope = interaction.options.getString("scope") ?? "this";
@@ -48,10 +52,10 @@ export default {
     // відкладеній відповіді, а кожне оновлення — ще один запит.
     const { snapshot, files } = await exportChats({ guilds, limit, format, label });
 
-    const { attachments, tooLarge } = prepareAttachments(files, DISCORD_UPLOAD_LIMIT_MB * 1024 * 1024);
-    return {
-      content: describeResult(snapshot, { saved: files.map((file) => file.name), tooLarge }),
-      files: attachments.map((file) => ({ attachment: file.data, name: file.name })),
-    };
+    const telegram = DISCORD_EXPORT_TELEGRAM_CHAT;
+    if (telegram) {
+      eventBus.emitMessageReceived(exportDeliveryMessage(files, { chat: telegram, label, summary: exportCaption(snapshot) }));
+    }
+    return describeResult(snapshot, { saved: files.map((file) => file.name), telegram });
   },
 };

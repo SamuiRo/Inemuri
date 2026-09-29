@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { gunzipSync } from "zlib";
 import { ChannelType } from "discord.js";
 
 import { channelKind, holdsMessages, holdsThreads } from "../src/module/discordapp/channelKinds.js";
@@ -19,7 +18,8 @@ import {
 import {
   describeResult,
   exportFileName,
-  prepareAttachments,
+  exportCaption,
+  exportDeliveryMessage,
 } from "../src/module/discordapp/features/export/ChatExporter.js";
 import { collectGuild } from "../src/module/discordapp/features/export/collector.js";
 
@@ -193,25 +193,29 @@ test("exportFileName — slug and UTC stamp", () => {
   assert.equal(exportFileName("🔥🔥", date, "md"), "export-server-20260929-1402.md");
 });
 
-test("prepareAttachments — as is, gzipped, or disk only", () => {
-  const small = { name: "a.md", data: Buffer.from("hello") };
-  const compressible = { name: "b.md", data: Buffer.from("x".repeat(5000)) };
-  const random = { name: "c.json", data: Buffer.from(Array.from({ length: 5000 }, () => Math.floor(Math.random() * 256))) };
-
-  const { attachments, tooLarge } = prepareAttachments([small, compressible, random], 1000);
-  assert.deepEqual(attachments.map((a) => a.name), ["a.md", "b.md.gz"]);
-  assert.equal(gunzipSync(attachments[1].data).toString(), "x".repeat(5000));
-  assert.deepEqual(tooLarge, ["c.json"]);
+test("exportDeliveryMessage — files go to Telegram through the normal delivery path", () => {
+  const files = [{ name: "export-x.md", data: Buffer.from("# x") }, { name: "export-x.json", data: Buffer.from("{}") }];
+  const message = exportDeliveryMessage(files, { chat: "@me", label: "My Server", summary: "2 messages" });
+  assert.deepEqual(message.source.destinations, { telegram: ["@me"] }, "лише Telegram — не Discord");
+  assert.equal(message.source.name, "Inemuri export · My Server");
+  assert.deepEqual(message.downloadedMedia.map((m) => [m.type, m.filename, m.mimeType]), [
+    ["document", "export-x.md", "text/markdown"],
+    ["document", "export-x.json", "application/json"],
+  ]);
+  assert.equal(message.text, "2 messages");
 });
 
 test("describeResult — counts, saved files, skipped list, intent warning", () => {
   const empty = Array.from({ length: 6 }, (_, i) => msg(String(i), { content: "" }));
   const snapshot = { guilds: [{ name: "S", channels: [chan("a", { messages: empty }), chan("b", { skipped: "no access" })] }] };
-  const text = describeResult(snapshot, { saved: ["export.md"], tooLarge: [] });
+  const text = describeResult(snapshot, { saved: ["export.md"], telegram: null });
   assert.match(text, /Exported \*\*6\*\* messages from \*\*1\*\* channels\./);
   assert.match(text, /`exports\/export\.md`/);
   assert.match(text, /Message Content Intent/);
   assert.match(text, /- #b — no access/);
+  assert.match(text, /DISCORD_EXPORT_TELEGRAM_CHAT/);
+  assert.match(describeResult(snapshot, { saved: ["export.md"], telegram: "@me" }), /Sent to Telegram \(@me\)/);
+  assert.equal(exportCaption(snapshot), "6 messages · 1 channels · 1 skipped");
 });
 
 // ── collector.js на підробленому сервері ───────────────────────────────────

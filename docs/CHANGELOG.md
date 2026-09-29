@@ -7,6 +7,23 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.39.0] - 2026-09-29
+
+`/export-chats` delivers to disk and Telegram, not to Discord.
+
+### Changed
+- **The export is no longer attached in Discord.** It is written to
+  `exports/` as before and, when `DISCORD_EXPORT_TELEGRAM_CHAT` is set, sent to
+  that Telegram chat as documents with a one-line caption. The Discord reply
+  is only a summary. The gzip fallback for Discord's upload limit is gone with
+  it — Telegram takes 2 GB.
+- The Telegram copy is emitted on `EventBus` and delivered by `MessageRouter`
+  and `TelegramDestination`, like any forwarded message: discordapp still does
+  not import anything from Telegram.
+
+### Added
+- `DISCORD_EXPORT_TELEGRAM_CHAT` in `app.config.js` and `.env.example`.
+
 ## [4.38.1] - 2026-09-29
 
 Fewer Discord requests spent on showing status, at the operator's request.

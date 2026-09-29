@@ -1,6 +1,5 @@
 import fs from "fs/promises";
 import path from "path";
-import { gzipSync } from "zlib";
 import { collectGuild } from "./collector.js";
 import { formatJson, formatMarkdown, summarize } from "./format.js";
 import { looksLikeMissingContentIntent } from "./snapshot.js";
@@ -57,34 +56,43 @@ export function exportFileName(label, date, ext) {
 }
 
 /**
- * Які файли їдуть у Discord і в якому вигляді: як є, якщо влазять у ліміт;
- * стиснуті gzip, якщо влазять лише так; інакше — лишаються тільки на диску.
+ * Файли експорту як повідомлення для EventBus → MessageRouter → Telegram.
+ * discordapp не звертається до Telegram сам (docs/DISCORDAPP.md D1): це та
+ * сама доставка, що й для пересилань, з тими самими логами й помилками.
+ * Ліміт Telegram — 2 ГБ, тож стискати не треба. Чиста функція.
  *
  * @param {{ name: string, data: Buffer }[]} files
- * @param {number} limitBytes
- * @returns {{ attachments: { name: string, data: Buffer }[], tooLarge: string[] }}
+ * @param {{ chat: string, label: string, summary: string }} options
  */
-export function prepareAttachments(files, limitBytes) {
-  const attachments = [];
-  const tooLarge = [];
-  for (const file of files) {
-    if (file.data.length <= limitBytes) {
-      attachments.push({ name: file.name, data: file.data });
-      continue;
-    }
-    const gz = gzipSync(file.data);
-    if (gz.length <= limitBytes) attachments.push({ name: `${file.name}.gz`, data: gz });
-    else tooLarge.push(file.name);
-  }
-  return { attachments, tooLarge };
+export function exportDeliveryMessage(files, { chat, label, summary }) {
+  return {
+    platform: "discordapp",
+    text: summary,
+    source: { name: `Inemuri export · ${label}`, destinations: { telegram: [chat] } },
+    downloadedMedia: files.map((file) => ({
+      type: "document",
+      data: file.data,
+      filename: file.name,
+      mimeType: file.name.endsWith(".json") ? "application/json" : "text/markdown",
+    })),
+    metadata: { source: "discordapp-export" },
+  };
+}
+
+/** Один рядок для підпису в Telegram: скільки чого. Чиста функція. */
+export function exportCaption(snapshot) {
+  const stats = summarize(snapshot);
+  return `${stats.messages} messages · ${stats.channels} channels` +
+    (stats.skipped.length ? ` · ${stats.skipped.length} skipped` : "");
 }
 
 /**
  * Текст відповіді команди.
  * @param {object} snapshot
- * @param {{ saved: string[], tooLarge: string[] }} files  Імена файлів.
+ * @param {{ saved: string[], telegram: (string|null) }} delivery
+ *   saved — імена файлів на диску; telegram — чат, куди вони пішли, або null.
  */
-export function describeResult(snapshot, { saved, tooLarge }) {
+export function describeResult(snapshot, { saved, telegram }) {
   const stats = summarize(snapshot);
   const lines = [
     `📦 Exported **${stats.messages}** messages from **${stats.channels}** channels` +
@@ -92,9 +100,9 @@ export function describeResult(snapshot, { saved, tooLarge }) {
     `💾 Saved: ${saved.map((name) => `\`exports/${name}\``).join(", ")}`,
   ];
 
-  if (tooLarge.length) {
-    lines.push(`⚠️ Too large to attach even gzipped, kept on disk only: ${tooLarge.join(", ")}`);
-  }
+  lines.push(telegram
+    ? `📨 Sent to Telegram (${telegram}).`
+    : "ℹ️ Set `DISCORD_EXPORT_TELEGRAM_CHAT` to also get the files in Telegram.");
   if (looksLikeMissingContentIntent(snapshot)) {
     lines.push(
       "⚠️ Almost every message came back empty — enable **Message Content Intent** " +
