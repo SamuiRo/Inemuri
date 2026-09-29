@@ -129,9 +129,12 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   exported" rather than turning a large forum into thousands of requests.
 - Messages come newest first and are reversed into chronological order.
 - **Markdown** (default, for reading and for LLM analysis): server → category →
-  channel headings, one line per message
+  channel headings, one header line per message
   `[2026-09-29 14:02] author: text`, with reply, attachment and reaction
-  markers. **JSON**: the full structure with ids, reply targets, attachments,
+  markers. **Nothing is truncated** — neither the text nor embeds, which are
+  written whole with their author, title, description, fields and footer
+  (v4.40.3; before, an embed was one line cut at 200 characters, so bot posts
+  and Inemuri's own forwards came out cut). **JSON**: the full structure with ids, reply targets, attachments,
   reactions and thread parentage.
 - The file is written to the git-ignored `exports/` directory and, when
   `DISCORD_EXPORT_TELEGRAM_CHAT` is set, also sent to that Telegram chat

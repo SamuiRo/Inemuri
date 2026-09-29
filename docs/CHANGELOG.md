@@ -7,6 +7,21 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.40.3] - 2026-09-30
+
+### Fixed
+- **`/export-chats` Markdown cut long embeds.** An embed was flattened into one
+  line of at most 200 characters ending in "…", on the idea of keeping the file
+  compact. But bot posts — Inemuri's own forwards included — carry their whole
+  text in an embed, so the Markdown lost exactly the content it exists to
+  analyse; the JSON was complete. Embeds are now written whole, line by line,
+  with their author, title, description, fields and footer. Found by the
+  operator; checked live on the test server.
+- Embed `author`, `fields` and `footer` were not captured at all; they are now
+  in the JSON too.
+- A message with no text of its own (only an embed) no longer leaves a double
+  space in its header line.
+
 ## [4.40.2] - 2026-09-29
 
 discordapp closed. Documentation only.

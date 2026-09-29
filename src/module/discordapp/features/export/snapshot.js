@@ -56,10 +56,15 @@ export function toMessageRecord(message) {
       size: file.size ?? null,
       contentType: file.contentType ?? null,
     })),
+    // Embed повністю: у постів ботів (і пересилань самого Inemuri) увесь
+    // текст живе саме тут, а не в content.
     embeds: values(message.embeds).map((embed) => ({
+      author: embed.author?.name ?? null,
       title: embed.title ?? null,
       description: embed.description ?? null,
       url: embed.url ?? null,
+      fields: values(embed.fields).map((field) => ({ name: field.name, value: field.value })),
+      footer: embed.footer?.text ?? null,
     })),
     stickers: values(message.stickers).map((sticker) => sticker.name),
     reactions: values(message.reactions?.cache ?? message.reactions).map((reaction) => ({

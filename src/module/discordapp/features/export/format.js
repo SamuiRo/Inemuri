@@ -1,12 +1,11 @@
 /**
  * Форматери експорту. Чисті функції: знімок (snapshot.js) → рядок.
  *
- * Markdown — основний формат: для читання і для аналізу LLM, тому
- * компактний — один рядок на повідомлення, без URL вкладень (вони підписані й
- * протухають). JSON — повний знімок з id і посиланнями, для скриптів.
+ * Markdown — основний формат: для читання і для аналізу LLM. Компактний у
+ * формі (рядок-заголовок на повідомлення, без URL вкладень — вони підписані й
+ * протухають), але **текст не обрізається**: ні content, ні embed. JSON —
+ * повний знімок з id і посиланнями, для скриптів.
  */
-
-const EMBED_PREVIEW = 200;
 
 const ICON = {
   text: "#",
@@ -135,20 +134,39 @@ export function formatMessage(message, byId = new Map()) {
 
   const [first = "", ...rest] = message.content.split("\n");
   const body = first || (message.system ? "_(system message)_" : "");
-  const flags = `${message.pinned ? "📌 " : ""}`;
-  const edited = message.editedAt ? " _(edited)_" : "";
+  const flags = message.pinned ? "📌 " : "";
+  const edited = message.editedAt ? "_(edited)_" : "";
 
-  const lines = [`[${formatTime(message.createdAt)}] ${flags}${who}: ${body}${edited}`];
+  // Порожнє тіло (пост, де весь текст в embed) не лишає подвійного пробілу.
+  const lines = [[`[${formatTime(message.createdAt)}] ${flags}${who}:`, body, edited].filter(Boolean).join(" ")];
   for (const line of rest) lines.push(`    ${line}`);
   for (const file of message.attachments) lines.push(`    📎 ${file.name}${file.size ? ` (${formatSize(file.size)})` : ""}`);
-  for (const embed of message.embeds) {
-    const text = [embed.title, embed.description].filter(Boolean).join(" — ");
-    if (text) lines.push(`    🔗 ${truncate(oneLine(text), EMBED_PREVIEW)}`);
-  }
+  for (const embed of message.embeds) lines.push(...formatEmbed(embed).map((line) => `    ${line}`));
   for (const sticker of message.stickers) lines.push(`    🏷 sticker: ${sticker}`);
   if (message.reactions.length) {
     lines.push(`    reactions: ${message.reactions.map((r) => `${r.emoji} ${r.count}`).join(" · ")}`);
   }
+  return lines;
+}
+
+/**
+ * Embed → рядки, повністю й з переносами. Раніше тут був один рядок на 200
+ * символів, і довгі пости ботів (у них увесь текст в embed) виходили
+ * обрізаними — для аналізу це втрата самого змісту.
+ */
+export function formatEmbed(embed) {
+  const header = [embed.author, embed.title].filter(Boolean).join(" · ");
+  const description = (embed.description ?? "").trimEnd().split("\n").filter((line, i) => i > 0 || line);
+  const lines = [];
+  // Без заголовка перший рядок опису стає заголовком — щоб 🔗 було завжди.
+  if (header) lines.push(`🔗 ${header}`);
+  else if (description.length) lines.push(`🔗 ${description.shift()}`);
+  lines.push(...description);
+  for (const field of embed.fields ?? []) {
+    const [first = "", ...rest] = String(field.value ?? "").split("\n");
+    lines.push(`• ${field.name}: ${first}`, ...rest.map((line) => `  ${line}`));
+  }
+  if (embed.footer) lines.push(`— ${embed.footer}`);
   return lines;
 }
 
@@ -173,6 +191,3 @@ function oneLine(text) {
   return text.replace(/\s*\n\s*/g, " ").trim();
 }
 
-function truncate(text, max) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}

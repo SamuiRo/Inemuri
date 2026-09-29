@@ -11,6 +11,7 @@ import {
 import {
   formatJson,
   formatMarkdown,
+  formatEmbed,
   formatMessage,
   groupByCategory,
   summarize,
@@ -145,10 +146,22 @@ test("formatMessage — reply, multi-line, attachment, embed, reactions, edited,
     "[2026-09-29 14:02] Helper [bot] ↪ Alice: line one _(edited)_",
     "    line two",
     "    📎 log.txt (1.5 KB)",
-    "    🔗 Title — Desc",
+    "    🔗 Title",
+    "    Desc",
     "    reactions: 🔥 2",
   ]);
   assert.match(formatMessage(msg("3", { replyTo: "gone" }))[0], /↪ earlier message:/);
+});
+
+test("formatEmbed — a long embed comes out whole, with its fields and footer", () => {
+  const long = Array.from({ length: 40 }, (_, i) => `line ${i} of a long forwarded post`).join("\n");
+  const lines = formatEmbed({ author: "Source", title: "Title", description: long,
+    fields: [{ name: "Price", value: "$1\n$2" }], footer: "via Inemuri" });
+  assert.equal(lines[0], "🔗 Source · Title");
+  assert.equal(lines.length, 1 + 40 + 2 + 1, "жоден рядок опису не загублено");
+  assert.ok(!lines.some((line) => line.endsWith("…")), "нічого не обрізано");
+  assert.deepEqual(lines.slice(-3), ["• Price: $1", "  $2", "— via Inemuri"]);
+  assert.deepEqual(formatEmbed({ description: "only text\nsecond" }), ["🔗 only text", "second"]);
 });
 
 test("formatMarkdown — headers, skipped, empty, forum with threads", () => {
