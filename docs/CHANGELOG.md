@@ -7,6 +7,25 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.40.2] - 2026-09-29
+
+discordapp closed. Documentation only.
+
+### Changed
+- `DISCORDAPP.md`: status banner and a *Status and known limitations*
+  section — what the slice deliberately does not do (select-menu panels, audit
+  log channel, message insertion and pins, server settings, AutoMod
+  `member-profile`, custom emoji, overflow-archive resync) and what has not
+  run live (`/export-chats` to Telegram). Module layout and the command /
+  component contract match the code again (`components/`, `features/roles/`,
+  `reply.js`, `channelKinds.js`, `update: true`, the script). D10 says what it
+  does now: the self-assign check also runs on every press. Removed the claim
+  that provisioning handles pinned content, and the stale "AutoMod is a later
+  step". The work plan lists what shipped after it.
+- `HANDOFF.md`: discordapp marked complete with its operational notes; the
+  discordapp config files in the configuration table; the TheFlow pilot no
+  longer described as "not run yet" — the dev database holds its results.
+
 ## [4.40.1] - 2026-09-29
 
 ### Changed

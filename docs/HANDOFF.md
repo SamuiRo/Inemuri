@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.40.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.40.2`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
@@ -12,15 +12,12 @@ is clean on the dev database. `npm test` is 387 green `node --test` cases
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
 finished task there carries a `> **Done (vX.Y.Z).**` note).
 
-**The pilot is configured but has not run yet.** On the dev copy, three
-sources are flow-enabled in the git-ignored `sources.json` — one of them with
-`flow.vision.enabled`, two with `filters.reject_shouty` — and a Gemini key is
-in `.env`, so `EnrichWorker` starts on the next boot. Nothing has flowed
-through the pipeline: `posts`, `post_feedback` and `provider_quota` are still
-empty, and **a running process will not pick the change up** — source config
-is read at startup. Until that restart, and a first pass of
-`node src/cli.js flow stats`, treat "implemented" as "the code exists and its
-units pass", not as "it works against a live provider".
+**The pilot is running.** On the dev copy, three sources are flow-enabled in
+the git-ignored `sources.json` — one of them with `flow.vision.enabled`, two
+with `filters.reject_shouty` — and a Gemini key is in `.env`. As of
+2026-09-29 the dev `posts` table held 128 `enriched`, 47 `failed` and 66
+`skipped_blacklist` rows. Nobody has read those results yet: the next step is
+`node src/cli.js flow stats`, and a look at why 47 failed.
 
 Phase 1 is still **dormant without a key**: `src/module/theflow/EnrichWorker.js`
 starts only when `ENRICH_WORKER_ENABLED` and
@@ -41,17 +38,14 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 `flow` and `vision` included. Enabling the pilot is: import the live
 `src/config/sources.json`, switch the chosen sources on, export, reseed.
 
-**discordapp** — Discord server management inside Inemuri — is specified in
-[DISCORDAPP.md](DISCORDAPP.md); its work plan table at the end records
-per-step status. Steps 1–4 are done: Discord delivery is REST-only, so a
-Discord outage no longer stops the process, discordapp starts last with its
-own login retry (`v4.31.0`), `/export-chats` exists (`v4.32.0`), and so do
-`/provision plan` (`v4.33.0`), `/provision apply` (`v4.34.0`), and provisioned
-messages with role panels (`v4.35.0`). **Provisioning has been run against a
-real server** (the operator's test server, `v4.36.0`): create, adopt, archive,
-edit-in-place and restore all worked and left an empty plan. Not yet exercised
-live: slash commands and buttons inside Discord (the service has not been
-restarted with the server in `DISCORD_GUILD_IDS`), and `/export-chats`.
+**discordapp** — Discord server management inside Inemuri — is **complete**
+(`v4.30.2`–`v4.40.1`) and closed as a slice. [DISCORDAPP.md](DISCORDAPP.md)
+holds the design, the setup, every feature contract, and a *Status and known
+limitations* section with what it deliberately does not do. Discord delivery is
+REST-only, so a Discord outage no longer stops the process. Provisioning was
+run against the operator's test server, and the operator exercised the slash
+commands and buttons there. The one piece not yet run live is `/export-chats`
+delivering to Telegram (`DISCORD_EXPORT_TELEGRAM_CHAT`).
 
 ## Documentation
 
@@ -73,6 +67,8 @@ Deployment-specific config is git-ignored and read through
 | `sources.json` | `sources.sample.json` | Per-source channels, filters, replacements, `flow`, `poll_interval_min` |
 | `routing.json` | `routing.sample.json` | `unsorted_destinations` and the phase 2 `routing` rules |
 | `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
+| `discordapp/servers/<name>.json` | `discordapp/servers/example.sample.json` | discordapp server configs (read per command, no fallback) |
+| `discordapp/messages/*.md` | `discordapp/messages/*.sample.md` | Texts of provisioned messages |
 
 `categories.json` is **tracked** and holds taxonomy only — topics, signals,
 dedup windows. No channel ids live in it.
@@ -84,29 +80,16 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-0. **discordapp first boot (`v4.31.0`).** Before restarting: make sure
-   `DISCORD_COMMAND_WHITELIST` holds your user id — an empty list now refuses
-   admin commands, `/daily` included — and optionally set `DISCORD_GUILD_IDS`.
-   On boot the log should show the Discord adapter connecting "(REST)",
-   `discordapp started`, stale global commands removed once, and commands
-   registered per server. A server that says "could not register commands"
-   needs the bot re-invited with the `applications.commands` scope. Then
-   `/daily` should answer ephemerally and still deliver the report. Before
-   trying `/export-chats`, switch on the **Message Content** intent in the
-   Developer Portal; start with a small `limit` on one server. For
-   provisioning: `npm run migrate` (migration `009`), copy
-   `src/config/discordapp/servers/example.sample.json` to `<name>.json`, set
-   `guildId`, and run `/provision plan` — it changes nothing. Try
-   `/provision apply` first on a **test server**, with the bot temporarily
-   holding a role with Administrator. Bot setup (portal, invite link, role
-   placement): [DISCORDAPP.md § Setup](DISCORDAPP.md#setup). Run
-   `npm run migrate` **before** starting the new version — done on the dev
-   copy on 2026-09-29 (backup in `database/backups/`). On the test server,
-   the config's `mentions` AutoMod rule fails until Discord's own *Block
-   Mention Spam* is deleted by hand — the bot cannot edit or delete it. The
-   DISCORDAPP.md work plan is complete; what remains is running the slash
-   commands and buttons live (restart with the server in
-   `DISCORD_GUILD_IDS`) and deciding what discordapp does next.
+0. **discordapp is closed.** Operational notes that outlive the build:
+   bot setup is in [DISCORDAPP.md § Setup](DISCORDAPP.md#setup);
+   `node scripts/discordapp.js check <guildId>` verifies it from a terminal;
+   `/provision apply` needs the bot to hold Administrator for the duration.
+   On the test server, `servers/test.json` has `archiveUnmanaged: true`, so
+   every apply there archives whatever was made by hand, and its `mentions`
+   AutoMod rule fails until Discord's own *Block Mention Spam* is deleted by
+   hand. `.env` defines `DISCORD_COMMAND_WHITELIST` twice; only the first line
+   counts. Open for a live run: `/export-chats` with
+   `DISCORD_EXPORT_TELEGRAM_CHAT` set.
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -176,6 +159,12 @@ destinations is worse than not starting. A fresh clone now starts — before
 - Built step 7 (`v4.38.0`): `/provision export`. The live round trip found
   three bugs the in-memory tests could not (state keys, neutral overwrites,
   unknown permission bits); all fixed and covered by tests.
+- After the operator's testing: fewer requests (`v4.38.1`), exports to disk
+  and Telegram instead of Discord (`v4.39.0`), `archiveUnmanaged` (`v4.40.0`,
+  applied on the test server), archived/hidden listed apart (`v4.40.1`).
+- Reviewed the whole slice for bugs before closing it: no critical issue
+  found. Brought DISCORDAPP.md and this file up to date and closed discordapp
+  (`v4.40.2`).
 
 ### 2026-09-13
 

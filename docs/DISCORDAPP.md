@@ -12,6 +12,11 @@ without rewriting its logic.
 The bot is **private**: it serves only the operator's own servers, several of
 them, and is never offered for public install.
 
+> **Status: complete (v4.40.1).** Every step of the work plan is done, and the
+> operator ran slash commands, buttons and provisioning on a live test server.
+> What it deliberately does not do is listed in
+> [Status and known limitations](#status-and-known-limitations).
+
 ## Decisions
 
 | # | Decision | Why |
@@ -25,7 +30,7 @@ them, and is never offered for public install.
 | D7 | **Admin commands fail closed.** They require the user to be in `DISCORD_COMMAND_WHITELIST`; an empty whitelist denies them. They also carry `default_member_permissions = Administrator`, which hides them from everyone else in the client. | Export reads private channels; provisioning rewrites the server. |
 | D8 | **Guild allowlist, no auto-leave.** `DISCORD_GUILD_IDS` lists the servers discordapp serves; interactions from any other guild are refused and logged. An empty list means every guild the bot is in. The bot never leaves a guild on its own. | The bot is private (Public Bot off in the Developer Portal). Auto-leave would turn a missing env entry into the bot kicking itself from the operator's own server. |
 | D9 | **Provisioning never deletes.** A managed channel removed from the config is moved into a mandatory private archive category; restoring it is putting it back in the config. Roles removed from the config are reported, never touched. | Deletion loses history irreversibly; an archive keeps it one config line away. |
-| D10 | **Self-assign roles cannot carry dangerous permissions** and must sit below the bot's highest role. Checked when a panel is validated, not when a button is pressed. | One config typo must not become "anyone can click to get admin". |
+| D10 | **Self-assign roles cannot carry dangerous permissions** and must sit below the bot's highest role. Checked by the validator, by the planner against the server, and again on every button press. | One config typo — or a permission added by hand later — must not become "anyone can click to get admin". |
 | D11 | **Stateless components.** A button's `customId` encodes everything its handler needs (`<feature>:<action>:<args>`). | Buttons keep working across restarts with no table behind them. |
 
 ## Module layout
@@ -38,14 +43,21 @@ src/module/discordapp/
   DiscordApp.js                      # lifecycle: soft start, login retry, command registration
   CommandRegistry.js                 # routes commands and components, enforces D5
   guard.js                           # pure: who may run what, in which guild
-  commands/                          # one file per slash command
+  customId.js                        # pure: stateless component ids (D11)
+  channelKinds.js                    # ChannelType <-> kind names
+  reply.js                           # long replies become an attached text file
+  commands/                          # one file per slash command; index.js lists commands and components
+  components/                        # button handlers not tied to a command (role-panel.js)
   features/
-    export/                          # /export-chats
-    roles/                           # role panels and their buttons
-    provision/                       # server-as-code: schema, planner, applier, state
+    export/                          # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
+    roles/                           # role panels: button ids, role change, self-assign safety (pure)
+    provision/                       # server as code: schema, overwrites, messages, automod, planner,
+                                     #   exporter, formatPlan (pure); readGuild, applier, configStore, Provisioner
+src/module/teapot/models/DiscordResource.js   # provisioning state (migrations 009, 010)
 src/config/discordapp/               # git-ignored deployment data + *.sample
   servers/<name>.json
   messages/*.md
+scripts/discordapp.js                # check | apply | export from a terminal
 ```
 
 ### Command module contract
@@ -54,14 +66,17 @@ src/config/discordapp/               # git-ignored deployment data + *.sample
 export default {
   data: new SlashCommandBuilder().setName("export-chats") /* ... */,
   admin: true,                                   // D7
-  async execute(interaction, ctx) {              // ctx = { eventBus, rest, ... }
-    return "text" | { content, files };          // edited into the deferred ephemeral reply
+  async execute(interaction, ctx) {              // ctx = { eventBus, guildIds }
+    return "text" | { content, files, components }; // edited into the deferred ephemeral reply
   },
 };
 ```
 
 A component handler has the same shape with `prefix` instead of `data`, and is
-routed by the part of `customId` before the first `:`.
+routed by the part of `customId` before the first `:`. With `update: true` it
+edits the ephemeral message it sits on (its buttons and attachments cleared)
+instead of replying anew — the Apply button uses this so it cannot be pressed
+twice. A new command is a file in `commands/` and a line in `commands/index.js`.
 
 ## Permission model
 
@@ -187,8 +202,8 @@ server (someone may have added them by hand), and **on every button press**.
 
 ## Feature: provisioning (server as code)
 
-A server's shape — roles, categories, channels, permission overwrites, pinned
-content, role panels, AutoMod rules — is described in
+A server's shape — roles, categories, channels, permission overwrites,
+messages, role panels, AutoMod rules — is described in
 `src/config/discordapp/servers/<name>.json` and applied Terraform-style:
 **plan, then apply**.
 
@@ -196,9 +211,10 @@ content, role panels, AutoMod rules — is described in
 > `src/module/discordapp/features/provision/` — `schema.js`, `overwrites.js`,
 > `planner.js`, `formatPlan.js` (pure), `readGuild.js` (reads Discord),
 > `applier.js` (writes Discord), `configStore.js`, `Provisioner.js`; command
-> `commands/provision.js`. Messages and role panels since v4.35.0; AutoMod is
-> a later step and the validator does not accept `automod` yet. A working
-> starting point is `servers/example.sample.json` with `messages/rules.sample.md`.
+> `commands/provision.js`. Messages and role panels since v4.35.0, AutoMod
+> since v4.37.0, `archiveUnmanaged` since v4.40.0. A working starting point is
+> `servers/example.sample.json` with `messages/rules.sample.md`, or
+> `/provision export` of the server as it is.
 
 ### Config
 
@@ -477,6 +493,38 @@ with `--yes` it applies it, exactly like the Apply button.
 | `DISCORD_UPLOAD_LIMIT_MB` | `20` | Largest file Discord delivery sends as an attachment. |
 | `DISCORD_EXPORT_TELEGRAM_CHAT` | empty | Telegram chat id or `@username` that also receives `/export-chats` files. Empty = disk only. |
 
+## Status and known limitations
+
+Complete as of v4.40.1: every step below is done, 100+ `node --test` cases
+cover it, provisioning (create, adopt, archive, restore, edit in place,
+AutoMod, export round trip, `archiveUnmanaged`) was run against a live test
+server, and the operator exercised the slash commands and buttons there.
+
+Deliberately not done — each is a small, separate change if it is ever needed:
+
+- **Role panels hold at most 25 roles** (buttons only). A select menu for
+  larger panels was specified but not built.
+- **No audit log channel.** Actions are logged to the process log only. A
+  command running past the 15-minute interaction token (a very large export)
+  loses its reply; its files are still on disk and named in the log.
+- **Messages are appended, never inserted.** A message added between existing
+  ones in the config is posted at the end of its channel — Discord cannot
+  insert. Messages are not pinned.
+- **Server settings are not provisioned**: rules / updates / system channel
+  choice, onboarding, verification level. Provisioning does respect the
+  channels the server uses (`archiveUnmanaged` keeps them).
+- **AutoMod**: the `member-profile` rule type is not supported, and rules
+  Discord created itself cannot be edited by any bot (404) — delete them by
+  hand to let the config take over.
+- **Plain emoji only** on panel buttons; custom emoji ids differ per server.
+- **Overflow archives** (`ARCHIVE 2`, …) keep the archive rights they were
+  created with; changing the archive roles later does not resync them.
+- **`/export-chats` to Telegram** was built on the normal delivery path but
+  has not been run live yet.
+
+Natural next steps, none started: search over TheFlow's corpus as a slash
+command (theflow/ROADMAP.md §9.1), and anything above that practice asks for.
+
 ## Work plan
 
 | # | Step | Status |
@@ -489,3 +537,15 @@ with `--yes` it applies it, exactly like the Apply button.
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | Done (v4.35.0) |
 | 6 | AutoMod as a resource | Done (v4.37.0) |
 | 7 | `/provision export` | Done (v4.38.0) |
+
+After the plan, from the operator's use of the test server:
+
+| Version | Change |
+|---|---|
+| v4.36.0 | `scripts/discordapp.js check \| apply` — setup check and provisioning from a terminal |
+| v4.37.0 | AutoMod: Discord's own rules cannot be edited (found live); failures are explained and not recorded as managed |
+| v4.38.0 | Export round trip found three bugs (state keys, neutral overwrites, unknown permission bits) — fixed |
+| v4.38.1 | No progress edits; the applier re-reads the server only after a phase that changed something |
+| v4.39.0 | `/export-chats` to disk and Telegram; nothing attached in Discord |
+| v4.40.0 | `archiveUnmanaged` |
+| v4.40.1 | Plan lists archived and hidden resources apart from untouched ones |

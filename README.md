@@ -13,7 +13,7 @@ Inemuri ingests content from configured sources, normalizes it into a shared eve
 - Filters messages using keyword and blacklist rules
 - Downloads Telegram media and re-uploads it to destination platforms
 - Runs scheduled jobs that emit messages through the same pipeline
-- Manages Discord servers through discordapp: slash commands, with channel export, role panels and server provisioning planned ([docs/DISCORDAPP.md](docs/DISCORDAPP.md))
+- Manages Discord servers through discordapp: channel export, role panels, AutoMod, and provisioning a whole server from a config file, with nothing ever deleted ([docs/DISCORDAPP.md](docs/DISCORDAPP.md))
 - Stores source configuration state in SQLite
 
 ## Current architecture
@@ -390,9 +390,9 @@ It:
 - optionally attaches `src/assets/images/daily.png`
 - emits the result through the same event pipeline as Telegram messages
 
-There is also a discordapp slash command:
+discordapp adds slash commands and buttons; every reply is visible only to the caller, and admin commands are limited to `DISCORD_COMMAND_WHITELIST`:
 
-- `/daily`: manually triggers the daily report for whitelisted users. The reply is visible only to the caller, like every discordapp reply.
+- `/daily`: manually triggers the daily report.
 - `/export-chats limit:<1–100> [format:md|json|both] [scope:this|all]`: exports the latest messages of every channel and thread the bot can read into `exports/` (git-ignored), and sends the file to Telegram when `DISCORD_EXPORT_TELEGRAM_CHAT` is set. Nothing is attached in Discord — the reply is a summary. Needs the **Message Content** intent enabled for the bot in the Discord Developer Portal; without it Discord returns other people's messages empty, and the reply warns about it. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-export-chats).
 - `/provision plan [server:<name>]`: compares the server with its config in `src/config/discordapp/servers/<name>.json` (git-ignored; start from `example.sample.json`) and shows what applying would create, update, adopt, archive or reorder. Changes nothing. Details: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#feature-provisioning-server-as-code). Inviting the bot and the permissions it needs: [docs/DISCORDAPP.md](docs/DISCORDAPP.md#setup).
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]`: the same from a terminal — `check` verifies the bot's setup on a server (role position, permissions, Message Content, commands) and prints the plan; `apply --yes` applies it; `export` writes the server as a config.
