@@ -79,7 +79,7 @@ Inemuri/
 │   │   │   ├── components/                # Button handlers not tied to a command (role-panel.js)
 │   │   │   └── features/
 │   │   │       ├── export/                # /export-chats: collector (Discord I/O), snapshot + format (pure), ChatExporter
-│   │   │       ├── provision/             # /provision: schema, overwrites, messages, planner, formatPlan (pure); readGuild, applier, configStore, Provisioner
+│   │   │       ├── provision/             # /provision: schema, overwrites, messages, automod, planner, exporter, formatPlan (pure); readGuild, applier, configStore, Provisioner
 │   │   │       └── roles/                 # Role panels: button ids, role change, self-assign safety (pure)
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
@@ -290,7 +290,7 @@ enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 - `npm run seed:fresh` clears all existing sources and reseeds them.
 - `npm run migrate` applies pending schema migrations from `database/migrations/` (`NNN-name.js`, forward-only, one backup per run into `database/backups/`, refuses `NODE_ENV=development`); `npm run migrate:status` lists applied and pending. Migration `001-theflow-phase0` creates the Phase 0 schema on a fresh database and adopts it on one that already has it.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
-- `node scripts/discordapp.js check|apply <guildId> [config] [--yes]` checks discordapp's setup on a server and shows or applies its provisioning plan from a terminal.
+- `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]` checks discordapp's setup on a server, shows or applies its provisioning plan, or exports the server as a config, from a terminal.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
 - `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), and `flow review` (label enriched posts into `post_feedback`).
 - `npm test` runs the `node --test` suites under `test/`.

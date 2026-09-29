@@ -355,8 +355,36 @@ AutoMod rules are another resource kind, in the `automod` list of the config:
 
 ### `/provision export`
 
+> **Implemented (v4.38.0).** Code: `features/provision/exporter.js` (pure).
+> Also `node scripts/discordapp.js export <guildId>`.
+
 The reverse direction: snapshot an existing server into the config format, so
-the first config is edited rather than written from scratch.
+the first config is edited rather than written from scratch. The file goes to
+`exports/config-<server>.json` and is attached to the reply — never into the
+configs folder, where it would start acting as a config.
+
+The acceptance test is a round trip: the export, planned against the same
+server, **only adopts**. The one deliberate exception is the bot's own
+overwrite in private channels, which provisioning always sets (see Permission
+model) and the export leaves out. Verified on the live test server.
+
+- Keys come from state for resources already managed, from names otherwise
+  (Latin letters, digits, dashes; `<kind>-N` for names without Latin letters;
+  `-2` for repeats). Without the state lookup the plan would not recognise a
+  managed resource under a new key and would propose a duplicate — found on
+  the live server.
+- A channel synced with its category gets no `overwrites`; one that is not
+  gets its own, with an empty `{}` for a category target it lacks, so the
+  inherited overwrite is neutralised. An empty overwrite and no overwrite are
+  the same to Discord, and the plan treats them the same.
+- An existing category named like "archive" becomes the archive block, with
+  its view roles as the archive roles.
+- Left out, and listed in the reply: per-member overwrites, the bot's
+  overwrite, integration roles, media channels, channels already in the
+  archive, AutoMod actions with no config equivalent, and messages.
+- Permission bits discord.js does not know yet (bit 47 on the live server's
+  `@everyone`) cannot be written in a config: the plan compares only known
+  bits and the applier keeps unknown ones as they were.
 
 ## Setup
 
@@ -428,4 +456,4 @@ with `--yes` it applies it, exactly like the Apply button.
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | Done (v4.34.0) — migration and import landed with step 3 |
 | 5 | Messages from `.md` edited in place, role panels, opt-in groups | Done (v4.35.0) |
 | 6 | AutoMod as a resource | Done (v4.37.0) |
-| 7 | `/provision export` | — |
+| 7 | `/provision export` | Done (v4.38.0) |

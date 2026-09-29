@@ -1,5 +1,5 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, SlashCommandBuilder } from "discord.js";
-import { formatConfigErrors, preparePlan, withGuildLock } from "../features/provision/Provisioner.js";
+import { exportServer, formatConfigErrors, preparePlan, withGuildLock } from "../features/provision/Provisioner.js";
 import { formatPlan } from "../features/provision/formatPlan.js";
 import { actionableOps, planFingerprint } from "../features/provision/planner.js";
 import { applyProvision, formatApplyLog } from "../features/provision/applier.js";
@@ -14,6 +14,7 @@ const PREFIX = "provision";
  *
  *   plan  — показує, що зміниться; нічого не змінює.
  *   apply — показує план і кнопку «Apply»; змінює сервер лише після неї.
+ *   export — знімає сервер у формат конфігу; нічого не змінює.
  */
 export default {
   data: new SlashCommandBuilder()
@@ -26,10 +27,18 @@ export default {
     .addSubcommand((sub) => sub
       .setName("apply")
       .setDescription("Show the plan with a confirm button that applies it")
-      .addStringOption(serverOption)),
+      .addStringOption(serverOption))
+    .addSubcommand((sub) => sub
+      .setName("export")
+      .setDescription("Write this server as a config file to start from — changes nothing")),
   admin: true,
 
   async execute(interaction) {
+    if (interaction.options.getSubcommand() === "export") {
+      const { fileName, data, summary } = await exportServer(interaction.guild);
+      return { content: summary, files: [{ attachment: data, name: fileName }] };
+    }
+
     const prepared = await preparePlan(interaction.guild, interaction.options.getString("server"));
     if (prepared.errors.length) {
       return textReply(formatConfigErrors(prepared.config, prepared.errors), "config-errors.md");

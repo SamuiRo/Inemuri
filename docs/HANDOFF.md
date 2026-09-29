@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.37.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.38.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 378 green `node --test` cases
+is clean on the dev database. `npm test` is 384 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -103,8 +103,10 @@ destinations is worse than not starting. A fresh clone now starts — before
    `npm run migrate` **before** starting the new version — done on the dev
    copy on 2026-09-29 (backup in `database/backups/`). On the test server,
    the config's `mentions` AutoMod rule fails until Discord's own *Block
-   Mention Spam* is deleted by hand — the bot cannot edit or delete it. Next
-   build step: `/provision export` (step 7).
+   Mention Spam* is deleted by hand — the bot cannot edit or delete it. The
+   DISCORDAPP.md work plan is complete; what remains is running the slash
+   commands and buttons live (restart with the server in
+   `DISCORD_GUILD_IDS`) and deciding what discordapp does next.
 1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -171,6 +173,9 @@ destinations is worse than not starting. A fresh clone now starts — before
   the dev database for it.
 - Built step 6 (`v4.37.0`): AutoMod. The live run found that Discord's own
   default rules cannot be edited by a bot (404); handled, see CHANGELOG.
+- Built step 7 (`v4.38.0`): `/provision export`. The live round trip found
+  three bugs the in-memory tests could not (state keys, neutral overwrites,
+  unknown permission bits); all fixed and covered by tests.
 
 ### 2026-09-13
 

@@ -5,6 +5,7 @@ import { channelOrderPositions, planProvision, roleOrderPositions } from "./plan
 import { finalOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
 import { hashPayload, renderMessage } from "./messages.js";
 import { automodOptions } from "./automod.js";
+import { KNOWN_PERMISSIONS } from "./permissions.js";
 import { DiscordResource } from "../../../teapot/models/index.js";
 import { print } from "../../../../shared/utils.js";
 
@@ -85,8 +86,8 @@ function opLabel(op) {
 
 // ── Ролі ───────────────────────────────────────────────────────────────────
 
-async function applyRoleOp(op, { guild, store }) {
-  const fields = roleFields(op.spec);
+async function applyRoleOp(op, { guild, current, store }) {
+  const fields = roleFields(op.spec, current.roles.find((role) => role.id === op.id));
   if (op.op === "create") {
     const role = await guild.roles.create({ ...fields, reason: REASON });
     await store.remember(guild.id, "role", op.key, role.id);
@@ -97,13 +98,19 @@ async function applyRoleOp(op, { guild, store }) {
   if (op.changes.length) await guild.roles.edit(op.id, { ...fields, reason: REASON });
 }
 
-/** Поля ролі для Discord: лише задані в конфігу (schema.js). Чиста функція. */
-export function roleFields(spec) {
+/**
+ * Поля ролі для Discord: лише задані в конфігу (schema.js). Біти прав, яких
+ * discord.js не знає, беруться з поточної ролі — конфіг їх не виражає, і
+ * запис не повинен їх стирати. Чиста функція.
+ */
+export function roleFields(spec, have = null) {
   const fields = { name: spec.name };
   if (spec.color !== undefined) fields.colors = { primaryColor: spec.color };
   if (spec.hoist !== undefined) fields.hoist = spec.hoist;
   if (spec.mentionable !== undefined) fields.mentionable = spec.mentionable;
-  if (spec.permissions !== null) fields.permissions = spec.permissions;
+  if (spec.permissions !== null) {
+    fields.permissions = spec.permissions | ((have?.permissions ?? 0n) & ~KNOWN_PERMISSIONS);
+  }
   return fields;
 }
 

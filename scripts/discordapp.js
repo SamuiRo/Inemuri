@@ -3,6 +3,7 @@
  *
  *   node scripts/discordapp.js check <guildId> [config]         лише читання
  *   node scripts/discordapp.js apply <guildId> [config] [--yes]  провіжн
+ *   node scripts/discordapp.js export <guildId>                  сервер → конфіг у exports/
  *
  * check показує те, що інакше з'ясовується методом спроб:
  *   - під ким бот залогінений, чи він на сервері, чи Community сервер;
@@ -21,7 +22,7 @@ import { Client, GatewayIntentBits, PermissionFlagsBits } from "discord.js";
 import { DISCORD_BOT_TOKEN } from "../src/config/app.config.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
 import { DiscordResource } from "../src/module/teapot/models/index.js";
-import { preparePlan, formatConfigErrors } from "../src/module/discordapp/features/provision/Provisioner.js";
+import { exportServer, preparePlan, formatConfigErrors } from "../src/module/discordapp/features/provision/Provisioner.js";
 import { formatPlan } from "../src/module/discordapp/features/provision/formatPlan.js";
 import { actionableOps } from "../src/module/discordapp/features/provision/planner.js";
 import { applyProvision, formatApplyLog } from "../src/module/discordapp/features/provision/applier.js";
@@ -34,8 +35,8 @@ const NEEDED = ["ViewChannel", "SendMessages", "EmbedLinks", "AttachFiles", "Rea
 const args = process.argv.slice(2);
 const confirmed = args.includes("--yes");
 const [action, guildId, configName = null] = args.filter((arg) => arg !== "--yes");
-if (!["check", "apply"].includes(action) || !guildId) {
-  console.error("Usage: node scripts/discordapp.js check|apply <guildId> [config] [--yes]");
+if (!["check", "apply", "export"].includes(action) || !guildId) {
+  console.error("Usage: node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]");
   process.exit(1);
 }
 if (!DISCORD_BOT_TOKEN) {
@@ -63,8 +64,10 @@ try {
     await checkCommands(guild);
     await checkMessageContent(guild);
     await showPlan(guild, loadStateOrEmpty);
-  } else {
+  } else if (action === "apply") {
     await apply(guild);
+  } else {
+    console.log(`\n${(await exportServer(guild)).summary}`);
   }
 } catch (error) {
   console.error(`✖ ${error.message}`);

@@ -52,6 +52,9 @@ export function diffOverwrites({ resolved, pending }, current, managedIds, label
 
   for (const want of resolved) {
     const have = currentById.get(want.id);
+    // Нейтральний overwrite (нічого не дозволяє й не забороняє) — те саме, що
+    // його відсутність. Так конфіг «зануляє» ціль, успадковану з категорії.
+    if (!have && isNeutral(want)) continue;
     if (!have) {
       changes.push({ label: want.label, detail: `added: ${describeAllowDeny(0n, 0n, want.allow, want.deny)}` });
     } else if (have.allow !== want.allow || have.deny !== want.deny) {
@@ -73,7 +76,11 @@ export function diffOverwrites({ resolved, pending }, current, managedIds, label
  */
 export function finalOverwrites(resolved, current, managedIds) {
   const kept = current.filter((ow) => !managedIds.has(ow.id));
-  return [...resolved, ...kept].map(({ id, type, allow, deny }) => ({ id, type, allow, deny }));
+  return [...resolved.filter((ow) => !isNeutral(ow)), ...kept].map(({ id, type, allow, deny }) => ({ id, type, allow, deny }));
+}
+
+function isNeutral({ allow, deny }) {
+  return allow === 0n && deny === 0n;
 }
 
 function describeAllowDeny(fromAllow, fromDeny, toAllow, toDeny) {

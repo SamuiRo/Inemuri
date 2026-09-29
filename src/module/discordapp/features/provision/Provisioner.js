@@ -1,4 +1,8 @@
+import fs from "fs/promises";
+import path from "path";
 import { loadMessageBody, resolveServerConfig } from "./configStore.js";
+import { exportConfig } from "./exporter.js";
+import { DISCORD_EXPORT_DIR } from "../../../../config/app.config.js";
 import { bodyProblem } from "./messages.js";
 import { validateServerConfig } from "./schema.js";
 import { readGuild } from "./readGuild.js";
@@ -74,4 +78,44 @@ export async function withGuildLock(guildId, fn) {
   } finally {
     applying.delete(guildId);
   }
+}
+
+// Скільки пропущеного перелічувати у відповіді, решту — числом.
+const SKIPPED_SHOWN = 10;
+
+/**
+ * Сервер → конфіг (exporter.js), записаний у exports/. У теку конфігів
+ * нічого не пишеться: експорт — чернетка, яку людина переглядає й копіює сама,
+ * а не новий конфіг, що одразу почав би діяти.
+ *
+ * @returns {Promise<{ fileName: string, data: Buffer, summary: string }>}
+ */
+export async function exportServer(guild, { loadState = (id) => DiscordResource.forGuild(id) } = {}) {
+  const state = await loadState(guild.id);
+  const current = await readGuild(guild, state);
+  const { config, skipped } = exportConfig(current, state);
+  const slug = guild.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "server";
+  const fileName = `config-${slug}.json`;
+  const data = Buffer.from(`${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+  await fs.mkdir(DISCORD_EXPORT_DIR, { recursive: true });
+  await fs.writeFile(path.join(DISCORD_EXPORT_DIR, fileName), data);
+  return { fileName, data, summary: describeExport(config, skipped, fileName) };
+}
+
+/** Текст відповіді на експорт. Чиста функція. */
+export function describeExport(config, skipped, fileName) {
+  const channels = config.channels.length + config.categories.reduce((n, c) => n + c.channels.length, 0);
+  const lines = [
+    `📤 Exported ${config.roles.length} roles, ${config.categories.length} categories, ${channels} channels` +
+      `${config.automod ? `, ${config.automod.length} AutoMod rules` : ""} → \`exports/${fileName}\`.`,
+    "Review it, copy it to `src/config/discordapp/servers/<name>.json`, then `/provision plan` — " +
+      "it should only adopt, plus the bot's own access to private channels. Messages are not exported.",
+  ];
+  if (skipped.length) {
+    lines.push("", `Left out (the config format cannot express these):`);
+    lines.push(...skipped.slice(0, SKIPPED_SHOWN).map((item) => `- ${item}`));
+    if (skipped.length > SKIPPED_SHOWN) lines.push(`- …and ${skipped.length - SKIPPED_SHOWN} more`);
+  }
+  return lines.join("\n");
 }

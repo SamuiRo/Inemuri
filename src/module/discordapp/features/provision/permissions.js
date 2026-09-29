@@ -7,6 +7,14 @@ import { PermissionFlagsBits } from "discord.js";
 
 export const PERMISSION_NAMES = Object.keys(PermissionFlagsBits);
 
+/**
+ * Усі біти, які знає discord.js. Discord додає нові дозволи раніше, ніж
+ * бібліотека, — на живому сервері @everyone мав біт 47, якого в
+ * PermissionFlagsBits немає. Конфіг таких бітів виразити не може, тож
+ * порівнюються лише відомі, а невідомі при записі зберігаються як були.
+ */
+export const KNOWN_PERMISSIONS = Object.values(PermissionFlagsBits).reduce((bits, bit) => bits | bit, 0n);
+
 // Застарілі аліаси з тим самим бітом, що й актуальне ім'я. У конфігу вони
 // приймаються, але в текст плану не потрапляють — інакше біт друкувався б двічі.
 const DEPRECATED_ALIASES = new Set(["ManageEmojisAndStickers"]);

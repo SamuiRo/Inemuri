@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { dangerousIn, describeBitsChange } from "./permissions.js";
+import { dangerousIn, describeBitsChange, KNOWN_PERMISSIONS } from "./permissions.js";
 import { diffOverwrites, managedTargetIds, resolveOverwrites } from "./overwrites.js";
 import { hashPayload, renderMessage } from "./messages.js";
 import { planAutomod } from "./automod.js";
@@ -113,8 +113,9 @@ function diffRole(want, have) {
   if (want.color !== undefined && want.color !== have.color) changes.push(`color ${hex(have.color)} → ${hex(want.color)}`);
   if (want.hoist !== undefined && want.hoist !== have.hoist) changes.push(`hoist → ${want.hoist}`);
   if (want.mentionable !== undefined && want.mentionable !== have.mentionable) changes.push(`mentionable → ${want.mentionable}`);
-  if (want.permissions !== null && want.permissions !== have.permissions) {
-    changes.push(`permissions ${describeBitsChange(have.permissions, want.permissions)}`);
+  const known = have.permissions & KNOWN_PERMISSIONS;
+  if (want.permissions !== null && want.permissions !== known) {
+    changes.push(`permissions ${describeBitsChange(known, want.permissions)}`);
   }
   return changes;
 }

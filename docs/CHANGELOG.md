@@ -7,6 +7,36 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.38.0] - 2026-09-29
+
+discordapp step 7: `/provision export`. The work plan in DISCORDAPP.md is
+complete.
+
+### Added
+- **`/provision export`** (admin, ephemeral) and
+  `node scripts/discordapp.js export <guildId>`: the server as a config file in
+  `exports/config-<server>.json`, attached to the reply. Roles, categories,
+  channels with their overwrites, AutoMod rules; an existing "archive"
+  category becomes the archive block. What the format cannot express is
+  listed rather than silently dropped.
+- `test/discordapp-export-config.test.js` (6): the export validates, and
+  planning it against the same server only adopts.
+
+### Fixed (found by the live round trip)
+- The export named already managed resources after their names instead of
+  their keys in state, so the plan did not recognise them and proposed
+  duplicates. Keys now come from state.
+- An empty overwrite (`{}`) showed up as a change forever: to Discord it is the
+  same as none, and the plan and the applier now treat it so.
+- Permission bits discord.js does not know (bit 47 on the test server) made a
+  role look changed with the text "permissions no change", and applying would
+  have erased them. The plan compares known bits only; the applier keeps
+  unknown bits.
+
+### Verified
+- Export of the test server, planned against it: 8 adopts of unmanaged
+  resources, the bot's access to one private channel, nothing else.
+
 ## [4.37.0] - 2026-09-29
 
 discordapp step 6: AutoMod rules as provisioned resources.
