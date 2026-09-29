@@ -13,7 +13,7 @@ Inemuri ingests content from configured sources, normalizes it into a shared eve
 - Filters messages using keyword and blacklist rules
 - Downloads Telegram media and re-uploads it to destination platforms
 - Runs scheduled jobs that emit messages through the same pipeline
-- Lets whitelisted Discord users trigger selected jobs manually
+- Manages Discord servers through discordapp: slash commands, with channel export, role panels and server provisioning planned ([docs/DISCORDAPP.md](docs/DISCORDAPP.md))
 - Stores source configuration state in SQLite
 
 ## Current architecture
@@ -38,7 +38,8 @@ Main runtime components:
 - `src/destinations/discord/DiscordDestination.js`: Discord delivery
 - `src/destinations/telegram/TelegramDestination.js`: Telegram delivery
 - `src/module/cron/CronScheduler.js`: scheduled jobs
-- `src/module/discord/DiscordCommandHandler.js`: slash commands
+- `src/module/discord/DiscordRest.js`: Discord REST client used by delivery (no gateway session)
+- `src/module/discordapp/DiscordApp.js`: discordapp — Discord server management, slash commands
 - `src/module/teapot/sqlite/sqlite_db.js`: SQLite/Sequelize connection
 
 For the full repo map, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -139,9 +140,12 @@ After a successful login, Inemuri can print a new `TELEGRAM_SESSION` string. Sav
 | `TELEGRAM_SESSION` | Yes after first login | Persisted GramJS session string for Telegram authentication. |
 | `TELEGRAM_API_ID` | Yes | Telegram API ID from your Telegram developer app. |
 | `TELEGRAM_API_HASH` | Yes | Telegram API hash from your Telegram developer app. |
-| `DISCORD_BOT_TOKEN` | Yes | Discord bot token used for sending messages and slash commands. |
+| `DISCORD_BOT_TOKEN` | For Discord | Bot token. Without it Discord delivery and discordapp are off; everything else runs. |
 | `CMC_API_KEY` | Optional | Required for the bundled crypto daily cron job. |
-| `DISCORD_COMMAND_WHITELIST` | Optional | Comma-separated list of Discord user IDs allowed to run slash commands. |
+| `DISCORD_COMMAND_WHITELIST` | Optional | Comma-separated Discord user IDs allowed to run admin commands. **Empty = nobody** (since `v4.31.0`). |
+| `DISCORD_GUILD_IDS` | Optional | Comma-separated servers discordapp serves. Empty = every server the bot is in. |
+| `DISCORD_APP_ENABLED` | Optional | `false` skips discordapp's gateway session. Delivery is unaffected. Default `true`. |
+| `DISCORD_UPLOAD_LIMIT_MB` | Optional | Largest file sent as an attachment. Default `20`. |
 | `POLLING_INTERVAL_MIN` | Yes if polling is used | Polling interval, in minutes. |
 | `POLLING_FETCH_LIMIT` | Yes if polling is used | Number of Telegram messages fetched per polling cycle. |
 
@@ -385,9 +389,9 @@ It:
 - optionally attaches `src/assets/images/daily.png`
 - emits the result through the same event pipeline as Telegram messages
 
-There is also a Discord slash command:
+There is also a discordapp slash command:
 
-- `/daily`: manually triggers the daily report for whitelisted users
+- `/daily`: manually triggers the daily report for whitelisted users. The reply is visible only to the caller, like every discordapp reply.
 
 ## CLI commands
 
@@ -481,7 +485,8 @@ src/
 ├── module/eventbus/               # internal events
 ├── module/routing/                # routing
 ├── module/filters/                # filtering and replacements
-├── module/discord/                # Discord client and commands
+├── module/discord/                # Discord transport: REST (delivery) and gateway
+├── module/discordapp/             # discordapp: Discord server management
 ├── module/telegram/               # Telegram client
 ├── module/cron/                   # cron scheduler
 ├── module/teapot/                 # database layer

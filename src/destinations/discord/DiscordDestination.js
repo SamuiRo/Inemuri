@@ -1,6 +1,7 @@
 import { AttachmentBuilder, EmbedBuilder } from "discord.js";
 import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
-import discordClient from "../../module/discord/DiscordClient.js";
+import discordRest from "../../module/discord/DiscordRest.js";
+import { DISCORD_UPLOAD_LIMIT_MB } from "../../config/app.config.js";
 import { print } from "../../shared/utils.js";
 
 /**
@@ -13,23 +14,25 @@ import { print } from "../../shared/utils.js";
  *  - решта медіа → files (вкладення поряд з embed)
  *
  * content (поле поза embed) НЕ використовується, щоб виключити дублювання.
+ *
+ * Ходить лише через REST (DiscordRest), без gateway-сесії: доставка не
+ * залежить від того, чи піднявся discordapp (docs/DISCORDAPP.md D2).
+ * Надіслане повідомлення — сирий об'єкт API (`{ id, channel_id, ... }`).
  */
 class DiscordDestinationAdapter extends BaseDestinationAdapter {
   constructor(eventBus) {
     super("discord", eventBus);
-    this.client = null;
+    this.rest = discordRest;
 
     // Discord ліміти
     this.limits = {
-      freeServer:            25 * 1024 * 1024,  // 25 MB
-      nitroServer:           100 * 1024 * 1024, // 100 MB
       messageLength:         2000,
       embedDescriptionLength: 4096,
       embedAuthorLength:     256,
       embedFooterLength:     2048,
     };
 
-    this.fileSizeLimit = this.limits.freeServer;
+    this.fileSizeLimit = DISCORD_UPLOAD_LIMIT_MB * 1024 * 1024;
 
     // Медіатипи, які підтримуються Discord
     this.supportedMediaTypes = {
@@ -68,15 +71,16 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
   // ── Підключення ──────────────────────────────────────────────────────────
 
+  /**
+   * Мережі тут немає: REST-клієнт не тримає з'єднання. Перевіряємо лише, що є
+   * токен, — без нього кожна відправка впала б на 401.
+   */
   async connect() {
-    try {
-      this.client      = await discordClient.getClient();
-      this.isConnected = true;
-      print("Discord destination adapter connected", "success");
-    } catch (error) {
-      print(`Failed to connect Discord destination adapter: ${error.message}`, "error");
-      throw error;
+    if (!this.rest.isConfigured) {
+      throw new Error("DISCORD_BOT_TOKEN is not set");
     }
+    this.isConnected = true;
+    print("Discord destination adapter connected (REST)", "success");
   }
 
   async disconnect() {
@@ -90,13 +94,13 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
   /**
    * Ідентичність надісланого повідомлення для clusters.delivered / linked.
-   * @param {import("discord.js").Message} sentMessage
+   * @param {{ id: string, channel_id: string }} sentMessage  Сирий об'єкт API.
    * @param {string} destinationId
    */
   describeSent(sentMessage, destinationId) {
     return {
       platform: "discord",
-      channel_id: sentMessage?.channelId ?? String(destinationId),
+      channel_id: sentMessage?.channel_id ?? String(destinationId),
       message_id: sentMessage?.id ?? null,
       sent_at: new Date(),
     };
@@ -107,16 +111,11 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
    * @param {string} channelId
    * @param {string} messageId
    * @param {(string|object)} payload  Рядок → { content }; об'єкт → payload
-   *   discord.js Message#edit (напр. { embeds: [...] }).
+   *   у стилі discord.js (напр. { embeds: [...] }), див. toRestPayload().
    */
   async editMessage(channelId, messageId, payload) {
     try {
-      const channel = await this.client.channels.fetch(channelId);
-      if (!channel) throw new Error(`Could not find channel with ID ${channelId}`);
-
-      const message = await channel.messages.fetch(messageId);
-      const editPayload = typeof payload === "string" ? { content: payload } : payload;
-      await message.edit(editPayload);
+      await this.rest.editMessage(channelId, messageId, payload);
 
       print(`Edited message ${messageId} in Discord channel ${channelId}`, "success");
       return true;
@@ -127,17 +126,6 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       );
       throw error;
     }
-  }
-
-  /**
-   * Налаштування ліміту файлів залежно від Nitro boost сервера.
-   * @param {boolean} hasNitroBoost
-   */
-  setFileSizeLimit(hasNitroBoost = false) {
-    this.fileSizeLimit = hasNitroBoost
-      ? this.limits.nitroServer
-      : this.limits.freeServer;
-    print(`Discord file size limit set to ${this.fileSizeLimit / (1024 * 1024)}MB`);
   }
 
   // ── Відправка ────────────────────────────────────────────────────────────
@@ -156,14 +144,8 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
    */
   async sendMessage(channelId, messageData) {
     try {
-      const channel = await this.client.channels.fetch(channelId);
-
-      if (!channel) {
-        throw new Error(`Could not find channel with ID ${channelId}`);
-      }
-
       const discordPayload = await this._buildPayload(messageData);
-      const sentMessage    = await channel.send(discordPayload);
+      const sentMessage    = await this.rest.sendMessage(channelId, discordPayload);
 
       print(`✓ Message sent to Discord channel ${channelId}`);
       return sentMessage;
@@ -188,18 +170,12 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
    */
   async sendBatch(channelId, messageList) {
     try {
-      const channel = await this.client.channels.fetch(channelId);
-
-      if (!channel) {
-        throw new Error(`Could not find channel with ID ${channelId}`);
-      }
-
       const results = [];
 
       for (const messageData of messageList) {
         try {
           const payload     = await this._buildPayload(messageData);
-          const sentMessage = await channel.send(payload);
+          const sentMessage = await this.rest.sendMessage(channelId, payload);
 
           results.push({ success: true, messageId: sentMessage.id });
           print(`  ✓ Batch message ${results.length} sent`);
@@ -495,18 +471,12 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
    */
   async clearChannel(channelId, limit = 100) {
     try {
-      const channel  = await this.client.channels.fetch(channelId);
+      const messages = await this.rest.fetchMessages(channelId, { limit });
+      await Promise.all(messages.map((msg) => this.rest.deleteMessage(channelId, msg.id)));
 
-      if (!channel) {
-        throw new Error(`Could not find channel with ID ${channelId}`);
-      }
+      print(`Channel ${channelId} cleared: ${messages.length} messages deleted`, "success");
 
-      const messages = await channel.messages.fetch({ limit });
-      await Promise.all(messages.map((msg) => msg.delete()));
-
-      print(`Channel ${channelId} cleared: ${messages.size} messages deleted`, "success");
-
-      return messages.size;
+      return messages.length;
     } catch (error) {
       print(`Failed to clear channel ${channelId}: ${error.message}`, "error");
       throw error;

@@ -7,7 +7,7 @@ Working notes for Claude Code in this repository.
 Inemuri is an event-driven content and data flow manager: it ingests from
 configured sources, normalizes into a shared event pipeline, filters, and routes
 to destinations. Currently Telegram ingestion, Telegram and Discord delivery,
-and cron jobs.
+cron jobs, and Discord server management (discordapp).
 
 Start with [docs/HANDOFF.md](docs/HANDOFF.md) for current state and next
 steps, [README.md](README.md) for behavior and configuration, and

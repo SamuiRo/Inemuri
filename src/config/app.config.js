@@ -17,10 +17,22 @@ export const TELEGRAM_API_ID = +process.env.TELEGRAM_API_ID;
 export const TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH;
 
 // ── Discord ────────────────────────────────────────────────────────────────
-export const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-export const DISCORD_COMMAND_WHITELIST = process.env.DISCORD_COMMAND_WHITELIST
-  ? process.env.DISCORD_COMMAND_WHITELIST.split(",").map((id) => id.trim())
-  : [];
+/** Список id через кому; порожні елементи відкидаються. */
+function idList(raw) {
+  return (raw ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+}
+
+export const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || null;
+// Хто може запускати адмінські команди discordapp. Порожній список — ніхто
+// (fail closed, docs/DISCORDAPP.md D7): експорт читає приватні канали.
+export const DISCORD_COMMAND_WHITELIST = idList(process.env.DISCORD_COMMAND_WHITELIST);
+
+// ── discordapp ─────────────────────────────────────────────────────────────
+// Керування серверами (docs/DISCORDAPP.md). Доставка від цього не залежить:
+// вона ходить через REST і працює навіть з DISCORD_APP_ENABLED=false.
+export const DISCORD_APP_ENABLED = process.env.DISCORD_APP_ENABLED !== "false";
+// Сервери, які обслуговує discordapp (D8). Порожньо — усі, де є бот.
+export const DISCORD_GUILD_IDS = idList(process.env.DISCORD_GUILD_IDS);
 
 // ── Валідація числових env ────────────────────────────────────────────────
 // Зібрані тут, а не надруковані одразу: app.config.js не тягне shared/utils.js
@@ -94,6 +106,13 @@ export const SOURCE_CONFIG = loadLocalConfig("sources", { sources: [] }, CONFIG_
 // categories.json — таксономія спільна, а id каналів належать розгортанню.
 export const ROUTING = loadLocalConfig(
   "routing", { unsorted_destinations: {}, routing: [] }, CONFIG_WARNINGS,
+);
+
+// ── Discord: вкладення ────────────────────────────────────────────────────
+// Найбільший файл, що йде вкладенням — і для доставки, і для експорту
+// discordapp. 20 МБ перевірено оператором (2026-09-29).
+export const DISCORD_UPLOAD_LIMIT_MB = optionalNumber(
+  "DISCORD_UPLOAD_LIMIT_MB", process.env.DISCORD_UPLOAD_LIMIT_MB, 20,
 );
 
 // ── Polling ────────────────────────────────────────────────────────────────

@@ -7,6 +7,50 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.31.0] - 2026-09-29
+
+discordapp step 1 (docs/DISCORDAPP.md): Discord delivery no longer needs the
+gateway, and the slash-command code became a module with a boundary.
+
+### Changed
+- **Discord delivery is REST-only.** `DiscordDestination` sends and edits
+  through the new `src/module/discord/DiscordRest.js` instead of a logged-in
+  discord.js client. Before this, `inemuri.js` awaited the Discord login before
+  the Telegram listener started, so a Discord outage or a bad token stopped the
+  **whole process** — Telegram-to-Telegram forwarding included. Now a missing
+  token disables Discord delivery with a warning and nothing else.
+  `describeSent()` reads `channel_id` from the raw API object.
+- **Attachment limit is `DISCORD_UPLOAD_LIMIT_MB` (default 20).** The adapter
+  assumed 25 MB; 20 is what the operator measured. The unused
+  `setFileSizeLimit()` and its Nitro constants are gone.
+- **`DISCORD_COMMAND_WHITELIST` fails closed.** An empty list used to allow
+  every user to run commands; it now refuses admin commands for everyone and
+  warns at startup. Admin commands are also hidden in the client from members
+  without `Administrator`.
+- **Commands are registered per guild, never globally**, and no longer
+  unregistered on shutdown — every pm2 restart used to make them disappear and
+  re-register. Leftover global commands are removed once on start.
+- **Every discordapp reply is ephemeral**, enforced in `CommandRegistry`
+  before any handler runs.
+- `DiscordClient.js` → `DiscordGateway.js`, now used by discordapp only, with a
+  permanent `error` listener: without one, a gateway error after login was an
+  unhandled `error` event, which crashes Node.
+
+### Added
+- `src/module/discordapp/`: `DiscordApp` (starts last; a failed login is a
+  warning and a background retry with backoff, an invalid token is not
+  retried), `CommandRegistry`, and the pure `guard.js` / `customId.js`.
+  `/daily` moved from `cronjobs.js` into `commands/daily.js`.
+- `DISCORD_APP_ENABLED`, `DISCORD_GUILD_IDS` (servers discordapp serves;
+  others are refused, never left).
+- `test/discordapp-core.test.js` — 21 cases: access policy, customId, the
+  registry's ephemeral/refusal/error paths, REST payload conversion, and
+  delivery through a stubbed REST client.
+
+### Removed
+- `src/module/discord/DiscordCommandHandler.js` and `COMMANDS` in
+  `cronjobs.js` (replaced by discordapp).
+
 ## [4.30.2] - 2026-09-29
 
 Specification for discordapp, the Discord server-management module. No code

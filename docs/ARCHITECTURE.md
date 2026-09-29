@@ -49,7 +49,7 @@ Inemuri/
 │   │   ├── categories.json                # TheFlow taxonomy v1: topics, signals, routing
 │   │   ├── cronjob.config.json            # Runtime destination mapping for cron jobs
 │   │   ├── cronjob.config.sample.json     # Example cronjob config
-│   │   ├── cronjobs.js                    # Cron job definitions and Discord slash commands
+│   │   ├── cronjobs.js                    # Cron job definitions (the `daily` job is also a slash command)
 │   │   ├── sources.json                   # Runtime source definitions for seeding
 │   │   └── sources.sample.json            # Example source definitions
 │   ├── destinations/
@@ -62,9 +62,15 @@ Inemuri/
 │   ├── module/
 │   │   ├── cron/
 │   │   │   └── CronScheduler.js           # Schedules jobs and emits synthetic messages
-│   │   ├── discord/
-│   │   │   ├── DiscordClient.js           # Shared discord.js client singleton
-│   │   │   └── DiscordCommandHandler.js   # Registers and handles Discord slash commands
+│   │   ├── discord/                       # Discord transport, shared
+│   │   │   ├── DiscordRest.js             # REST client; delivery uses only this
+│   │   │   └── DiscordGateway.js          # Gateway session; discordapp only
+│   │   ├── discordapp/                    # discordapp — Discord server management (docs/DISCORDAPP.md)
+│   │   │   ├── DiscordApp.js              # Lifecycle: soft start, login retry, per-guild command registration
+│   │   │   ├── CommandRegistry.js         # Routes commands/components; access check; always ephemeral
+│   │   │   ├── guard.js                   # Pure: who may run what, in which guild
+│   │   │   ├── customId.js                # Pure: stateless component ids
+│   │   │   └── commands/                  # One file per slash command (index.js lists them)
 │   │   ├── eventbus/
 │   │   │   └── EventBus.js                # Central event hub between modules
 │   │   ├── filters/
@@ -131,7 +137,7 @@ The project has three message producers:
 
 1. `TelegramSourceListener` receives Telegram channel messages through MTProto events and/or polling.
 2. `CronScheduler` creates synthetic messages from scheduled jobs.
-3. `DiscordCommandHandler` lets approved Discord users trigger those jobs manually.
+3. discordapp (`src/module/discordapp/`) lets whitelisted Discord users trigger those jobs manually. It is also where Discord server management lives — see [DISCORDAPP.md](DISCORDAPP.md).
 
 All producers eventually emit the same `message.received` event, so the downstream pipeline stays unified.
 
@@ -148,7 +154,7 @@ Telegram channels / cron jobs / Discord slash commands
 
 Detailed flow:
 
-1. `src/inemuri.js` starts the database, then connects Telegram and Discord clients.
+1. `src/inemuri.js` starts the database and connects Telegram. Discord delivery needs no connection — it is REST-only — and discordapp's gateway session starts last, after everything else, and cannot stop the process if it fails.
 2. Destination adapters are registered in `MessageRouter`.
 3. `TelegramSourceListener` loads active sources from SQLite, builds filter/replacement caches, then starts listener and/or polling mode depending on `Source.mode`.
 4. Incoming messages are parsed by `TelegramMessageParser`, optionally buffered as albums by `TelegramGroupBuffer`, filtered and enriched with source metadata, and media is downloaded by `TelegramMediaDownloader` when needed.

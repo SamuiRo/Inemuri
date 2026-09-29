@@ -65,7 +65,7 @@ function getDropsInfo() {
   return drops;
 }
 
-const daily = {
+export const daily = {
   id: "dailyinfo",
   schedule: "5 0 * * *", // Кожні 6 годин
   //   schedule: "*/5 * * * *", // Кожні 6 годин
@@ -159,53 +159,3 @@ const daily = {
 };
 
 export const CRON_JOBS = [daily];
-
-/**
- * Discord команди для ручного запуску cronjobs
- */
-export const COMMANDS = [
-  {
-    name: "daily",
-    description: "Manually trigger daily crypto report",
-    handler: async (interaction, eventBus) => {
-      try {
-        print("[Command] Executing daily report...");
-        
-        // Викликаємо handler з daily cronjob
-        const messageData = await daily.handler();
-        
-        if (!messageData) {
-          return {
-            success: false,
-            message: "❌ Failed to generate daily report. Check logs for details.",
-          };
-        }
-
-        // Відправляємо повідомлення через eventBus
-        eventBus.emitMessageReceived({
-          ...messageData,
-          metadata: {
-            ...messageData.metadata,
-            source: "discord-command",
-            commandName: "daily",
-            triggeredBy: interaction.user.tag,
-            timestamp: new Date().toISOString(),
-          },
-        });
-
-        print("[Command] Daily report message emitted to EventBus");
-
-        return {
-          success: true,
-          message: "✅ Daily report generated and sent successfully!",
-        };
-      } catch (error) {
-        print(`[Command] Error executing daily: ${error.message}`, "error");
-        return {
-          success: false,
-          message: `❌ Error: ${error.message}`,
-        };
-      }
-    },
-  },
-];

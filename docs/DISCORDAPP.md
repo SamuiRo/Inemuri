@@ -255,7 +255,7 @@ the first config is edited rather than written from scratch.
 | # | Step | Status |
 |---|---|---|
 | 0 | This specification | Done (v4.30.2) |
-| 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | — |
+| 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | Done (v4.31.0) |
 | 2 | `/export-chats` | — |
 | 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | — |
 | 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | — |
