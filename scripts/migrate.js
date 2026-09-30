@@ -28,12 +28,14 @@ import path from "path";
 import { pathToFileURL } from "url";
 
 import { print } from "../src/shared/utils.js";
-import { NODE_ENV } from "../src/config/app.config.js";
+import { NODE_ENV, SQLITE_STORAGE } from "../src/config/app.config.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), "database", "migrations");
-const BACKUP_DIR = path.resolve(process.cwd(), "database", "backups");
-const DB_FILE = path.resolve(process.cwd(), "database", "pot.sqlite");
+const DB_FILE = SQLITE_STORAGE;
+// Бекапи лежать поруч із базою: для робочої це database/backups/, а прогін
+// тестів на тимчасовій базі не смітить у репозиторій.
+const BACKUP_DIR = path.resolve(path.dirname(DB_FILE), "backups");
 
 // database/migrations/NNN-name.js — three-digit prefix, sorted lexically
 // (zero-padded, so lexical order is numeric order).

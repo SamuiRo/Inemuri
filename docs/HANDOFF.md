@@ -2,22 +2,32 @@
 
 ## Current state
 
-`v4.42.3`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.43.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 397 green `node --test` cases
-(`--test-concurrency=1` — some suites touch the real SQLite file). See
+is clean on the dev database. `npm test` is 401 green `node --test` cases,
+run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
+See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
 finished task there carries a `> **Done (vX.Y.Z).**` note).
 
-**The pilot is running.** On the dev copy, three sources are flow-enabled in
-the git-ignored `sources.json` — one of them with `flow.vision.enabled`, two
-with `filters.reject_shouty` — and a Gemini key is in `.env`. As of
-2026-09-29 the dev `posts` table held 128 `enriched`, 47 `failed` and 66
-`skipped_blacklist` rows. Nobody has read those results yet: the next step is
-`node src/cli.js flow stats`, and a look at why 47 failed.
+**The pilot's first day produced no real verdict — fixed in `v4.43.1`.** On
+the dev copy three sources are flow-enabled in the git-ignored `sources.json`
+(one of them producing posts so far) and a Gemini key is in `.env`. Reading
+`flow stats` on 2026-09-30 found two bugs, not data:
+
+- every real Gemini enrich call returned HTTP 400 on the response schema
+  (52 posts `failed`, 337 requests spent);
+- `npm test`, run while the pilot ingested, claimed real pending posts and
+  wrote the fake provider's verdicts into them — all 135 `enriched` rows are
+  `model_used = fake-model`, and 30 `failed` ones are its `provider down`.
+
+Both are fixed (CHANGELOG 4.43.1). The corrupted rows are **still in the dev
+database** until the operator restarts the service on the new code and
+requeues them — see Next steps, item 1. `flow review` must not be run before
+that: it would label fake verdicts.
 
 Phase 1 is still **dormant without a key**: `src/module/theflow/EnrichWorker.js`
 starts only when `ENRICH_WORKER_ENABLED` and
@@ -95,7 +105,17 @@ destinations is worse than not starting. A fresh clone now starts — before
    hand. `.env` defines `DISCORD_COMMAND_WHITELIST` twice; only the first line
    counts. Open for a live run: `/export-chats` with
    `DISCORD_EXPORT_TELEGRAM_CHAT` set.
-1. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
+1. **Restart on `v4.43.1`, then requeue the pilot's corrupted rows.** Order
+   matters: the running process still has the 400-producing schema, so
+   requeueing first would burn the day's quota on the same error.
+   ```bash
+   node src/cli.js flow requeue --status enriched --model fake-model
+   node src/cli.js flow requeue
+   ```
+   The first returns the 135 fake verdicts, the second the 82 failed posts.
+   217 posts fit one day of free-tier quota. Then `flow stats` again — and
+   only then `flow review`.
+2. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
    (RPD 1000 / RPM 100), counted per model. Nothing further is required.
@@ -104,25 +124,25 @@ destinations is worse than not starting. A fresh clone now starts — before
    flash-lite calls. A backlog drains quickly and then waits for Pacific
    midnight. Optional: an OpenRouter fallback (`OPENROUTER_API_KEY` plus a
    model supporting `json_schema` output); leave `OPENROUTER_EMBED_MODEL` empty.
-2. **Restart the service and watch the first day.** The pilot config is in
+3. **Watch the first real day.** The pilot config is in
    place but only takes effect on boot. After a restart the log must show
    `Starting TheFlow enrichment worker...`; then
    `node src/cli.js flow stats` for the per-source split (how much is
    `skipped_*` versus `enriched`) and `node src/cli.js flow review` to label
    verdicts into `post_feedback`. A week of that labelling is Phase 1's exit
    gate.
-3. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
+4. **Operator steps for Phase 0.5's tail:** run `scripts/estimate-volume.js`
    against the live session; deploy to the VPS per
    [DEPLOYMENT.md](DEPLOYMENT.md) — on an empty database run
    `npm run db:bootstrap` before `npm run migrate`.
-4. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
+5. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
    Resolve (§5.2) is built and waiting on them.
-5. **Vision stays per source.** `flow.vision.enabled` belongs where
+6. **Vision stays per source.** `flow.vision.enabled` belongs where
    `flow stats` shows a high "has_media & len<200" share — a channel posting
    code screenshots is the intended case — and **not** on meme-heavy ones,
    where OCR of a meme is noise. Where it is off the stage costs nothing: the
    gate refuses before any download.
-6. **The plan now needs real enriched posts.** The §5.4 message template is
+7. **The plan now needs real enriched posts.** The §5.4 message template is
    deliberately designed against real material, and routing waits on §5.1.
 
 ## Open questions
@@ -135,6 +155,14 @@ destinations is worse than not starting. A fresh clone now starts — before
   first.
 
 ## Session log
+
+### 2026-09-30 — TheFlow pilot review
+
+- Read `flow stats` for the first time. The pilot had no real verdicts: the
+  Gemini response schema was rejected on every call, and the enrich-worker
+  test had been writing fake verdicts into real pending posts. Fixed both,
+  added `flow requeue`, and moved `npm test` onto a throwaway database
+  (`v4.43.1`). One live Gemini call verified the fix.
 
 ### 2026-09-29
 

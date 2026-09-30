@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { BaseProvider, ProviderError } from "../src/services/ai/providers/BaseProvider.js";
-import { GeminiProvider } from "../src/services/ai/providers/GeminiProvider.js";
+import { GeminiProvider, toGeminiSchema } from "../src/services/ai/providers/GeminiProvider.js";
+import { enrichResponseSchema } from "../src/services/ai/schemas.js";
 import { OpenAICompatProvider } from "../src/services/ai/providers/OpenAICompatProvider.js";
 
 function fakeHttp(handler) {
@@ -123,4 +124,27 @@ test("empty model output is a bad_response, not silent success", async () => {
   const http = fakeHttp(() => ({ data: { candidates: [{ content: { parts: [] } }] } }));
   const g = new GeminiProvider({ apiKey: "k", completeModel: "m" }, http);
   await assert.rejects(() => g.complete({ user: "u" }), (e) => e.kind === "bad_response");
+});
+
+test("toGeminiSchema turns the enrich JSON Schema into Gemini's OpenAPI subset", () => {
+  const taxonomy = { topics: { steam: {}, other: {} }, signals: { promo_code: {} } };
+  const g = toGeminiSchema(enrichResponseSchema(taxonomy));
+
+  // Жодного масиву в `type` на будь-якій глибині — саме на ньому Gemini дає 400.
+  const walk = (node, path) => {
+    if (!node || typeof node !== "object") return;
+    if ("type" in node) assert.equal(typeof node.type, "string", `${path}.type`);
+    if (node.type === "object" && path !== "$") assert.ok(node.properties, `${path} has properties`);
+    for (const [k, v] of Object.entries(node.properties ?? {})) walk(v, `${path}.${k}`);
+    if (node.items) walk(node.items, `${path}[]`);
+  };
+  walk(g, "$");
+
+  assert.deepEqual(g.properties.summary_uk, { nullable: true, type: "string" });
+  assert.equal(g.propertyOrdering[0], "text_en");
+  assert.deepEqual(g.properties.topic.enum, ["steam", "other"]);
+  assert.equal(g.properties.extracted.properties.event, undefined);
+  assert.deepEqual(g.properties.extracted.properties.promo_codes.items.required, ["code"]);
+  assert.deepEqual(g.required, ["text_en", "lang", "topic", "signal_type", "confidence"]);
+  assert.throws(() => toGeminiSchema({ type: ["string", "number"] }), /unsupported type union/);
 });

@@ -3,6 +3,58 @@ import axios from "axios";
 import { BaseProvider, ProviderError } from "./BaseProvider.js";
 
 /**
+ * JSON Schema (як його будує schemas.js) → `responseSchema` Gemini.
+ *
+ * `responseSchema` — підмножина OpenAPI 3.0, не JSON Schema: `type` лише
+ * рядок, nullable пишеться як `nullable: true`, а OBJECT без `properties`
+ * відхиляється. На `type: ["string", "null"]` Gemini відповідає HTTP 400 на
+ * КОЖЕН запит — пілот 2026-09-29 спалив так 337 викликів. Тому схема
+ * перекладається тут, у провайдері, а schemas.js лишається стандартним JSON
+ * Schema для OpenAI-сумісних.
+ *
+ * `propertyOrdering` задається явно: без нього Gemini генерує поля за
+ * алфавітом, а порядок полів (text_en першим) — частина промпту.
+ * Об'єкт без властивостей (`extracted.event`, заготовка під фазу 4) з
+ * схеми випадає: модель його не поверне, валідатор приймає його відсутність.
+ */
+export function toGeminiSchema(schema) {
+  if (schema === null || typeof schema !== "object" || Array.isArray(schema)) return schema;
+
+  const out = {};
+  let type = schema.type;
+  if (Array.isArray(type)) {
+    const real = type.filter((t) => t !== "null");
+    if (real.length !== 1) {
+      throw new Error(`toGeminiSchema: unsupported type union ${JSON.stringify(type)}`);
+    }
+    if (real.length !== type.length) out.nullable = true;
+    type = real[0];
+  }
+  if (type !== undefined) out.type = type;
+
+  for (const key of ["enum", "minimum", "maximum", "description", "format", "minItems", "maxItems"]) {
+    if (schema[key] !== undefined) out[key] = schema[key];
+  }
+  if (schema.items !== undefined) out.items = toGeminiSchema(schema.items);
+
+  if (schema.properties) {
+    const properties = {};
+    for (const [name, sub] of Object.entries(schema.properties)) {
+      const converted = toGeminiSchema(sub);
+      if (converted?.type === "object" && !converted.properties) continue;
+      properties[name] = converted;
+    }
+    out.properties = properties;
+    out.propertyOrdering = Object.keys(properties);
+    if (Array.isArray(schema.required)) {
+      const required = schema.required.filter((r) => r in properties);
+      if (required.length) out.required = required;
+    }
+  }
+  return out;
+}
+
+/**
  * Google Gemini via the Generative Language API (v1beta).
  *
  *   complete -> POST /models/{model}:generateContent
@@ -35,7 +87,7 @@ export class GeminiProvider extends BaseProvider {
       generationConfig: {
         temperature: options.temperature ?? 0,
         responseMimeType: "application/json",
-        ...(options.schema ? { responseSchema: options.schema } : {}),
+        ...(options.schema ? { responseSchema: toGeminiSchema(options.schema) } : {}),
       },
     };
     if (messages.system) {
@@ -91,7 +143,7 @@ export class GeminiProvider extends BaseProvider {
       generationConfig: {
         temperature: options.temperature ?? 0,
         responseMimeType: "application/json",
-        ...(options.schema ? { responseSchema: options.schema } : {}),
+        ...(options.schema ? { responseSchema: toGeminiSchema(options.schema) } : {}),
       },
     };
     if (options.system) body.systemInstruction = { parts: [{ text: options.system }] };

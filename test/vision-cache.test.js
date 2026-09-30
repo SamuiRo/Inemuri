@@ -1,13 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { assertTestDatabase } from "./support/testDatabase.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
 import { VisionCache } from "../src/module/teapot/models/index.js";
 
-// Торкається реальної бази. Рядки мітяться унікальним model і прибираються.
+// Пише в SQLite — лише на одноразовій базі з `npm test` (test/support).
+// Рядки мітяться унікальним model і прибираються.
 const MODEL = `__vc_${process.pid}`;
 
-test.before(async () => { await database.connect(); });
+test.before(async () => {
+  assertTestDatabase();
+  await database.connect();
+});
 test.after(async () => {
   await VisionCache.destroy({ where: { model: MODEL } });
   await database.disconnect();

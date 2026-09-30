@@ -1,13 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { assertTestDatabase } from "./support/testDatabase.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
 import { ProviderQuota } from "../src/module/teapot/models/index.js";
 
-// Touches the real dev database. Uses a throwaway provider name and cleans up.
+// Пише в SQLite — лише на одноразовій базі з `npm test` (test/support).
+// Throwaway provider name, cleaned up after.
 const P = `__test_${process.pid}`;
 
-test.before(async () => { await database.connect(); });
+test.before(async () => {
+  assertTestDatabase();
+  await database.connect();
+});
 test.after(async () => {
   await ProviderQuota.destroy({ where: { provider: P } });
   await database.disconnect();

@@ -292,5 +292,5 @@ enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]` checks discordapp's setup on a server, shows or applies its provisioning plan, or exports the server as a config, from a terminal.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
-- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), and `flow review` (label enriched posts into `post_feedback`).
-- `npm test` runs the `node --test` suites under `test/`.
+- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), and `flow requeue` (return failed or untrusted posts to the enrich queue).
+- `npm test` runs the `node --test` suites under `test/` through `scripts/run-tests.js`, on a throwaway database (`SQLITE_STORAGE`), never on `database/pot.sqlite`.

@@ -3,6 +3,7 @@ import "dotenv/config";
 import pkg from "../../package.json" with { type: "json" };
 import CategoriesConfig from "./categories.json" with { type: "json" };
 import { fileURLToPath } from "url";
+import path from "path";
 import { loadLocalConfig } from "./localConfig.js";
 
 // ── Runtime ────────────────────────────────────────────────────────────────
@@ -10,6 +11,16 @@ export const NODE_ENV = process.env.NODE_ENV;
 export const PKG = pkg;
 // TheFlow taxonomy (topics / signals) — у репозиторії, спільна для всіх.
 export const CATEGORIES = CategoriesConfig;
+
+// ── Database ───────────────────────────────────────────────────────────────
+// Робоча база — database/pot.sqlite. SQLITE_STORAGE перевизначає шлях; його
+// ставить scripts/run-tests.js, щоб `npm test` ганявся на одноразовій базі,
+// а не на корпусі пілота (до v4.43.1 тест EnrichWorker забирав справжні
+// pending-пости і писав у них фейкові вердикти).
+export const SQLITE_DEFAULT_STORAGE = path.resolve(process.cwd(), "database", "pot.sqlite");
+export const SQLITE_STORAGE = process.env.SQLITE_STORAGE
+  ? path.resolve(process.env.SQLITE_STORAGE)
+  : SQLITE_DEFAULT_STORAGE;
 
 // ── Telegram auth ──────────────────────────────────────────────────────────
 export const TELEGRAM_SESSION =

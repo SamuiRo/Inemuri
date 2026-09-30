@@ -357,4 +357,56 @@ Post.releaseClaim = async function (id) {
   );
 };
 
+/**
+ * Повертає пости в чергу enrich: status → pending, attempts → 0, вердикт і
+ * embedding стерті. Для `failed` після виправлення промпту чи провайдера
+ * (ROADMAP §3.6: «replayable after the prompt is fixed») і для вердиктів,
+ * яким не можна вірити.
+ *
+ * `text_ocr` / `vision_used` лишаються: транскрипція не залежить від
+ * вердикту, і повторна оплата vision нічого не дала б (VISION.md).
+ * Мітки `post_feedback` на ці пости стосуються старого вердикту — їх
+ * повертаємо окремим числом, рішення про них за викликачем.
+ *
+ * @param {{ status?: string[], errorLike?: string, modelUsed?: string, dryRun?: boolean }} filter
+ * @returns {Promise<{ ids: number[], withFeedback: number }>}
+ */
+Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, dryRun = false } = {}) {
+  const { Op } = database.sequelize.Sequelize;
+  const where = { status };
+  if (errorLike) where.last_error = { [Op.like]: `%${errorLike}%` };
+  if (modelUsed) where.model_used = modelUsed;
+
+  const rows = await this.findAll({ where, attributes: ["id"] });
+  const ids = rows.map((r) => r.id);
+  if (ids.length === 0) return { ids, withFeedback: 0 };
+
+  const [[{ n }]] = await database.sequelize.query(
+    `SELECT COUNT(DISTINCT post_id) AS n FROM post_feedback WHERE post_id IN (${ids.map(() => "?").join(",")})`,
+    { replacements: ids },
+  );
+  if (dryRun) return { ids, withFeedback: n };
+
+  await this.update(
+    {
+      status: "pending",
+      attempts: 0,
+      last_error: null,
+      text_en: null,
+      lang: null,
+      topic: null,
+      signal_type: null,
+      confidence: null,
+      analysis: null,
+      model_used: null,
+      taxonomy_version: null,
+      embedding: null,
+      embedding_model: null,
+      embedding_dim: null,
+    },
+    { where: { id: ids } },
+  );
+  return { ids, withFeedback: n };
+};
+
 export default Post;

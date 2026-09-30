@@ -7,6 +7,44 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.43.1] - 2026-09-30
+
+### Fixed
+- **Every Gemini enrich call failed with HTTP 400.** `responseSchema` is
+  Gemini's OpenAPI 3.0 subset, not JSON Schema: it rejects
+  `type: ["string", "null"]` and an OBJECT with no `properties`, both of which
+  the enrich schema uses. The pilot's first day spent 337 requests this way
+  and enriched nothing. `GeminiProvider` now translates the schema
+  (`toGeminiSchema`: unions with `null` become `nullable: true`, the
+  property-less `extracted.event` placeholder is dropped) and sets
+  `propertyOrdering`, without which Gemini emits fields alphabetically and
+  `text_en` stops coming first. `schemas.js` stays standard JSON Schema for the
+  OpenAI-compatible path. Vision was unaffected — its schema had no unions.
+  Verified with one live call: schema-valid JSON, fields in order.
+- **The test suite wrote into the pilot corpus.** `enrich-worker.test.js` ran
+  against `database/pot.sqlite`, and `Post.claimPending()` claims *any*
+  pending post — so every `npm test` run while the pilot was ingesting took
+  real posts and wrote fake verdicts into them (`model_used: fake-model`,
+  `text_en: "Free code SAVE20"`), or failed them with the fake provider's
+  `server: provider down`. All 135 `enriched` rows on the dev database and 30
+  of its `failed` ones came from tests; no real verdict existed. `npm test`
+  is now `scripts/run-tests.js`: it builds a throwaway database in the OS temp
+  dir (`db:bootstrap` + `migrate`), points the new `SQLITE_STORAGE` at it, and
+  deletes it afterwards. The suites that write to SQLite refuse to run against
+  `database/pot.sqlite`, so a bare `node --test test/x.test.js` fails loudly
+  instead of touching the corpus.
+
+### Added
+- **`node src/cli.js flow requeue`** — returns posts to the enrich queue:
+  `pending`, `attempts` 0, verdict and embedding cleared, `text_ocr` kept.
+  Defaults to every `failed` post; `--error`, `--status`, `--model` narrow it,
+  `--dry-run` only counts. ROADMAP §3.6 promised failed posts were
+  "replayable after the prompt is fixed" with nothing to replay them.
+  `Post.requeue()` is tested.
+- `SQLITE_STORAGE` (`app.config.js`) overrides the database path; unset, it is
+  `database/pot.sqlite` as before. `migrate.js` backs up next to whichever
+  file it migrates.
+
 ## [4.43.0] - 2026-09-30
 
 ### Added

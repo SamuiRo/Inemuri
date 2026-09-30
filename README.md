@@ -413,7 +413,7 @@ discordapp adds slash commands and buttons; every reply is visible only to the c
 | `npm run db:bootstrap` | Creates missing tables in an empty database. Run **before** `npm run migrate` on a fresh install — migrations cannot bootstrap from nothing. No-op once the tables exist. |
 | `npm run migrate` | Applies pending schema migrations (takes a backup first). |
 | `npm run migrate:status` | Lists applied and pending migrations. |
-| `npm test` | Runs the `node --test` suites under `test/`. |
+| `npm test` | Runs the `node --test` suites under `test/` against a throwaway database in the OS temp dir, never `database/pot.sqlite`. One file: `npm test -- test/x.test.js`. |
 | `npm run lint` | ESLint over the project (`lint:fix` to auto-fix). |
 
 ### Direct CLI usage
@@ -428,7 +428,18 @@ node src/cli.js list --active-only
 node src/cli.js list --platform telegram
 node src/cli.js toggle -1001234567890
 node src/cli.js clear --confirm
+node src/cli.js flow stats
+node src/cli.js flow review
+node src/cli.js flow requeue --dry-run
+node src/cli.js flow requeue --error "HTTP 400"
+node src/cli.js flow requeue --status enriched --model some-model
 ```
+
+`flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
+verdict and embedding cleared, `text_ocr` kept so vision is not paid for
+twice. Default is every `failed` post; `--error` narrows by `last_error`,
+`--status`/`--model` pick verdicts that cannot be trusted. It reports how many
+of them carry `post_feedback` labels for the old verdict.
 
 ## Media handling
 

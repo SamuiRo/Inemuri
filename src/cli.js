@@ -441,4 +441,40 @@ flow
     }
   });
 
+flow
+  .command("requeue")
+  .description("Return posts to the enrich queue (pending, attempts 0, verdict cleared)")
+  .option("--status <list>", "comma-separated statuses to requeue", "failed")
+  .option("--error <text>", "only posts whose last_error contains this text")
+  .option("--model <model_used>", "only posts whose verdict came from this model")
+  .option("--dry-run", "count, change nothing")
+  .action(async (options) => {
+    try {
+      await database.connect();
+      const status = String(options.status).split(",").map((s) => s.trim()).filter(Boolean);
+      const { ids, withFeedback } = await Post.requeue({
+        status,
+        errorLike: options.error,
+        modelUsed: options.model,
+        dryRun: Boolean(options.dryRun),
+      });
+
+      const verb = options.dryRun ? "Would requeue" : "Requeued";
+      print(`${verb} ${ids.length} post(s) [status: ${status.join(",")}]`, ids.length ? "success" : "info");
+      if (withFeedback) {
+        print(
+          `${withFeedback} of them have post_feedback labels for the old verdict — review them again after re-enrichment`,
+          "warning",
+        );
+      }
+      if (!options.dryRun && ids.length) {
+        print("The enrich worker picks them up on its next tick; a running service needs no restart.", "info");
+      }
+      await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
 program.parse();

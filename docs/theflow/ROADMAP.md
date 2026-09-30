@@ -784,6 +784,13 @@ timer -> Post.takePending(batch)
   is structural — the worker writes verdicts and no reader of them exists yet.
   The switch belongs with the routing consumer, in phase 2.
 
+> **Fixed after the pilot (v4.43.1).** The first live day showed that no
+> Gemini enrich call had ever succeeded: `responseSchema` is an OpenAPI
+> subset and rejected the schema's `["string", "null"]` unions (HTTP 400 on
+> every call). `GeminiProvider` now translates it and pins `propertyOrdering`.
+> The earlier "verified with live calls to return schema-valid JSON" (3.1) had
+> used a simpler schema. Replay is `node src/cli.js flow requeue`.
+
 ### 3.7 `flow:review` (`S`)
 
 > **Done (v4.13.0).** `node src/cli.js flow review [--limit n] [--topic t]`.

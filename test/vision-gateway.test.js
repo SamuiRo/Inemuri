@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import LLMGateway from "../src/services/ai/LLMGateway.js";
-import { GeminiProvider } from "../src/services/ai/providers/GeminiProvider.js";
+import { GeminiProvider, toGeminiSchema } from "../src/services/ai/providers/GeminiProvider.js";
 import {
   buildVisionPrompt, validateVisionResponse, MAX_OCR_CHARS,
 } from "../src/services/ai/prompts/vision.js";
@@ -73,7 +73,7 @@ test("GeminiProvider.vision — sends the image inline, base64, with the schema"
   const inline = body.contents[0].parts.find((part) => part.inlineData)?.inlineData;
   assert.equal(inline.mimeType, "image/jpeg");
   assert.equal(Buffer.from(inline.data, "base64").toString(), "fake-jpeg-bytes");
-  assert.deepEqual(body.generationConfig.responseSchema, prompt.responseSchema);
+  assert.deepEqual(body.generationConfig.responseSchema, toGeminiSchema(prompt.responseSchema));
   assert.ok(body.systemInstruction.parts[0].text.includes("transcribe"));
 });
 

@@ -1,11 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { assertTestDatabase } from "./support/testDatabase.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
 import { Post, Source } from "../src/module/teapot/models/index.js";
 import { EnrichWorker } from "../src/module/theflow/EnrichWorker.js";
 
-// Touches the real dev database. Rows are namespaced by pid and removed after.
+// Пише в SQLite — лише на одноразовій базі з `npm test` (test/support).
+// Рядки однаково мітяться pid і прибираються після.
 const XID = `__ew_${process.pid}_`;
 
 const taxonomy = {
@@ -34,6 +36,7 @@ const GOOD = {
 let sourceId;
 
 test.before(async () => {
+  assertTestDatabase();
   await database.connect();
   // Створюємо власне джерело, а не беремо перше-ліпше з бази: інакше набір
   // залежить від даних, яких сам не створював, і на чистій базі (CI, свіжа

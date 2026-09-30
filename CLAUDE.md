@@ -113,8 +113,12 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   and PR. CI has no `.env`, no `sources.json` and no database, which is
   deliberate: it proves a fresh clone starts on the `*.sample.json` fallbacks.
 - Tests are `node --test` suites under `test/` (`*.test.js`, no dependency);
-  run with `npm test` (`--test-concurrency=1` — some suites hit the real
-  SQLite file and would race in parallel). They cover the pure/unit layers —
+  run with `npm test`, which is `scripts/run-tests.js`: it builds a throwaway
+  SQLite database in the OS temp dir (bootstrap + migrate), points
+  `SQLITE_STORAGE` at it and runs `node --test --test-concurrency=1`. The
+  suites that write to SQLite refuse to run against `database/pot.sqlite`
+  (`test/support/testDatabase.js`), so run a single file as
+  `npm test -- test/x.test.js`, never bare `node --test`. They cover the pure/unit layers —
   `RegexStage`, `FlowIngest` helpers, media resolver, the AI schema/prompt,
   providers, the gateway internals and fallback matrix, the quota ledger and
   the enrich worker, and discordapp. CI runs them on push and PR.
@@ -136,4 +140,5 @@ node src/cli.js list # list configured sources
 node src/cli.js flow stats     # TheFlow corpus stats (per source + total)
 node src/cli.js flow export    # sanitized JSONL sample of the corpus
 node src/cli.js flow review    # label enriched posts into post_feedback
+node src/cli.js flow requeue   # failed (or --status/--model) back to pending
 ```

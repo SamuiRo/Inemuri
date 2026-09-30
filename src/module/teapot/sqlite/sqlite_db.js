@@ -1,8 +1,7 @@
 import { Sequelize } from "sequelize";
-import path from "path";
 
 import { print } from "../../../shared/utils.js";
-import { NODE_ENV } from "../../../config/app.config.js";
+import { NODE_ENV, SQLITE_STORAGE } from "../../../config/app.config.js";
 
 export class Database {
   sequelize;
@@ -11,7 +10,7 @@ export class Database {
   constructor() {
     this.sequelize = new Sequelize({
       dialect: "sqlite",
-      storage: path.resolve(process.cwd() + "/database", "./pot.sqlite"), // абсолютний шлях
+      storage: SQLITE_STORAGE, // абсолютний шлях
       logging: false,
       pool: {
         max: 5,
