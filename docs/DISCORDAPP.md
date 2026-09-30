@@ -12,10 +12,15 @@ without rewriting its logic.
 The bot is **private**: it serves only the operator's own servers, several of
 them, and is never offered for public install.
 
-> **Status: complete (v4.40.1).** Every step of the work plan is done, and the
-> operator ran slash commands, buttons and provisioning on a live test server.
-> What it deliberately does not do is listed in
+> **Status: complete, in production (v4.42.3).** Every step of the work plan is
+> done. Provisioning was run on a live test server and then on the operator's
+> main server: a full rebrand of an existing server — 86 changes, history
+> kept, a clean plan afterwards. What it deliberately does not do is listed in
 > [Status and known limitations](#status-and-known-limitations).
+>
+> **Running a server with it day to day:** [PROVISIONING.md](PROVISIONING.md) —
+> the loop, recipes, taking over an existing server, troubleshooting. This
+> document is the contract behind it.
 
 ## Decisions
 
@@ -269,8 +274,8 @@ messages, role panels, AutoMod rules — is described in
     the config does not have is a config error; a resource created in the
     same apply is linked once it exists. Limits count a link at its resolved
     length.
-  - `"personas": { "sekai": { "name": "Sekai", "avatar": "folder/sekai.png" } }`
-    at the root, and `"as": "sekai"` on a text message, post it through a
+  - `"personas": { "guide": { "name": "Guide", "avatar": "folder/guide.png" } }`
+    at the root, and `"as": "guide"` on a text message, post it through a
     webhook with that name and avatar instead of as the bot. Provisioning
     creates the webhook in the channel itself and finds it again by owner and
     name (Discord returns the token of the bot's own webhooks), so there is
@@ -428,7 +433,7 @@ AutoMod rules are another resource kind, in the `automod` list of the config:
   API answers 404. Apply then fails that one rule with an explanation (delete
   it in Server Settings → AutoMod and apply again, or drop it from the config)
   and does **not** record it as managed, so the plan does not pretend
-  otherwise. This is not universal: on the operator's server (2026-09-30) the
+  otherwise. This is not universal: on the operator's main server (2026-09-30) the
   same default rule, with the owner as `creator_id`, answered a full PATCH
   with 200. And Discord's own UI refuses to delete the mention-spam rule on a
   Community server ("disable the rule instead"), so "delete it" is not always
@@ -551,9 +556,14 @@ Deliberately not done — each is a small, separate change if it is ever needed:
 - **Server settings are not provisioned**: rules / updates / system channel
   choice, onboarding, verification level. Provisioning does respect the
   channels the server uses (`archiveUnmanaged` keeps them).
-- **AutoMod**: the `member-profile` rule type is not supported, and rules
-  Discord created itself cannot be edited by any bot (404) — delete them by
-  hand to let the config take over.
+- **AutoMod**: the `member-profile` rule type is not supported. A rule
+  Discord created itself may refuse edits from bots (404 on the test server;
+  accepted on the main server), and on a Community server the mention-spam
+  rule cannot be deleted at all — drop such a rule from the config and set it
+  by hand if the edit fails.
+- **Forum tags** are not provisioned.
+- **Overflow archive names** are `<archive name> 2`, which sits outside a
+  decorative frame such as `┍ … ┑`.
 - **Plain emoji only** on panel buttons; custom emoji ids differ per server.
 - **Overflow archives** (`ARCHIVE 2`, …) keep the archive rights they were
   created with; changing the archive roles later does not resync them.
@@ -587,3 +597,7 @@ After the plan, from the operator's use of the test server:
 | v4.39.0 | `/export-chats` to disk and Telegram; nothing attached in Discord |
 | v4.40.0 | `archiveUnmanaged` |
 | v4.40.1 | Plan lists archived and hidden resources apart from untouched ones |
+| v4.41.0 | `adopt` by id — rename on first import, same-named resources |
+| v4.42.0 | Several embeds per message (`---`), `{{#key}}` / `{{@key}}` links, personas posting through the bot's own webhook |
+| v4.42.2 | Plan fingerprint stable across reads — apply refused every time on a server with many overwrites |
+| v4.42.3 | Exclusive role panel: switching roles lost the new role; roles now change one call each. [PROVISIONING.md](PROVISIONING.md) operator guide |

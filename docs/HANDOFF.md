@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.40.3`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.42.3`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 388 green `node --test` cases
+is clean on the dev database. `npm test` is 397 green `node --test` cases
 (`--test-concurrency=1` — some suites touch the real SQLite file). See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
 [theflow/ROADMAP.md](theflow/ROADMAP.md) for the full per-task status (every
@@ -38,8 +38,13 @@ filesystem — no build step) covers the whole source shape as of `v4.14.0`,
 `flow` and `vision` included. Enabling the pilot is: import the live
 `src/config/sources.json`, switch the chosen sources on, export, reseed.
 
-**discordapp** — Discord server management inside Inemuri — is **complete**
-(`v4.30.2`–`v4.40.1`) and closed as a slice. [DISCORDAPP.md](DISCORDAPP.md)
+**discordapp** — Discord server management inside Inemuri — is **complete and
+in production** (`v4.30.2`–`v4.42.3`). On 2026-09-30 provisioning rebranded
+the operator's main server end to end (86 changes, history kept, a clean plan
+afterwards); that run added `adopt` by id, multi-embed texts with links and
+personas, and fixed the plan fingerprint and the exclusive role panel. The
+server's config and texts are git-ignored, like all deployment data. How to run
+a server with it: [PROVISIONING.md](PROVISIONING.md). [DISCORDAPP.md](DISCORDAPP.md)
 holds the design, the setup, every feature contract, and a *Status and known
 limitations* section with what it deliberately does not do. Discord delivery is
 REST-only, so a Discord outage no longer stops the process. Provisioning was

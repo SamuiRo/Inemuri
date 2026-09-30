@@ -1,5 +1,6 @@
 {
-  "_readme": "Copy to <name>.json in this folder and set guildId. Every key is a stable id: renaming a name is an edit, changing a key is a new resource. Message texts live in ../messages/. Full format: docs/DISCORDAPP.md.",
+  "_readme": "Copy to <name>.json in this folder and set guildId. Every key is a stable id: renaming a name is an edit, changing a key is a new resource. Message texts live in ../messages/. How-to: docs/PROVISIONING.md. Full format: docs/DISCORDAPP.md.",
+  "_adopt": "Taking over an existing server: add \"adopt\": \"<discord id>\" to a role, category or channel so the first apply renames that exact resource instead of matching by name.",
   "guildId": "000000000000000000",
 
   "archive": { "key": "archive", "name": "🗄 ARCHIVE", "roles": ["admin"] },
@@ -17,6 +18,11 @@
     }
   },
 
+  "_personas": "A text message with \"as\": \"guide\" is posted by a webhook named Guide (optional avatar: an image path under ../messages/) instead of the bot.",
+  "personas": {
+    "guide": { "name": "Guide" }
+  },
+
   "roles": [
     { "key": "admin", "name": "Admin", "color": "#e74c3c", "hoist": true, "permissions": ["Administrator"] },
     { "key": "mod", "name": "Moderator", "color": "#e67e22", "hoist": true,
@@ -30,6 +36,8 @@
     {
       "key": "info", "name": "📌 INFO", "overwrites": "readonly",
       "channels": [
+        { "key": "welcome", "name": "welcome", "topic": "Start here",
+          "messages": [{ "key": "welcome-main", "file": "welcome.sample.md", "embed": { "color": "#f47c9b" }, "as": "guide" }] },
         { "key": "rules", "name": "rules", "topic": "Read before posting",
           "messages": [{ "key": "rules-main", "file": "rules.sample.md", "embed": { "title": "Rules", "color": "#5865f2" } }] },
         { "key": "get-roles", "name": "get-roles", "topic": "Pick the topics you want to see",
@@ -67,6 +75,6 @@
     {"key": "scam-links", "name": "Scam links", "type": "keyword", "keywords": ["*free nitro*", "*steamcommunlty*", "*discord-gift*"], "regex": ["disc[o0]rd\\.(gift|gg)/[a-z0-9]+"], "actions": [{"type": "block", "message": "This looks like a scam link."}, {"type": "alert", "channel": "mod-log"}, {"type": "timeout", "seconds": 600}], "exempt": {"roles": ["admin", "mod"]}},
     {"key": "slurs", "name": "Slurs", "type": "preset", "presets": ["slurs"], "actions": [{"type": "block"}, {"type": "alert", "channel": "mod-log"}]},
     {"key": "spam", "name": "Spam", "type": "spam", "actions": [{"type": "block"}]},
-    {"_comment": "A Community server already has Discord's own 'Block Mention Spam', which the bot cannot edit: delete it in Server Settings → AutoMod first, or drop this rule.", "key": "mentions", "name": "Mention spam", "type": "mention-spam", "limit": 8, "raidProtection": true, "actions": [{"type": "block"}, {"type": "alert", "channel": "mod-log"}, {"type": "timeout", "seconds": 300}]}
+    {"_comment": "A Community server already has Discord's own 'Block Mention Spam'; this rule adopts it. Some servers let the bot edit it, some answer 404 — then drop this rule and configure it by hand (it cannot be deleted on a Community server, only disabled).", "key": "mentions", "name": "Mention spam", "type": "mention-spam", "limit": 8, "raidProtection": true, "actions": [{"type": "block"}, {"type": "alert", "channel": "mod-log"}, {"type": "timeout", "seconds": 300}]}
   ]
 }

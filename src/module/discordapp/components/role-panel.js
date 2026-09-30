@@ -51,8 +51,12 @@ export default {
     // опинитись вище за бота вже після публікації.
     change.remove = change.remove.filter((id) => (guild.roles.cache.get(id)?.position ?? Infinity) < me.roles.highest.position);
 
-    if (change.add.length) await member.roles.add(change.add, REASON);
-    if (change.remove.length) await member.roles.remove(change.remove, REASON);
+    // По одній ролі через окремі ендпоінти (PUT/DELETE .../roles/:id). Масив у
+    // member.roles.add/remove переписує ВЕСЬ список ролей зі знімка member, і
+    // remove після add брав старий знімок — нова роль зникала (exclusive).
+    const user = interaction.user.id;
+    for (const id of change.add) await guild.members.addRole({ user, role: id, reason: REASON });
+    for (const id of change.remove) await guild.members.removeRole({ user, role: id, reason: REASON });
     return describeRoleChange(change);
   },
 };

@@ -200,3 +200,28 @@ test("describeRoleChange", () => {
   assert.equal(describeRoleChange({ add: ["1"], remove: ["2", "3"] }), "✅ Added <@&1>\n➖ Removed <@&2>, <@&3>");
   assert.equal(describeRoleChange({ add: [], remove: [] }), "Nothing changed.");
 });
+
+test("role panel button — exclusive switch adds the new role and removes the old one, each by its own call", async () => {
+  const { default: rolePanel } = await import("../src/module/discordapp/components/role-panel.js");
+  const OLD = "201", NEW = "202";
+  const held = new Set([OLD]);
+  const calls = [];
+  const role = (id) => ({ id, name: `R${id}`, managed: false, position: 1, permissions: { bitfield: 0n } });
+  const guild = {
+    roles: { fetch: async (id) => role(id), cache: new Map([[OLD, role(OLD)], [NEW, role(NEW)]]) },
+    members: {
+      fetchMe: async () => ({ roles: { highest: { position: 10 } } }),
+      // Знімок учасника: саме на ньому масивні add/remove і затирали одне одного.
+      fetch: async () => ({ roles: { cache: new Map([...held].map((id) => [id, role(id)])) } }),
+      addRole: async ({ role: id }) => { calls.push(`+${id}`); held.add(id); },
+      removeRole: async ({ role: id }) => { calls.push(`-${id}`); held.delete(id); },
+    },
+  };
+  const buttons = [{ components: [{ customId: panelButtonId("exclusive", OLD) }, { customId: panelButtonId("exclusive", NEW) }] }];
+  const reply = await rolePanel.execute({
+    customId: panelButtonId("exclusive", NEW), guild, user: { id: "u1" }, message: { components: buttons },
+  });
+  assert.deepEqual(calls, [`+${NEW}`, `-${OLD}`]);
+  assert.deepEqual([...held], [NEW]);
+  assert.match(reply, /Added <@&202>/);
+});

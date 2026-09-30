@@ -35,7 +35,11 @@ Never describe TheFlow as standing alongside or on top of Inemuri; it is inside 
 commands, channel export, role panels, server provisioning from config. Call it
 discordapp, not "the bot" or "discordbot". It runs in the same process and
 talks to the core only through `EventBus`; Discord *delivery* is not part of it
-and must never depend on it. See [docs/DISCORDAPP.md](docs/DISCORDAPP.md).
+and must never depend on it. See [docs/DISCORDAPP.md](docs/DISCORDAPP.md) for the
+contract and [docs/PROVISIONING.md](docs/PROVISIONING.md) for running a server
+with it. Real server configs and texts (`src/config/discordapp/servers/*.json`,
+`src/config/discordapp/messages/**`) are git-ignored; only `*.sample.*` files
+are tracked — never commit a real one.
 
 ## Documentation
 
@@ -110,7 +114,7 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   SQLite file and would race in parallel). They cover the pure/unit layers —
   `RegexStage`, `FlowIngest` helpers, media resolver, the AI schema/prompt,
   providers, the gateway internals and fallback matrix, the quota ledger and
-  the enrich worker. No CI runs them yet.
+  the enrich worker, and discordapp. CI runs them on push and PR.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
 

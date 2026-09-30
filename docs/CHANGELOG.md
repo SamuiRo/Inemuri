@@ -7,6 +7,35 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.42.3] - 2026-09-30
+
+### Fixed
+- **Exclusive role panel lost the new role when switching.** The handler
+  called `member.roles.add([...])` and then `member.roles.remove([...])`; with
+  arrays, discord.js rewrites the member's whole role list from the same
+  snapshot, so the remove wrote back the list without the role just added.
+  Found by the operator on the main server: pressing another role took the old
+  one away and gave nothing until a second press. Roles now change one call
+  each (`PUT`/`DELETE /members/:id/roles/:role`), which does not depend on any
+  snapshot. Test covers an exclusive switch.
+
+### Added
+- **`docs/PROVISIONING.md`** — the operator guide: the plan/apply loop, recipes
+  (add, rename, move, retire and restore channels; presets; roles and panels;
+  opt-in sections; texts with several embeds, links and personas; AutoMod),
+  taking over an existing server with `adopt`, how Discord rewrites channel
+  names, and a troubleshooting table. Examples are made up; real configs stay
+  git-ignored.
+- `example.sample.json` shows a persona and a welcome text;
+  `messages/welcome.sample.md` shows several embeds and links.
+
+### Changed
+- The main server's name no longer appears in the docs or this changelog.
+- `DISCORDAPP.md` status, version table and limitations (AutoMod default rule,
+  forum tags, overflow archive names) are current; `HANDOFF.md`, `README.md`
+  and `CLAUDE.md` point at the guide. `CLAUDE.md` no longer says CI does not
+  run the tests.
+
 ## [4.42.2] - 2026-09-30
 
 ### Fixed
@@ -14,8 +43,8 @@ work closes out) — see `CLAUDE.md` § Versioning.
   ("The server or the config changed since this plan was shown"). Discord
   returns a channel's permission overwrites in a different order from one
   read to the next, and the plan listed "removed" overwrites in that order, so
-  the fingerprint of the confirmed plan never matched the shown one on Plane of
-  operator-server. `readGuild` now sorts overwrites by id, and the fingerprint sorts
+  the fingerprint of the confirmed plan never matched the shown one on the
+  operator's main server. `readGuild` now sorts overwrites by id, and the fingerprint sorts
   ops and their changes, so it only reflects what will change. Found on the
   first real apply; checked live: four reads, one fingerprint.
 
@@ -23,7 +52,7 @@ work closes out) — see `CLAUDE.md` § Versioning.
 
 ### Changed
 - `DISCORDAPP.md`, AutoMod: the default *Block Mention Spam* rule is not
-  always read-only. On the operator's server it accepted a full edit from the bot
+  always read-only. On the operator's main server it accepted a full edit from the bot
   (200), and Discord's UI refuses to delete it on a Community server at all,
   so the doc no longer presents deleting it as the way out. Documentation only.
 
@@ -31,7 +60,7 @@ work closes out) — see `CLAUDE.md` § Versioning.
 
 ### Added
 - **Provisioning messages: several embeds, links by key, personas.** For the
-  the operator's server texts, which are posted by "Sekai" as a stack of small
+  main server's texts, which are posted by a persona as a stack of small
   embeds with links to channels.
   - `---` splits an embed message into up to 10 embeds; a first line
     `# Title` is the embed's title. Limits (10 embeds, 6000 in total, 4096
@@ -63,8 +92,8 @@ work closes out) — see `CLAUDE.md` § Versioning.
   their history. With `adopt` the entry names the old resource by id and the
   first apply renames it in place. It also resolves same-named categories,
   which the name match refuses. Missing, already-claimed, wrong-kind or
-  integration-managed targets are plan errors. Driven by the Plane of
-  operator-server rebrand. Tests cover adoption across rename and duplicate names,
+  integration-managed targets are plan errors. Driven by the rebrand of the
+  operator's main server. Tests cover adoption across rename and duplicate names,
   every error path, and the schema checks.
 
 ### Verified
