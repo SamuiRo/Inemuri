@@ -277,6 +277,20 @@ test("schema — personas: name checks, as only on text messages, unknown person
   assert.ok(errors.some((e) => /role panel is posted by the bot/.test(e)));
 });
 
+test("planner — the fingerprint ignores the order Discord returned ops and changes in", () => {
+  const plan = { ops: [
+    { phase: "channels", op: "update", kind: "channel", key: "a", id: "1", changes: ["permissions @X: removed", "permissions @Y: removed"] },
+    { phase: "channels", op: "archive", kind: "channel", key: "b", id: "2", changes: [] },
+  ] };
+  const shuffled = { ops: [
+    { ...plan.ops[1] },
+    { ...plan.ops[0], changes: [...plan.ops[0].changes].reverse() },
+  ] };
+  assert.equal(planFingerprint(plan), planFingerprint(shuffled));
+  const different = { ops: [plan.ops[0], { ...plan.ops[1], op: "update" }] };
+  assert.notEqual(planFingerprint(plan), planFingerprint(different));
+});
+
 test("schema — adopt must be a snowflake and unique", () => {
   const { errors } = validateServerConfig(config({
     channels: [

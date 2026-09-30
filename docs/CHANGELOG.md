@@ -7,6 +7,18 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.42.2] - 2026-09-30
+
+### Fixed
+- **`/provision apply` refused every time on a server with many overwrites**
+  ("The server or the config changed since this plan was shown"). Discord
+  returns a channel's permission overwrites in a different order from one
+  read to the next, and the plan listed "removed" overwrites in that order, so
+  the fingerprint of the confirmed plan never matched the shown one on Plane of
+  operator-server. `readGuild` now sorts overwrites by id, and the fingerprint sorts
+  ops and their changes, so it only reflects what will change. Found on the
+  first real apply; checked live: four reads, one fingerprint.
+
 ## [4.42.1] - 2026-09-30
 
 ### Changed

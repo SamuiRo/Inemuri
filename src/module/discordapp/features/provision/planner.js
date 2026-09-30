@@ -531,9 +531,12 @@ function collectUnmanaged(desired, current, state, context, plan) {
  * і застосовувати те, чого людина не бачила, не можна.
  */
 export function planFingerprint(plan) {
+  // Відсортовано: відбиток — про те, ЩО зміниться, а не в якому порядку
+  // Discord цього разу віддав канали й overwrites.
   const essence = plan.ops
     .filter((op) => op.phase !== "report")
-    .map((op) => [op.op, op.kind, op.key, op.id ?? "", ...(op.changes ?? [])].join("|"));
+    .map((op) => [op.op, op.kind, op.key, op.id ?? "", ...[...(op.changes ?? [])].sort()].join("|"))
+    .sort();
   return createHash("sha1").update(essence.join("\n")).digest("hex").slice(0, 10);
 }
 

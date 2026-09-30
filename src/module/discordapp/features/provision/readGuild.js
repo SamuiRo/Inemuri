@@ -58,12 +58,14 @@ export async function readGuild(guild, state = []) {
         topic: channel.topic ?? null,
         nsfw: Boolean(channel.nsfw),
         slowmode: channel.rateLimitPerUser ?? 0,
+        // Discord віддає overwrites у довільному порядку від запиту до запиту;
+        // стабільний порядок — стабільний план і його відбиток.
         overwrites: [...channel.permissionOverwrites.cache.values()].map((overwrite) => ({
           id: overwrite.id,
           type: overwrite.type === OverwriteType.Member ? "member" : "role",
           allow: overwrite.allow.bitfield,
           deny: overwrite.deny.bitfield,
-        })),
+        })).sort((a, b) => a.id.localeCompare(b.id)),
       })),
     messages,
     automod,
