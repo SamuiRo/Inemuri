@@ -75,3 +75,15 @@ test("TtlCache — get/set, TTL expiry, size cap", () => {
   assert.equal(c.get("b"), 2);
   assert.equal(c.get("c"), 3);
 });
+
+test("TokenBucket with burst 1 paces evenly — never more than rpm+1 in a minute", () => {
+  let t = 0;
+  const b = new TokenBucket(15, () => t, { burst: 1 });
+  let taken = 0;
+  for (t = 0; t <= 60_000; t += 100) if (b.tryTake()) taken++;
+  assert.equal(taken, 16); // одна на старті + 15 поповнень за хвилину
+  let t2 = 0, burst = 0;
+  const full = new TokenBucket(15, () => t2);
+  for (t2 = 0; t2 <= 60_000; t2 += 100) if (full.tryTake()) burst++;
+  assert.equal(burst, 30, "the default full bucket is what caused the pilot's 429s");
+});

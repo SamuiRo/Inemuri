@@ -7,6 +7,40 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.44.1] - 2026-09-30
+
+### Fixed
+- **A per-minute 429 switched Gemini off for the day.** Gemini answers every
+  429 with `RESOURCE_EXHAUSTED` and "You exceeded your current quota" —
+  including the per-minute limit — and the classifier took those words for
+  the daily quota. The pilot's first real run marked `gemini-3.5-flash-lite`
+  exhausted at 117 of 500 requests. The 429 is now read from its structure:
+  `QuotaFailure.violations[].quotaId` (`…PerDay…` → daily quota,
+  `…PerMinute…` → rate limit). Without a `quotaId` only an explicit
+  "per day" / "per-day" means the daily quota; anything else is a rate limit,
+  since a wrong retry is cheaper than a provider wrongly switched off for a
+  day.
+- **The rate limiter let through twice the RPM in the first minute.** The
+  token bucket started full at RPM tokens and refilled at RPM per minute, so
+  a backlog sent up to 30 requests in the first minute against a 15 RPM
+  limit — which is what produced the 429 above. The gateway's bucket now
+  bursts at most one second of its rate (`ceil(rpm / 60)`, i.e. 1 at 15 RPM:
+  one request every 4 s).
+- **A rate-limit retry ignored how long the provider asked to wait.** It slept
+  0.5–1 s; Gemini's `RetryInfo.retryDelay` asks for 20–60 s. The retry now
+  waits for the hint (or `Retry-After`), capped at a minute.
+- **A refusal before any call burned a post's attempt.** When every provider
+  was refused at the gate — circuit open, daily quota spent — the gateway
+  threw, and the worker counted an attempt: with the quota spent, each tick
+  took the ten oldest pending posts and three ticks made them `failed`, which
+  would have emptied the whole queue into `failed` within the hour. Now it
+  returns a shed with the reason and the post stays `pending` with its attempt
+  returned. A post that reached a provider and failed still counts.
+- `Post.claimPending` wrote `updatedAt` as an ISO string (`…T…Z`) while
+  Sequelize writes `YYYY-MM-DD HH:MM:SS.SSS +00:00`; SQLite compares them as
+  text, so time windows over `updatedAt` could misorder rows. It now writes
+  Sequelize's format.
+
 ## [4.44.0] - 2026-09-30
 
 ### Added

@@ -106,8 +106,14 @@ test("error classification: 429 rate-limit vs daily quota vs 5xx vs network", as
     () => mk({ response: { status: 429, data: { error: "too many requests" } } }).complete({ user: "u" }),
     (e) => e instanceof ProviderError && e.kind === "rate_limit" && e.status === 429,
   );
+  // RESOURCE_EXHAUSTED сам по собі нічого не каже: Gemini ставить його на
+  // КОЖЕН 429. Без quotaId це rate limit, не денна квота.
   await assert.rejects(
     () => mk({ response: { status: 429, data: { error: { status: "RESOURCE_EXHAUSTED" } } } }).complete({ user: "u" }),
+    (e) => e.kind === "rate_limit",
+  );
+  await assert.rejects(
+    () => mk({ response: { status: 429, data: { error: "Rate limit exceeded: free-models-per-day" } } }).complete({ user: "u" }),
     (e) => e.kind === "quota",
   );
   await assert.rejects(
@@ -147,4 +153,43 @@ test("toGeminiSchema turns the enrich JSON Schema into Gemini's OpenAPI subset",
   assert.deepEqual(g.properties.extracted.properties.promo_codes.items.required, ["code"]);
   assert.deepEqual(g.required, ["text_en", "lang", "topic", "signal_type", "confidence"]);
   assert.throws(() => toGeminiSchema({ type: ["string", "number"] }), /unsupported type union/);
+});
+
+// Форма реального 429 від Gemini: однакові status і message для хвилинного й
+// денного ліміту, різниця лише в quotaId.
+const gemini429 = (quotaId, retryDelay = "43s") => ({
+  response: {
+    status: 429,
+    data: {
+      error: {
+        code: 429,
+        message: "You exceeded your current quota, please check your plan and billing details.",
+        status: "RESOURCE_EXHAUSTED",
+        details: [
+          { "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            violations: [{ quotaMetric: "generativelanguage.googleapis.com/generate_content_free_tier_requests", quotaId, quotaValue: "15" }] },
+          { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay },
+        ],
+      },
+    },
+  },
+});
+
+test("Gemini 429: per-minute quotaId is a rate limit with a retry hint, per-day is the daily quota", async () => {
+  const mk = (err) => new GeminiProvider({ apiKey: "k", completeModel: "m" }, { post: async () => { throw err; } });
+
+  await assert.rejects(
+    () => mk(gemini429("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "43.2s")).complete({ user: "u" }),
+    (e) => e.kind === "rate_limit" && e.retryAfterMs === 43_200 && /PerMinute/.test(e.message),
+  );
+  await assert.rejects(
+    () => mk(gemini429("GenerateRequestsPerDayPerProjectPerModel-FreeTier")).complete({ user: "u" }),
+    (e) => e.kind === "quota" && e.retryAfterMs === null,
+  );
+});
+
+test("rateLimitInfo falls back to the Retry-After header", () => {
+  assert.deepEqual(BaseProvider.rateLimitInfo({ headers: { "retry-after": "7" }, data: {} }),
+    { quotaIds: [], retryAfterMs: 7000 });
+  assert.deepEqual(BaseProvider.rateLimitInfo(undefined), { quotaIds: [], retryAfterMs: null });
 });

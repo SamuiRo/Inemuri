@@ -208,7 +208,11 @@ export class LLMGateway {
   _bucketFor(entry, model) {
     const key = this._quotaKey(entry, model);
     if (!this._buckets.has(key)) {
-      this._buckets.set(key, new TokenBucket(this._limitsFor(entry, model).rpm, this.now));
+      // Сплеск — не більше секунди ліміту (для 15 RPM це 1, рівний темп).
+      // Повне відро на 15 RPM пропускало 30 запитів у першу хвилину, і Gemini
+      // відповідав 429 (пілот 2026-09-30).
+      const { rpm } = this._limitsFor(entry, model);
+      this._buckets.set(key, new TokenBucket(rpm, this.now, { burst: Math.max(1, Math.ceil(rpm / 60)) }));
     }
     return this._buckets.get(key);
   }
@@ -314,13 +318,14 @@ export class LLMGateway {
     if (cands.length === 0) throw this._unavailable(capability);
 
     let lastErr;
+    const refused = [];
     for (const entry of cands) {
       const model = this._modelFor(entry, capability, modelOverride);
       const quotaKey = this._quotaKey(entry, model);
       const gate = await this._gate(entry, priority, model);
       if (gate === "shed") return { shed: true, reason: "quota reserve" };
       if (gate !== "ok") {
-        lastErr = new Error(`${entry.provider.name}: ${gate}`);
+        refused.push(`${entry.provider.name}: ${gate}`);
         continue;
       }
 
@@ -345,7 +350,10 @@ export class LLMGateway {
             break;
           }
           if (kind === "rate_limit") {
-            await this.sleep(500 * (attempt + 1));
+            // Скільки просить провайдер (Gemini: RetryInfo, ~20–60 с), але не
+            // більше хвилини; без підказки — коротка пауза, як раніше.
+            const hinted = Number.isFinite(err.retryAfterMs) ? Math.min(err.retryAfterMs, 60_000) : 0;
+            await this.sleep(Math.max(500 * (attempt + 1), hinted));
             continue;
           }
           if (attempt === 0) continue; // bad_response: one retry
@@ -353,6 +361,12 @@ export class LLMGateway {
         }
       }
     }
+    // Жоден провайдер не був викликаний: усі відмовили на вході (breaker
+    // відкритий, денна квота). Це не збій поста, а «зараз не можна» — як
+    // shed. Раніше тут летіла помилка, і воркер списував спробу: на
+    // вичерпаній квоті кожен тік брав 10 найстаріших pending і за три тіки
+    // робив їх failed, поки не спалив би всю чергу.
+    if (!lastErr && refused.length) return { shed: true, reason: refused.join("; ") };
     throw lastErr ?? this._unavailable(capability);
   }
 

@@ -21,11 +21,13 @@
  */
 
 export class ProviderError extends Error {
-  constructor(message, { kind = "server", status = null, cause } = {}) {
+  constructor(message, { kind = "server", status = null, cause, retryAfterMs = null } = {}) {
     super(message);
     this.name = "ProviderError";
     this.kind = kind;
     this.status = status;
+    // Для rate_limit: скільки провайдер просить почекати (null — не сказав).
+    this.retryAfterMs = retryAfterMs;
     if (cause) this.cause = cause;
   }
 }
@@ -87,17 +89,55 @@ export class BaseProvider {
     return arr;
   }
 
+  /**
+   * Що 429 каже про себе. Google (google.rpc): `details[]` з
+   * `QuotaFailure.violations[].quotaId` (напр.
+   * "GenerateRequestsPerMinutePerProjectPerModel-FreeTier") і
+   * `RetryInfo.retryDelay` ("43s"). Інші — заголовок Retry-After (секунди).
+   *
+   * @returns {{ quotaIds: string[], retryAfterMs: number|null }}
+   */
+  static rateLimitInfo(response) {
+    const details = response?.data?.error?.details;
+    const quotaIds = [];
+    let retryAfterMs = null;
+    for (const d of Array.isArray(details) ? details : []) {
+      for (const v of Array.isArray(d?.violations) ? d.violations : []) {
+        if (typeof v?.quotaId === "string") quotaIds.push(v.quotaId);
+      }
+      const m = typeof d?.retryDelay === "string" && d.retryDelay.match(/^(\d+(?:\.\d+)?)s$/);
+      if (m) retryAfterMs = Math.ceil(Number(m[1]) * 1000);
+    }
+    if (retryAfterMs === null) {
+      const h = response?.headers?.["retry-after"];
+      if (h != null && /^\d+(\.\d+)?$/.test(String(h).trim())) retryAfterMs = Math.ceil(Number(h) * 1000);
+    }
+    return { quotaIds, retryAfterMs };
+  }
+
   /** Turn an axios error into a classified ProviderError. */
   classifyHttpError(error, label) {
     const status = error?.response?.status ?? null;
     const bodyText = JSON.stringify(error?.response?.data ?? "").toLowerCase();
 
     if (status === 429) {
-      const daily = /daily|per day|quota exceeded|resource_exhausted/.test(bodyText);
-      return new ProviderError(`${this.name} ${label}: ${daily ? "daily quota" : "rate limit"} (429)`, {
+      const info = BaseProvider.rateLimitInfo(error?.response);
+      // Gemini віддає "RESOURCE_EXHAUSTED" і "You exceeded your current quota"
+      // на КОЖЕН 429 — і на хвилинний ліміт теж. Раніше саме за цими словами
+      // 429 вважався денною квотою: перше ж перевищення RPM позначало модель
+      // вичерпаною до тихоокеанської півночі (пілот 2026-09-30, 117 з 500).
+      // Розрізняє їх лише quotaId у QuotaFailure; без нього — лише явне
+      // "per day", інакше rate limit: помилково повторити дешевше, ніж
+      // помилково вимкнути провайдера на добу.
+      const daily = info.quotaIds.length
+        ? info.quotaIds.some((id) => /perday/i.test(id))
+        : /daily|per[ -]day/.test(bodyText);
+      const detail = info.quotaIds.length ? ` [${info.quotaIds.join(", ")}]` : "";
+      return new ProviderError(`${this.name} ${label}: ${daily ? "daily quota" : "rate limit"} (429)${detail}`, {
         kind: daily ? "quota" : "rate_limit",
         status,
         cause: error,
+        retryAfterMs: daily ? null : info.retryAfterMs,
       });
     }
     if (status && status >= 500) {

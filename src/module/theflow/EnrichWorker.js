@@ -135,7 +135,7 @@ export class EnrichWorker {
     if (enr?.shed) {
       // Shed — не збій: спробу, забрану при захопленні, повертаємо.
       await this.Post.releaseClaim(post.id);
-      print(`[ENRICH] posts#${post.id} shed (quota reserve) — left pending`, "debug");
+      print(`[ENRICH] posts#${post.id} deferred (${enr.reason ?? "quota reserve"}) — left pending`, "debug");
       return false;
     }
 

@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.44.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.44.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 417 green `node --test` cases,
+is clean on the dev database. `npm test` is 423 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -157,6 +157,16 @@ destinations is worse than not starting. A fresh clone now starts — before
   first.
 
 ## Session log
+
+### 2026-09-30 — first real enrichment run
+
+- The operator started the service: 102 real verdicts from
+  `gemini-3.5-flash-lite`, every one with a `gemini-embedding-2` vector, mean
+  confidence 0.91. Then Gemini was marked exhausted at 117/500 and one post
+  failed on `circuit open`. Four gateway bugs behind it, fixed in `v4.44.1`
+  (per-minute 429 read as daily quota, 2×RPM burst, ignored `retryDelay`, gate
+  refusals burning attempts). The false `exhausted_at` for the day was cleared
+  and the one failed post requeued, service stopped.
 
 ### 2026-09-30 — TheFlow pilot review
 

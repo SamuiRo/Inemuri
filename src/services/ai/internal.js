@@ -4,12 +4,19 @@
  * the gateway's behaviour is testable without real timers.
  */
 
-/** Per-provider RPM limiter. `take()` resolves when a token is available. */
+/**
+ * Per-provider RPM limiter. `take()` resolves when a token is available.
+ *
+ * `burst` — місткість відра, за замовчуванням дорівнює швидкості. Повне відро
+ * на RPM разом із поповненням пропускає до 2×RPM запитів у першу ж хвилину, а
+ * провайдер рахує ліміт у хвилинному вікні — тож gateway бере сплеск не
+ * більший за секунду ліміту: для 15 RPM це рівний темп, один запит на 4 с.
+ */
 export class TokenBucket {
-  constructor(ratePerMinute, now = () => Date.now()) {
-    this.capacity = Math.max(1, ratePerMinute);
+  constructor(ratePerMinute, now = () => Date.now(), { burst = ratePerMinute } = {}) {
+    this.capacity = Math.max(1, burst);
     this.tokens = this.capacity;
-    this.refillPerMs = this.capacity / 60_000;
+    this.refillPerMs = Math.max(1, ratePerMinute) / 60_000;
     this.last = now();
     this._now = now;
   }

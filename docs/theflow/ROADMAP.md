@@ -791,6 +791,12 @@ timer -> Post.takePending(batch)
 > The earlier "verified with live calls to return schema-valid JSON" (3.1) had
 > used a simpler schema. Replay is `node src/cli.js flow requeue`.
 
+> **Fixed after the first real run (v4.44.1).** A per-minute 429 was read as
+> the daily quota (Gemini says `RESOURCE_EXHAUSTED` on both; only `quotaId`
+> tells them apart), the bucket allowed 2×RPM in the first minute, retries
+> ignored `retryDelay`, and a gate refusal (breaker open, quota spent) burned
+> a post's attempt. All four fixed; see CHANGELOG 4.44.1.
+
 ### 3.7 `flow:review` (`S`)
 
 > **Done (v4.13.0).** `node src/cli.js flow review [--limit n] [--topic t]`.

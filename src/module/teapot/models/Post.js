@@ -318,6 +318,16 @@ Post.takePending = async function (limit) {
  * Виклик обгорнутий так, щоб lease пізніше замінив цю логіку без зміни
  * call-site.
  */
+/**
+ * Дата у форматі, яким її пише сам Sequelize на SQLite
+ * ("2026-09-30 13:27:44.167 +00:00"). SQLite порівнює ці рядки
+ * лексикографічно, тож сирий toISOString() ("…T…Z") у тій самій колонці
+ * ламав би порядок і вибірки за часом (FlowHealth рахує вікна по updatedAt).
+ */
+export function toSqliteDate(date = new Date()) {
+  return date.toISOString().replace("T", " ").replace("Z", " +00:00");
+}
+
 Post.claimPending = async function (limit) {
   const heads = await this.findAll({
     where: { status: "pending" },
@@ -332,7 +342,7 @@ Post.claimPending = async function (limit) {
   await database.sequelize.query(
     `UPDATE \`posts\` SET \`attempts\` = \`attempts\` + 1, \`updatedAt\` = ? ` +
       `WHERE \`id\` IN (${placeholders}) AND \`status\` = 'pending'`,
-    { replacements: [new Date().toISOString(), ...ids] },
+    { replacements: [toSqliteDate(), ...ids] },
   );
 
   return await this.findAll({ where: { id: ids }, order: [["createdAt", "ASC"]] });

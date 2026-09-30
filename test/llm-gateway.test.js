@@ -352,3 +352,50 @@ test("per-model quota — each model gets its own RPM bucket", async () => {
   assert.notEqual(g._bucketFor(entry, "lite"), g._bucketFor(entry, "emb2"));
   assert.equal(g._bucketFor(entry, "lite"), g._bucketFor(entry, "lite"), "той самий bucket на повторі");
 });
+
+test("rate_limit waits as long as the provider asks (capped at a minute)", async () => {
+  const slept = [];
+  let n = 0;
+  const g = new LLMGateway({
+    providers: { p: fakeProvider("p", {
+      complete: async () => {
+        n++;
+        if (n === 1) { const e = new Error("429"); e.kind = "rate_limit"; e.retryAfterMs = 43_000; throw e; }
+        if (n === 2) { const e = new Error("429"); e.kind = "rate_limit"; e.retryAfterMs = 600_000; throw e; }
+        return { text: JSON.stringify(GOOD), model: "m-p" };
+      },
+    }) },
+    providersMeta: { p: { rpd: 100, rpm: 100_000 } },
+    order: ["p"], quota: fakeQuota(), now: () => 0,
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  await assert.rejects(() => g.enrich(input()), (e) => e.kind === "rate_limit");
+  assert.deepEqual(slept.filter((ms) => ms >= 500), [43_000, 60_000]);
+  const r = await g.enrich(input());
+  assert.equal(r.model_used, "m-p");
+});
+
+test("every provider refused at the gate -> shed with the reason, not an error (no attempt burned)", async () => {
+  const quota = fakeQuota();
+  quota._used.set("primary:m-primary", 100); // rpd 100 — вичерпано
+  let called = 0;
+  const g = mkGateway({ primary: fakeProvider("primary", {
+    complete: async () => { called++; return { text: JSON.stringify(GOOD), model: "m-primary" }; },
+  }) }, { quota });
+  const r = await g.enrich(input());
+  assert.equal(r.shed, true);
+  assert.match(r.reason, /primary: quota exhausted/);
+  assert.equal(called, 0);
+});
+
+test("a real failure still throws even when another provider was refused at the gate", async () => {
+  const quota = fakeQuota();
+  quota._used.set("backup:m-backup", 100);
+  const g = mkGateway({
+    primary: fakeProvider("primary", {
+      complete: async () => { const e = new Error("500"); e.kind = "server"; throw e; },
+    }),
+    backup: fakeProvider("backup"),
+  }, { quota });
+  await assert.rejects(() => g.enrich(input()), (e) => e.kind === "server");
+});
