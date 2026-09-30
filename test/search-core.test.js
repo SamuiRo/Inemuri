@@ -16,8 +16,8 @@ test("buildFtsQuery quotes every word as a prefix and ANDs them", () => {
 });
 
 test("telegramLink: private-channel link for -100 ids, external_url otherwise", () => {
-  assert.equal(telegramLink({ channel_id: "-1001234567890", message_id: 42 }), "https://t.me/c/1234567890/42");
-  assert.equal(telegramLink({ channel_id: "@name", message_id: 42 }), null);
+  assert.equal(telegramLink({ channel_id: "-1001234567890", external_id: "42" }), "https://t.me/c/1234567890/42");
+  assert.equal(telegramLink({ channel_id: "@name", external_id: "42" }), null);
   assert.equal(telegramLink({ platform: "reddit", external_url: "https://reddit.com/x" }), "https://reddit.com/x");
 });
 

@@ -41,7 +41,6 @@ The central table. One row per incoming message.
 | `external_id` | STRING | Universal item identity: Telegram message id as text, Reddit fullname (`t3_…`), an article's URL. **UNIQUE with `source_id`.** Migration `002` |
 | `external_url` | STRING | Canonical link. For Reddit and news also a tier 1 dedup key. Migration `002` |
 | `channel_id` | STRING | Denormalized fast Telegram lookup key. No longer part of an item's identity |
-| `message_id` | INTEGER | **Legacy Telegram message id.** Identity is now `(source_id, external_id)`; nothing reads this column. Still written for Telegram (its NOT NULL stands) until a later migration DROPs it |
 | `grouped_id` | STRING | Album ID when the post is part of a group |
 | `posted_at` | DATE | Publication time at the source, not ingestion time |
 | `title` | TEXT | Headline, separate from the body. Carries the whole event for news and Reddit; Telegram has none. Migration `002` |
@@ -227,6 +226,14 @@ models — so a fresh install gets it from `npm run migrate`.
 ### `013-post-delivery`
 
 Adds `posts.delivery` (JSON), the delivery log. Plain `ADD COLUMN`.
+
+### `014-drop-post-message-id`
+
+Drops `posts.message_id` (after dropping any index that still covers it).
+The Telegram message id lives on in `external_id` and `media_ref`; a Reddit
+fullname or an RSS guid could never have fit an `INTEGER NOT NULL` column.
+Migration `002` skips its `message_id` backfill when the column is absent, so
+a database bootstrapped from the current models still migrates.
 
 ### Fresh installs
 

@@ -53,9 +53,14 @@ export class FlowIngest {
    */
   async ingest({ source, messageData, text, blacklist, caseSensitive = false, rejectShouty = null }) {
     const channelId = String(messageData.channelId);
+    const platform = messageData.platform ?? "telegram";
+    const title = messageData.title ?? null;
 
-    // 1. Regex-стадія (чиста, без I/O)
-    const stage = this._regex.evaluate({ text, blacklist, caseSensitive, rejectShouty });
+    // 1. Regex-стадія (чиста, без I/O). Заголовок (Reddit, новини) — частина
+    //    того, що перевіряється: пост-посилання з Reddit має лише заголовок,
+    //    і без нього став би skipped_empty. raw_text нижче — лише тіло.
+    const stageText = [title, text].filter((s) => s && String(s).trim() !== "").join("\n\n");
+    const stage = this._regex.evaluate({ text: stageText, blacklist, caseSensitive, rejectShouty });
 
     // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин, лише в
     //    межах ЦЬОГО джерела (ROADMAP §6.1, варіант 1). Канал, що повторює
@@ -83,20 +88,32 @@ export class FlowIngest {
 
     // 3. Ідемпотентний INSERT по (source_id, external_id).
     //    created === false → режим "both" або повторний polling; рядок уже є.
-    const hasMedia = FlowIngest._hasRealMedia(messageData.media);
+    // Медіа: Telegram — за типами з парсера (лінивий re-fetch через GramJS);
+    // стрічки — список URL зображень (UrlMediaResolver, ROADMAP §7.3).
+    const mediaUrls = Array.isArray(messageData.mediaUrls) ? messageData.mediaUrls.filter(Boolean) : [];
+    const hasMedia = platform === "telegram"
+      ? FlowIngest._hasRealMedia(messageData.media)
+      : mediaUrls.length > 0;
+    const mediaRef = !hasMedia
+      ? null
+      : platform === "telegram"
+        ? FlowIngest._buildMediaRef(channelId, messageData)
+        : { kind: "url", urls: mediaUrls };
+
     const [post, created] = await Post.ingest({
       source_id: source.id,
-      platform: messageData.platform ?? "telegram",
-      // external_id — універсальна ідентичність елемента. Для Telegram це
-      // message id як текст; для Reddit/RSS підставлять свій адаптери.
-      external_id: String(messageData.messageId),
-      external_url: null, // Telegram: канонічного публічного лінка немає
+      platform,
+      // external_id — універсальна ідентичність елемента: Telegram message id
+      // як текст, Reddit fullname (t3_…), guid або URL статті в RSS.
+      external_id: String(messageData.externalId ?? messageData.messageId),
+      // Telegram: канонічного публічного лінка немає; Reddit — permalink,
+      // RSS — посилання статті (ще й tier-1 ключ дедуплікації).
+      external_url: messageData.externalUrl ?? null,
       channel_id: channelId,
-      message_id: messageData.messageId, // legacy NOT NULL, Telegram-only, більше не читається
       grouped_id: messageData.groupedId ?? null,
       posted_at: FlowIngest._toDate(messageData.timestamp),
-      title: null, // Telegram не має окремого заголовка
-      author: null,
+      title,
+      author: messageData.author ?? null,
       // raw_text = plain text ПІСЛЯ replacements: це саме той вхід, що бачить
       // enrich() ("text after text_replacements"), і проти нього працює
       // verbatim-валідація. Не перезаписується стадіями нижче.
@@ -108,7 +125,7 @@ export class FlowIngest {
       entities: FlowIngest._serializeEntities(messageData.entities),
       text_hash: stage.textHash,
       has_media: hasMedia,
-      media_ref: hasMedia ? FlowIngest._buildMediaRef(channelId, messageData) : null,
+      media_ref: mediaRef,
       image_hash: null, // рахує окремий прохід, не ingest
       candidates: stage.candidates,
       status: finalStatus,

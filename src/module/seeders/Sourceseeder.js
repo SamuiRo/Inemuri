@@ -3,6 +3,10 @@ import { Source } from "../teapot/models/index.js";
 import { SOURCE_CONFIG } from "../../config/app.config.js";
 
 const VALID_MODES = ["listener", "polling", "both"];
+// reddit / rss — стрічки (ROADMAP §7): channel_id — сабреддит ("r/cs2") або
+// URL стрічки; `mode` для них не має сенсу, вони завжди опитуються.
+const SOURCE_PLATFORMS = ["telegram", "discord", "reddit", "rss"];
+const FEED_PLATFORMS = new Set(["reddit", "rss"]);
 
 // Дефолт колонки Source.flow. Тримаємо синхронним з моделлю (Source.js)
 // і docs/theflow/DATA_MODEL.md.
@@ -61,8 +65,11 @@ class SourceSeeder {
       }
     }
 
-    if (!["telegram", "discord"].includes(source.platform)) {
-      throw new Error(`Invalid platform: ${source.platform}`);
+    if (!SOURCE_PLATFORMS.includes(source.platform)) {
+      throw new Error(`Invalid platform: ${source.platform} (expected ${SOURCE_PLATFORMS.join(" / ")})`);
+    }
+    if (source.platform === "rss" && !/^https?:\/\//i.test(String(source.channel_id))) {
+      throw new Error(`rss source "${source.channel_name}": channel_id must be the feed URL`);
     }
 
     if (source.mode && !VALID_MODES.includes(source.mode)) {
@@ -94,8 +101,9 @@ class SourceSeeder {
         channel_id: String(sourceData.channel_id),
         channel_name: sourceData.channel_name,
         is_active: sourceData.is_active ?? true,
-        // Якщо mode не вказано — залишаємо дефолт 'listener'
-        mode: sourceData.mode ?? "listener",
+        // Якщо mode не вказано — залишаємо дефолт 'listener'; стрічки
+        // лише опитуються, тож для них — 'polling'.
+        mode: FEED_PLATFORMS.has(sourceData.platform) ? "polling" : (sourceData.mode ?? "listener"),
         // NULL = глобальний POLLING_INTERVAL_MIN (див. Source.getPollIntervalMin)
         poll_interval_min: normalizePollInterval(sourceData.poll_interval_min),
         // NULL = лише глобальний DOWNLOADABLE_MEDIA_TYPES

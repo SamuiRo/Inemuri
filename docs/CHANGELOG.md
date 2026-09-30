@@ -7,6 +7,50 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.49.0] - 2026-09-30
+
+### Added
+- **Reddit and RSS/Atom sources (ROADMAP §7, phase 3.5).** A source with
+  `"platform": "rss"` (`channel_id` = the feed URL) or `"platform": "reddit"`
+  (`channel_id` = `r/name`) is polled by `src/sources/feeds/FeedPoller.js`
+  every `poll_interval_min` (default `FEED_POLL_INTERVAL_MIN`, 15). The first
+  poll only records a baseline — a new source never floods with its history.
+  New items take the same path as Telegram: text replacements, then TheFlow
+  (blacklist, per-source repost check, `posts` with `platform`, `external_id`
+  = guid or Reddit fullname, `external_url`, `title`, `author`, and
+  `media_ref: { kind: "url" }` for images) or classic forwarding (bold title,
+  body, link). Feed content only — no article scraping.
+- **Polite fetching (§7.4):** a descriptive User-Agent, a minimum interval
+  per host shared by polling and media downloads (7 s for Reddit, 2 s
+  elsewhere), conditional GET with the stored ETag / Last-Modified, a size
+  cap, Retry-After honoured on 429/503, and one warning plus a 6-hour backoff
+  on 401/403.
+- **Reddit OAuth** (`REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, app-only
+  `client_credentials`). Reddit answered 403 to unauthenticated `.json` and
+  `.rss` from the dev machine, so a Reddit source effectively needs it.
+  Tested against fakes; not yet run live.
+- **`UrlMediaResolver`** for `media_ref.kind: "url"`: type guessed from the
+  URL so `types`/`limit` filter before download, verified by Content-Type
+  after (an HTML error page is dropped), one dead image does not stop the rest.
+- The enrich prompt takes `title` as its own field (§7: not concatenated into
+  the body), and the verbatim check accepts a code or ticker found in it.
+- `SourceBuilder.html` offers `reddit` and `rss`; `sources.sample.json`
+  carries one inactive example of each.
+
+### Changed
+- **Migration `014` drops `posts.message_id`**, as §2.4 planned for the first
+  non-Telegram source. `telegramLink()` builds the link from `external_id`.
+  **Run `npm run migrate` before starting this version.**
+
+### Fixed
+- **Flow delivery would have sent media without bytes.** Media resolvers
+  return `buffer` (the vision stage reads it), the destination adapters read
+  `data`: Telegram would have dropped every picture silently and Discord would
+  have thrown on `Buffer.byteLength(undefined)`. `FlowDelivery` now maps
+  `buffer` to `data`.
+- A Reddit link post has only a title; the regex stage now sees title and
+  body, so such a post is no longer `skipped_empty`.
+
 ## [4.48.0] - 2026-09-30
 
 ### Added

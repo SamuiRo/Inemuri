@@ -17,6 +17,19 @@ const MEDIA_LIMIT = 10;
 
 const PLATFORMS = ["telegram", "discord"];
 
+/**
+ * Запис резолвера → запис, який читають адаптери доставки. Резолвери за
+ * контрактом MediaResolver віддають байти в `buffer` (так їх читає vision),
+ * а TelegramDestination і DiscordDestination — у `data`, як їх пише
+ * класичний TelegramMediaDownloader. Без цього Telegram мовчки викидав би
+ * кожне медіа, а Discord падав на Buffer.byteLength(undefined).
+ */
+export function toAdapterMedia(files) {
+  return (Array.isArray(files) ? files : [])
+    .map((f) => ({ ...f, data: f.data ?? f.buffer }))
+    .filter((f) => f.data);
+}
+
 // DEDUPLICATION.md «Step 3»: після трьох доповнень повідомлення стає
 // нечитабельним — далі лише лічильник. Виправлення й спростування — поза капом.
 export const MAX_APPENDS = 3;
@@ -270,7 +283,7 @@ export class FlowDelivery {
     let mediaError = null;
     if (post.has_media) {
       try {
-        media = await this.resolveMedia(post, { types: MEDIA_TYPES, limit: MEDIA_LIMIT });
+        media = toAdapterMedia(await this.resolveMedia(post, { types: MEDIA_TYPES, limit: MEDIA_LIMIT }));
       } catch (error) {
         // Без медіа краще, ніж ніяк: текст і посилання на оригінал доходять.
         mediaError = String(error.message).slice(0, 200);

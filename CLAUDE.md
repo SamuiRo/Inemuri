@@ -6,8 +6,8 @@ Working notes for Claude Code in this repository.
 
 Inemuri is an event-driven content and data flow manager: it ingests from
 configured sources, normalizes into a shared event pipeline, filters, and routes
-to destinations. Currently Telegram ingestion, Telegram and Discord delivery,
-cron jobs, and Discord server management (discordapp).
+to destinations. Currently Telegram, RSS/Atom and Reddit ingestion, Telegram
+and Discord delivery, cron jobs, and Discord server management (discordapp).
 
 Start with [docs/HANDOFF.md](docs/HANDOFF.md) for current state and next
 steps, [README.md](README.md) for behavior and configuration, and
@@ -25,8 +25,8 @@ deduplicated posts. Phase 0 (persistence), Phase 1 (LLM gateway and
 enrichment, shadow mode, dormant without a provider key) and Phase 1.5
 (vision, off per source by default) are **implemented**, as are Phase 2's
 resolve stage and delivery mechanism (off until `FLOW_DELIVERY_ENABLED`),
-Phase 3's deduplication tiers 1–2 and the §9.1 history search; the rest is
-still specification — see
+Phase 3's deduplication with the delta call, the §9.1 history search and
+Phase 3.5's Reddit and RSS sources; the rest is still specification — see
 [docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
 per-task status).

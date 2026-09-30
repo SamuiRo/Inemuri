@@ -41,6 +41,10 @@ import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
 const PRIORITIES = ["critical", "normal", "low"];
 
+// Текст джерела для перевірки дослівності: заголовок (Reddit, новини) — теж
+// текст джерела, код чи тікер із нього не вигадка моделі.
+const sourceText = (input) => [input.title, input.text].filter((s) => s && String(s).trim() !== "").join("\n");
+
 export class LLMGateway {
   constructor(opts = {}) {
     this.quota = opts.quota ?? ProviderQuota;
@@ -270,6 +274,7 @@ export class LLMGateway {
     const taxonomy = input.taxonomy;
     const key = "enrich:" + this._hash(JSON.stringify({
       t: this._norm(input.text),
+      h: this._norm(input.title),
       o: this._norm(input.textOcr),
       c: input.candidates ?? {},
       v: taxonomy?.version ?? null,
@@ -279,6 +284,7 @@ export class LLMGateway {
 
     const prompt = buildEnrichPrompt({
       text: input.text,
+      title: input.title,
       candidates: input.candidates,
       textOcr: input.textOcr,
       taxonomy,
@@ -287,7 +293,7 @@ export class LLMGateway {
     const run = await this._runComplete(prompt, priority, {});
     if (run.shed) return run;
 
-    const validated = validateEnrichResponse(run.parsed, { taxonomy, rawText: input.text, textOcr: input.textOcr });
+    const validated = validateEnrichResponse(run.parsed, { taxonomy, rawText: sourceText(input), textOcr: input.textOcr });
     if (!validated.ok) {
       const err = new Error(`enrich: invalid response — ${validated.errors.join("; ")}`);
       err.kind = "bad_response";
@@ -307,7 +313,7 @@ export class LLMGateway {
       try {
         const tierRun = await this._runComplete(prompt, priority, { modelOverride: this.tierUp });
         if (!tierRun.shed) {
-          const tv = validateEnrichResponse(tierRun.parsed, { taxonomy, rawText: input.text, textOcr: input.textOcr });
+          const tv = validateEnrichResponse(tierRun.parsed, { taxonomy, rawText: sourceText(input), textOcr: input.textOcr });
           if (tv.ok) {
             result = { value: tv.value, model_used: tierRun.model, discarded: tv.discarded, unverified: tv.unverified, tiered: true };
           }

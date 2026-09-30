@@ -57,17 +57,22 @@ export async function up({ sequelize, queryInterface: qi }) {
   await sequelize.query(
     "UPDATE `posts` SET `platform` = 'telegram' WHERE `platform` IS NULL",
   );
-  await sequelize.query(
-    "UPDATE `posts` SET `external_id` = CAST(`message_id` AS TEXT) " +
-      "WHERE `external_id` IS NULL AND `message_id` IS NOT NULL",
-  );
-  // media_ref: what stage 3 needs to fetch media later, per platform.
-  await sequelize.query(
-    "UPDATE `posts` SET `media_ref` = json_object(" +
-      "'kind', 'telegram', 'channel_id', `channel_id`, " +
-      "'message_id', `message_id`, 'grouped_id', `grouped_id`) " +
-      "WHERE `has_media` = 1 AND `media_ref` IS NULL",
-  );
+  // message_id може вже не існувати: база, піднята `db:bootstrap` з моделей
+  // після міграції 014, його не має — і backfill з нього тоді нічого не робить.
+  const hasMessageId = Boolean((await qi.describeTable("posts")).message_id);
+  if (hasMessageId) {
+    await sequelize.query(
+      "UPDATE `posts` SET `external_id` = CAST(`message_id` AS TEXT) " +
+        "WHERE `external_id` IS NULL AND `message_id` IS NOT NULL",
+    );
+    // media_ref: what stage 3 needs to fetch media later, per platform.
+    await sequelize.query(
+      "UPDATE `posts` SET `media_ref` = json_object(" +
+        "'kind', 'telegram', 'channel_id', `channel_id`, " +
+        "'message_id', `message_id`, 'grouped_id', `grouped_id`) " +
+        "WHERE `has_media` = 1 AND `media_ref` IS NULL",
+    );
+  }
   // `entities` cannot be backfilled — phase-0 rows never stored the original
   // MTProto entities. New rows carry them from FlowIngest onward.
   const [[{ n }]] = await sequelize.query(

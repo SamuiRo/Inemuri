@@ -67,7 +67,6 @@ async function seed(n, over = {}) {
       platform: "telegram",
       external_id: `${XID}${Date.now()}_${i}_${Math.random().toString(36).slice(2)}`,
       channel_id: "-100test",
-      message_id: 800000 + i,
       raw_text: "Use code SAVE20 today",
       text_md: "x",
       text_hash: `h${Math.random()}`,

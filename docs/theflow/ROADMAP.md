@@ -1063,6 +1063,26 @@ and let the correction always through.
 
 ## 7. Phase 3.5 — Reddit and news sources
 
+> **Done (v4.49.0).** `src/sources/feeds/`: `parsers.js` (pure: RSS 2.0 and
+> Atom through cheerio in XML mode, the Reddit `/new` listing, `selectNew()`
+> against the cursor), `http.js` (`HostThrottle` — a minimum interval per
+> host, 7 s for Reddit, 2 s elsewhere; `fetchFeed()` — descriptive User-Agent,
+> conditional GET, size cap, 304/401/403/429/503 as answers; `RedditAuth` —
+> app-only OAuth) and `FeedPoller.js` (per-source schedule, cursor
+> `{ ts, seen, etag, lastModified }` in `SourceState.cursor`, first poll is a
+> baseline, then replacements → TheFlow or classic forwarding exactly like
+> Telegram). `UrlMediaResolver` registered for `media_ref.kind: "url"`.
+> `sources.platform` accepts `reddit` and `rss`; migration `014` drops
+> `posts.message_id` as §2.4 planned. `title` is a separate field of the
+> enrich prompt, and part of the verbatim check.
+>
+> Found live on 2026-09-30: **Reddit answers 403 to unauthenticated requests
+> from the dev machine — `.json` and `.rss` alike.** Reddit therefore needs
+> `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` (a "script" app); without them a
+> Reddit source logs one warning with that hint and retries every 6 h. The
+> OAuth path is tested against fakes only — no credentials exist yet. A
+> Steam news RSS feed parsed correctly live.
+
 After deduplication, deliberately: news sites republish each other constantly,
 and adding them earlier multiplies the noise the system exists to remove. With
 the schema generalized in 2.4 and the resolver seam in 2.5, this is adapters and

@@ -63,7 +63,6 @@ async function enriched(source, over = {}) {
     platform: "telegram",
     external_id: `${XID}${seq}`,
     channel_id: source.channel_id,
-    message_id: 600000 + seq,
     raw_text: "t",
     text_md: "t",
     text_hash: `${XID}h${seq}`,

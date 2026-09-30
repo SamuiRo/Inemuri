@@ -69,14 +69,10 @@ export const Post = database.sequelize.define("Post", {
   channel_id: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Денормалізований швидкий ключ пошуку для Telegram (не частина ідентичності)",
-  },
-  message_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
     comment:
-      "Legacy Telegram message id. Ідентичність тепер (source_id, external_id); " +
-      "цю колонку більше ніхто не читає — окрема міграція її прибере",
+      "Денормалізований ключ джерела: Telegram chat id, для Reddit/RSS — channel_id " +
+      "джерела (сабреддит, URL стрічки). Не частина ідентичності. " +
+      "(message_id прибрано міграцією 014: ідентичність — external_id)",
   },
   grouped_id: {
     type: DataTypes.STRING,

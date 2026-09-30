@@ -7,8 +7,10 @@ export const Source = database.sequelize.define("Source", {
     primaryKey: true,
     autoIncrement: true,
   },
+  // reddit / rss — опитування стрічок (ROADMAP §7, src/sources/feeds/).
+  // У SQLite ENUM — це TEXT без CHECK, тож нові значення не потребують міграції.
   platform: {
-    type: DataTypes.ENUM('telegram', 'discord'),
+    type: DataTypes.ENUM('telegram', 'discord', 'reddit', 'rss'),
     allowNull: false,
     comment: 'Тип платформи-джерела'
   },

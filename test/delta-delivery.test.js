@@ -41,7 +41,7 @@ async function post(over = {}) {
   seq += 1;
   const [p] = await Post.ingest({
     source_id: src.id, platform: "telegram", external_id: `${XID}${seq}`, channel_id: "-1002222222222",
-    message_id: 100 + seq, raw_text: `Body ${seq}`, text_md: `Body ${seq}`, text_hash: `${XID}h${seq}`,
+    raw_text: `Body ${seq}`, text_md: `Body ${seq}`, text_hash: `${XID}h${seq}`,
     status: "enriched", topic: "steam", signal_type: "event", confidence: 0.9, text_en: `Text ${seq}`,
     attempts: 1, posted_at: new Date(), dedup: { decision: "join" }, ...over,
   });

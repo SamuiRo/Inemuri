@@ -280,6 +280,13 @@ It also keeps sent messages current (§6.6): `dedup/DeltaStage.js` asks the
 gateway what a later post adds, and delivery edits the sent message, or
 replies for a correction, through the adapters' `editMessageData()`.
 
+**Feed sources (phase 3.5).** `src/sources/feeds/` — `FeedPoller.js` polls
+`reddit` and `rss` sources on their own schedule through `http.js` (per-host
+throttle, conditional GET, Reddit OAuth) and `parsers.js` (pure), and hands
+each new item to `FlowIngest` or to `message.received`, as the Telegram
+listener does. Images of such posts are fetched lazily by
+`src/module/theflow/media/UrlMediaResolver.js`.
+
 **History search.** `src/module/theflow/search/HistorySearch.js` — keyword
 (FTS5 `posts_fts`, migration `012`) and semantic (one `embed()` at `low`
 priority). discordapp's `/search` reaches it through

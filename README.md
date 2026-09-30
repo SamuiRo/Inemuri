@@ -226,6 +226,49 @@ Example:
 | `destinations` | Target Telegram/Discord destination IDs. Ignored while the source is flow-enabled. |
 | `flow` | Optional. Puts the source through TheFlow instead of classic forwarding — see [below](#enabling-a-source-into-theflow). Absent means `{ "enabled": false }`. |
 
+### Feed sources: RSS, Atom and Reddit
+
+Besides Telegram channels, a source can be a news feed or a subreddit. They
+are polled (never listened to), go through the same text replacements and
+filters, and feed TheFlow or classic forwarding just like a Telegram source.
+
+```json
+{
+  "platform": "rss",
+  "channel_id": "https://store.steampowered.com/feeds/news/app/730/",
+  "channel_name": "CS2 news",
+  "poll_interval_min": 30,
+  "flow": { "enabled": true, "topics": ["steam"] }
+}
+```
+
+```json
+{
+  "platform": "reddit",
+  "channel_id": "r/cs2",
+  "channel_name": "r/cs2",
+  "flow": { "enabled": true }
+}
+```
+
+- `rss`: `channel_id` is the feed URL — RSS 2.0 and Atom are both read.
+  `reddit`: `channel_id` is the subreddit (`r/name`, `name`, or its URL).
+- `poll_interval_min` defaults to `FEED_POLL_INTERVAL_MIN` (15). `mode` is
+  ignored — feeds are always polled.
+- The first poll only records what is already there; nothing old is
+  ingested or forwarded.
+- Only the feed's own content is used (title, summary or content, link,
+  images) — pages are not scraped. For TheFlow the title is a separate field;
+  for classic forwarding the message is the bold title, the text and the link.
+- Requests are polite: a descriptive User-Agent (`FEED_USER_AGENT`), at least
+  7 s between Reddit requests and 2 s between requests to any other host,
+  conditional GET, Retry-After respected.
+- **Reddit needs OAuth credentials in practice.** Reddit refuses many
+  unauthenticated clients (403). Create a "script" app at
+  reddit.com/prefs/apps and set `REDDIT_CLIENT_ID` and
+  `REDDIT_CLIENT_SECRET`; without them a refused Reddit source logs one
+  warning and retries every 6 hours.
+
 ### Source modes
 
 - `listener`: listens for MTProto updates only
@@ -519,7 +562,7 @@ The runtime database is SQLite:
 Key models:
 
 - `Source`: source metadata, filters, replacements, destinations, mode
-- `SourceState`: polling checkpoint state (`last_message_id`)
+- `SourceState`: polling checkpoint — `last_message_id` for Telegram, `cursor` (`{ ts, seen, etag, lastModified }`) for feed sources
 
 `SourceState` is especially important for:
 

@@ -43,7 +43,7 @@ async function post(over = {}) {
   seq += 1;
   const [p] = await Post.ingest({
     source_id: src.id, platform: "telegram", external_id: `${XID}${seq}`,
-    channel_id: "-1001111111111", message_id: 300 + seq, raw_text: `Post body ${seq}`, text_md: `Post body ${seq}`,
+    channel_id: "-1001111111111", raw_text: `Post body ${seq}`, text_md: `Post body ${seq}`,
     text_hash: `${XID}h${seq}`, status: "enriched", topic: "steam", signal_type: "event", confidence: 0.9,
     model_used: "m", taxonomy_version: 1, attempts: 1, posted_at: new Date(),
     link_role: "canonical", dedup: { decision: "new" },
@@ -72,7 +72,11 @@ test("a routed post goes to both platforms, becomes routed, and the cluster reco
     media_ref: { kind: "telegram", channel_id: "-1001111111111", message_id: 1 } });
   const { route, sent } = fakeRouter();
   const mediaCalls = [];
-  const d = stage({ route, resolveMedia: async (post, opts) => { mediaCalls.push(opts); return [{ type: "photo" }]; } });
+  // Форма запису — як у справжнього резолвера: байти в `buffer`.
+  const d = stage({ route, resolveMedia: async (post, opts) => {
+    mediaCalls.push(opts);
+    return [{ type: "photo", buffer: Buffer.from([1, 2, 3]), filename: "a.jpg", mimeType: "image/jpeg" }];
+  } });
 
   assert.equal(await d.runOnce(), 1);
   assert.equal(sent.length, 2);
@@ -83,6 +87,7 @@ test("a routed post goes to both platforms, becomes routed, and the cluster reco
   assert.match(tg.rawText, /📡 Also reported by 1 more channel/);
   assert.equal(ds.embed.footer, "steam · event");
   assert.equal(tg.downloadedMedia.length, 1, "media fetched once, lazily, for a post actually sent");
+  assert.ok(Buffer.isBuffer(tg.downloadedMedia[0].data), "adapters read `data`, resolvers give `buffer`");
   assert.equal(mediaCalls.length, 1);
 
   const P = await Post.findByPk(p.id);

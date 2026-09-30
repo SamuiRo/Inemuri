@@ -142,13 +142,11 @@ export class EnrichWorker {
       }
     }
 
-    const text = [post.title, post.raw_text]
-      .filter((s) => s && String(s).trim() !== "")
-      .join("\n\n");
-
+    // Заголовок — окремим полем, не склеєним з тілом (ROADMAP §7).
     const enr = await this.gateway.enrich(
       {
-        text,
+        text: post.raw_text ?? "",
+        title: post.title ?? null,
         candidates: post.candidates ?? {},
         textOcr: post.text_ocr ?? "",
         taxonomy: this.taxonomy,

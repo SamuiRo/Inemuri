@@ -2,16 +2,18 @@
 
 ## Current state
 
-`v4.48.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.49.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
 messages (§6.6); threshold calibration (§6.8) is open. History search (§9.1) is built: `/search` in
-discordapp and `flow search` on the CLI. The delivery mechanism (§5.3–5.6) is
+discordapp and `flow search` on the CLI. Phase 3.5 is built: Reddit and
+RSS/Atom sources through `src/sources/feeds/` (Reddit needs OAuth
+credentials in practice — see Next steps). The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
-the final template exist. 13 migrations exist
-(`database/migrations/001`–`013`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 493 green `node --test` cases,
+the final template exist. 14 migrations exist
+(`database/migrations/001`–`014`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 510 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -106,6 +108,13 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
+- **Adding a news or Reddit source** is a `sources.json` entry
+  (`"platform": "rss"`, `channel_id` = feed URL; or `"platform": "reddit"`,
+  `channel_id` = `r/name`) and `npm run seed` — README § Feed sources.
+  **Reddit needs `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`** (a "script"
+  app at reddit.com/prefs/apps): from the dev machine Reddit answered 403 to
+  every unauthenticated request. The OAuth path has not run live yet.
+
 0. **discordapp is closed.** Operational notes that outlive the build:
    bot setup is in [DISCORDAPP.md § Setup](DISCORDAPP.md#setup);
    `node scripts/discordapp.js check <guildId>` verifies it from a terminal;
@@ -174,6 +183,15 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — phase 3.5
+
+- Built Reddit and RSS/Atom sources (`v4.49.0`, migration `014` applied to
+  the dev database — `posts.message_id` dropped). Live, read-only: a Steam
+  news RSS feed parsed correctly; Reddit returned 403 for `.json` and `.rss`,
+  so app-only OAuth was added. Found and fixed on the way: flow delivery
+  handed adapters media without bytes (`buffer` vs `data`), and a Reddit
+  title-only post would have been `skipped_empty`.
 
 ### 2026-09-30 — §6.6
 

@@ -70,6 +70,30 @@
           "max_images_per_post": 2
         }
       }
+    },
+    {
+      "platform": "rss",
+      "channel_id": "https://store.steampowered.com/feeds/news/app/730/",
+      "channel_name": "CS2 news (RSS example)",
+      "is_active": false,
+      "poll_interval_min": 30,
+      "flow": {
+        "enabled": true,
+        "topics": [
+          "steam"
+        ],
+        "min_confidence": 0.6
+      }
+    },
+    {
+      "platform": "reddit",
+      "channel_id": "r/cs2",
+      "channel_name": "r/cs2 (Reddit example — needs REDDIT_CLIENT_ID/SECRET)",
+      "is_active": false,
+      "poll_interval_min": 15,
+      "flow": {
+        "enabled": true
+      }
     }
   ]
 }

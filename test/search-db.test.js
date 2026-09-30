@@ -23,8 +23,8 @@ let seq = 0;
 async function post(over) {
   seq += 1;
   const [p] = await Post.ingest({
-    source_id: src.id, platform: "telegram", external_id: `${XID}_${seq}`,
-    channel_id: "-1009876543210", message_id: 500 + seq, raw_text: "", text_md: "",
+    source_id: src.id, platform: "telegram", external_id: String(700000 + seq),
+    channel_id: "-1009876543210", raw_text: "", text_md: "",
     text_hash: `${XID}h${seq}`, status: "enriched", topic: "steam", signal_type: "event",
     attempts: 1, posted_at: new Date(), ...over,
   });

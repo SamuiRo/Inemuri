@@ -6,6 +6,7 @@ import MessageRouter from "./module/routing/MessageRouter.js";
 import telegramClient from "./module/telegram/TelegramClient.js";
 import discordGateway from "./module/discord/DiscordGateway.js";
 import TelegramSourceListener from "./sources/telegram/TelegramSourceListener.js";
+import FeedPoller from "./sources/feeds/FeedPoller.js";
 import DiscordDestinationAdapter from "./destinations/discord/DiscordDestination.js";
 import TelegramDestinationAdapter from "./destinations/telegram/TelegramDestination.js";
 import CronScheduler from "./module/cron/CronScheduler.js";
@@ -154,6 +155,11 @@ class Inemuri {
       print("Starting Telegram listener...");
       this.telegramListener = new TelegramSourceListener(this.eventBus);
       await this.telegramListener.start();
+
+      // 6b. Стрічки: Reddit і RSS (ROADMAP §7). Лише опитування; без активних
+      //     reddit/rss-джерел нічого не запускається.
+      this.feedPoller = new FeedPoller({ eventBus: this.eventBus });
+      await this.feedPoller.start();
 
       // 7. Ініціалізація Cron Scheduler
       print("Initializing Cron Scheduler...");
@@ -326,6 +332,7 @@ class Inemuri {
       }
       if (this.flowHealth) this.flowHealth.stop();
       if (this.flowDelivery) this.flowDelivery.stop();
+      if (this.feedPoller) this.feedPoller.stop();
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);
         this.visionSweepTimer = null;

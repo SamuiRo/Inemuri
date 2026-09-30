@@ -63,13 +63,14 @@ export function buildEnrichSystemPrompt(taxonomy) {
 /**
  * @param {object} args
  * @param {string} args.text            Source text after text_replacements.
+ * @param {string} [args.title]         Headline (Reddit, news), a separate field.
  * @param {object} [args.candidates]    Regex-stage candidates to anchor extraction.
  * @param {string} [args.textOcr]       Transcribed image text (phase 1.5), or empty.
  * @param {object} args.taxonomy        categories.json.
  * @param {string} [args.nonce]         Override the delimiter nonce (tests).
  * @returns {{ system: string, user: string, responseSchema: object, settings: object }}
  */
-export function buildEnrichPrompt({ text, candidates, textOcr, taxonomy, nonce } = {}) {
+export function buildEnrichPrompt({ text, title, candidates, textOcr, taxonomy, nonce } = {}) {
   const tag = nonce ?? crypto.randomBytes(6).toString("hex");
   const open = `<<<UNTRUSTED ${tag}>>>`;
   const close = `<<<END UNTRUSTED ${tag}>>>`;
@@ -81,8 +82,13 @@ export function buildEnrichPrompt({ text, candidates, textOcr, taxonomy, nonce }
     candidateJson,
     "",
     `${open}`,
-    String(text ?? ""),
   ];
+  // Заголовок (Reddit, новини) — окреме поле, не склеєне з тілом (ROADMAP §7):
+  // для новини він часто несе всю подію, а тіло лише деталі.
+  if (title && String(title).trim() !== "") {
+    parts.push("--- title ---", String(title), "--- body ---");
+  }
+  parts.push(String(text ?? ""));
   if (textOcr && String(textOcr).trim() !== "") {
     parts.push("", "--- transcribed from image (unverified) ---", String(textOcr));
   }

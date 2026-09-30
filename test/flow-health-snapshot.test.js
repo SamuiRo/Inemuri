@@ -37,7 +37,7 @@ async function make(over) {
   seq += 1;
   const [p] = await Post.ingest({
     source_id: sourceId, platform: "telegram", external_id: `${XID}${seq}`,
-    channel_id: "-100test", message_id: 700000 + seq, raw_text: "t", text_md: "t",
+    channel_id: "-100test", raw_text: "t", text_md: "t",
     text_hash: `${XID}h${seq}`, status: "pending", attempts: 0, ...over,
   });
   return p;

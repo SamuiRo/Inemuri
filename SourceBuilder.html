@@ -103,6 +103,8 @@
   }
   .platform-telegram { background: rgba(36,161,222,0.15); color: #24a1de; }
   .platform-discord { background: rgba(88,101,242,0.15); color: #5865f2; }
+  .platform-reddit { background: rgba(255,69,0,0.15); color: #ff4500; }
+  .platform-rss { background: rgba(238,128,43,0.15); color: #ee802b; }
   .platform-unknown { background: var(--bg4); color: var(--text3); }
 
   .card-title { flex: 1; font-size: 0.9rem; font-weight: 500; }
@@ -332,7 +334,7 @@ let uid = 0;
 
 // Рівно ті, що приймає SourceSeeder.validateSource(). Reddit/news — фаза 3.5
 // дорожньої карти TheFlow; додавати сюди їх разом з адаптером, не раніше.
-const PLATFORMS = ['telegram', 'discord'];
+const PLATFORMS = ['telegram', 'discord', 'reddit', 'rss']; // reddit: channel_id = "r/name"; rss: channel_id = feed URL
 
 // Дзеркалить src/config/categories.json (version 1). Порожній вибір = null =
 // всі топіки. Тримати синхронним при бампі версії таксономії.

@@ -49,12 +49,15 @@ export function buildFtsQuery(text) {
   return useful.map((t) => `"${t}"*`).join(" ");
 }
 
-/** Посилання на пост у Telegram (для учасника каналу), або null. */
+/**
+ * Посилання на оригінал: для Telegram — t.me/c/… (для учасника каналу; id
+ * повідомлення — external_id), для Reddit/RSS — external_url. Інакше null.
+ */
 export function telegramLink(post) {
   if ((post.platform ?? "telegram") !== "telegram") return post.external_url ?? null;
   const ch = String(post.channel_id ?? "");
-  const msg = post.message_id ?? post.external_id;
-  if (!/^-100\d+$/.test(ch) || !msg) return null;
+  const msg = String(post.external_id ?? "");
+  if (!/^-100\d+$/.test(ch) || !/^\d+$/.test(msg)) return null;
   return `https://t.me/c/${ch.slice(4)}/${msg}`;
 }
 
@@ -170,7 +173,7 @@ export class HistorySearch {
     // bm25: заголовок і text_en важать більше за оригінал — raw_text часто
     // дублює те саме іншою мовою і роздуває ранг довгих постів.
     const [rows] = await database.sequelize.query(
-      "SELECT p.id, p.source_id, p.platform, p.channel_id, p.message_id, p.external_id, p.external_url, " +
+      "SELECT p.id, p.source_id, p.platform, p.channel_id, p.external_id, p.external_url, " +
         "p.posted_at, p.createdAt, p.topic, p.signal_type, p.status, p.cluster_id, p.text_en, p.raw_text, " +
         "bm25(posts_fts, 3.0, 1.0, 4.0) AS rank " +
         "FROM posts_fts JOIN posts p ON p.id = posts_fts.rowid " +
@@ -196,7 +199,7 @@ export class HistorySearch {
 
     const where = this._where(filters);
     const [rows] = await database.sequelize.query(
-      "SELECT p.id, p.source_id, p.platform, p.channel_id, p.message_id, p.external_id, p.external_url, " +
+      "SELECT p.id, p.source_id, p.platform, p.channel_id, p.external_id, p.external_url, " +
         "p.posted_at, p.createdAt, p.topic, p.signal_type, p.status, p.cluster_id, p.text_en, p.raw_text, " +
         "p.embedding, p.embedding_dim FROM posts p " +
         `WHERE p.embedding IS NOT NULL AND p.embedding_model = ? AND ${where.sql} ` +

@@ -37,7 +37,6 @@ async function make(over) {
     platform: "telegram",
     external_id: `${XID}${seq}`,
     channel_id: "-100test",
-    message_id: 900000 + seq,
     raw_text: "text",
     text_md: "text",
     text_hash: `${XID}h${seq}`,

@@ -285,6 +285,44 @@ export const FLOW_DELIVERY = {
   maxAttempts: 3,
 };
 
+// Стрічки: Reddit і RSS/Atom (ROADMAP §7, src/sources/feeds/). Лише
+// опитування. Ввічливо: описовий User-Agent (Reddit блокує типові),
+// мінімальна пауза між запитами до одного хоста, умовні GET (ETag /
+// Last-Modified), повага до Retry-After.
+export const FEEDS = {
+  // Як часто опитувати джерело, якщо в нього немає poll_interval_min.
+  pollIntervalMin: optionalNumber("FEED_POLL_INTERVAL_MIN", process.env.FEED_POLL_INTERVAL_MIN, 15),
+  tickMs: 30_000,
+  timeoutMs: 15_000,
+  userAgent: process.env.FEED_USER_AGENT ||
+    `Inemuri/${pkg.version} (TheFlow feed reader; +https://github.com/SamuiRo/Inemuri)`,
+  // Мінімальний інтервал між запитами до одного хоста, мс. Reddit без OAuth
+  // дає ~10 запитів на хвилину — 7 с тримає запас.
+  hostMinIntervalMs: { default: 2_000, "reddit.com": 7_000, "redd.it": 2_000 },
+  // Скільки елементів брати за одне опитування (Reddit /new.json ≤ 100).
+  maxItems: 25,
+  // Стеля тіла відповіді стрічки: не качати сторінку на мегабайти.
+  maxFeedBytes: 5 * 1024 * 1024,
+  // Стеля одного медіафайлу для UrlMediaResolver.
+  maxMediaBytes: 20 * 1024 * 1024,
+  // Скільки guid-ів пам'ятати в курсорі RSS (для стрічок без дат).
+  seenGuids: 200,
+  // Текст статті/поста обрізається до стількох символів — у TheFlow іде
+  // вміст стрічки, не повна стаття (ROADMAP §7: «feed content only at first»).
+  maxTextChars: 4_000,
+  // 401/403 — стрічка закрита для нас (Reddit без OAuth блокує багато IP):
+  // не стукати щопівгодини, а почекати стільки.
+  forbiddenBackoffMin: 6 * 60,
+  // Reddit app-only OAuth (client_credentials). Без них — публічний JSON, який
+  // Reddit із багатьох адрес віддає 403 (перевірено 2026-09-30 з dev-машини:
+  // і .json, і .rss). Застосунок типу "script" створюється на
+  // reddit.com/prefs/apps; секрет — лише в .env.
+  reddit: {
+    clientId: process.env.REDDIT_CLIENT_ID || null,
+    clientSecret: process.env.REDDIT_CLIENT_SECRET || null,
+  },
+};
+
 // Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
 // хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
 // Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.
