@@ -437,6 +437,8 @@ node src/cli.js flow health
 node src/cli.js flow dedup
 node src/cli.js flow dedup --pairs 30
 node src/cli.js flow dedup --reset --run
+node src/cli.js flow search hamster airdrop
+node src/cli.js flow search --semantic "which teams made the playoffs" --topic steam
 ```
 
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
@@ -444,6 +446,12 @@ verdict and embedding cleared, `text_ocr` kept so vision is not paid for
 twice. Default is every `failed` post; `--error` narrows by `last_error`,
 `--status`/`--model` pick verdicts that cannot be trusted. It reports how many
 of them carry `post_feedback` labels for the old verdict.
+
+`flow search` searches the TheFlow corpus: by keywords through SQLite FTS5
+(no AI call, Cyrillic included), or with `--semantic` by meaning through one
+embedding call — a query in one language finds posts in another. Filters:
+`--topic`, `--signal`, `--days`, `--source`, `--limit`. The same search is
+the `/search` slash command in discordapp.
 
 `flow dedup` reports deduplication (ROADMAP §6): per day and per signal how
 many posts started a new event, joined one by tier 1 (exact code, link or

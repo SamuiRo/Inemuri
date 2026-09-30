@@ -16,6 +16,7 @@ import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import VisionStage from "./module/theflow/VisionStage.js";
 import { FlowHealthMonitor, collectHealthSnapshot, primaryQuota } from "./module/theflow/FlowHealth.js";
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
+import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
 import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
 import {
@@ -57,6 +58,8 @@ class Inemuri {
 
     // TheFlow enrichment worker (phase 1, shadow mode)
     this.enrichWorker = null;
+    // LLM gateway — створюється разом із воркером; ним же користується пошук
+    this.llmGateway = null;
 
     // Нагляд за TheFlow (ROADMAP §13.10)
     this.flowHealth = null;
@@ -160,6 +163,9 @@ class Inemuri {
       if (ENRICH_WORKER_ENABLED && primaryKey) {
         print("Starting TheFlow enrichment worker...");
         const gateway = new LLMGateway();
+        // Той самий gateway — і для семантичного пошуку (§9.1): одна черга,
+        // один облік квоти, пошук іде з пріоритетом `low` і першим поступається.
+        this.llmGateway = gateway;
         // Стадія 1.5 (vision) ін'єктується, а не імпортується воркером: вона
         // ходить у Telegram через резолвер медіа, а воркер за дизайном
         // Telegram не знає. Без провайдера з vision стадія сама повертає
@@ -235,6 +241,12 @@ class Inemuri {
         log: print,
       });
       this.flowHealth.start();
+
+      // 8c. Пошук по історії (§9.1). Відповідає на запит "theflow.search" —
+      //     так його питає discordapp (/search), не імпортуючи ядро (D1).
+      //     Keyword працює завжди; semantic — лише коли є gateway.
+      const historySearch = new HistorySearch({ gateway: this.llmGateway ?? null });
+      this.eventBus.handle("theflow.search", (query) => historySearch.search(query));
 
       // 9. discordapp — останнім і без права зупинити старт (D3): невдалий
       //    логін лише попереджає і повторюється у фоні.

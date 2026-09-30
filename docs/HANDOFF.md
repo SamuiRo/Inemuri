@@ -2,12 +2,14 @@
 
 ## Current state
 
-`v4.45.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.46.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker (ROADMAP §6; the delta call §6.6 and threshold
-calibration §6.8 are open). 11 migrations exist (`database/migrations/001`–`011`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 445 green `node --test` cases,
+calibration §6.8 are open). History search (§9.1) is built: `/search` in
+discordapp and `flow search` on the CLI. 12 migrations exist
+(`database/migrations/001`–`012`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 456 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -161,8 +163,22 @@ destinations is worse than not starting. A fresh clone now starts — before
 - The new destination channels for Phase 2, and which existing channel (if
   any) is the screenshot-heavy one Phase 1.5's vision gate should target
   first.
+- Taxonomy v2: esports results currently fall into `other` — a topic of their
+  own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — history search
+
+- Built §9.1 (`v4.46.0`, migration `012` applied to the dev database): FTS5
+  keyword search and semantic search, `/search` and `flow search`, and a
+  request/reply on the EventBus so discordapp asks the core without importing
+  it. Tried on the real corpus: keyword and Cyrillic work; a first 30-day
+  default window made semantic search find nothing on a corpus of old channel
+  history, so there is no default window now. A Russian query finds English
+  `text_en`.
+- Noticed for the taxonomy checkpoint: esports posts (a Major's daily results)
+  land in `other`, since no topic covers them.
 
 ### 2026-09-30 — deduplication
 

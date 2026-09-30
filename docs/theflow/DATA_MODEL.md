@@ -214,6 +214,15 @@ Adds `posts.dedup` (JSON), `clusters.embedding_model` and
 `clusters.embedding_dim`, and an index on `clusters (closed, last_seen_at)`.
 All `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`, idempotent.
 
+### `012-posts-fts`
+
+Creates `posts_fts`, an FTS5 virtual table over `text_en`, `raw_text` and
+`title` with `content='posts'` (the index only; text stays in `posts`), the
+triggers `posts_fts_ai` / `_ad` / `_au` (the update trigger fires only on
+those three columns), and builds the index from existing rows. Used by history
+search (ROADMAP §9.1). `db:bootstrap` does not create it — `sync()` knows only
+models — so a fresh install gets it from `npm run migrate`.
+
 ### Fresh installs
 
 `src/inemuri.js` and `src/cli.js` still call `database.sync()` on boot, which

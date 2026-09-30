@@ -1076,6 +1076,19 @@ the same post will score 6 and 8 across two runs.
 
 ### 9.1 History search (`M`)
 
+> **Done (v4.46.0).** `src/module/theflow/search/HistorySearch.js`, migration
+> `012` (`posts_fts`, an external-content FTS5 index over `text_en`,
+> `raw_text`, `title`, kept in sync by triggers; `unicode61` case-folds
+> Cyrillic). Two surfaces: `/search` in discordapp, which asks the core over a
+> new `EventBus.request()` so D1 holds, and `node src/cli.js flow search`.
+> Keyword mode quotes every word as a prefix (`"розыгр"*`), ranks with bm25
+> (title and `text_en` above `raw_text`), excludes `skipped_*`, and collapses
+> results by dedup cluster. Semantic mode embeds the query at `low` priority —
+> the gateway's cache makes a repeat free — and compares against the 20 000
+> most recent vectors of the same model, no default date window: the pilot
+> corpus is a channel's history, and a 30-day window found nothing. A
+> Russian query finds English `text_en` — the embedding is multilingual.
+
 The corpus is the reason phase 0 is worth having on its own, and search is what
 makes it readable. Both mechanisms it needs already exist in the project, so this
 is small.

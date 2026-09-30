@@ -9,6 +9,8 @@ import { Source, Post, PostFeedback, Cluster } from "./module/teapot/models/inde
 import { print } from "./shared/utils.js";
 import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/theflow/FlowHealth.js";
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
+import HistorySearch from "./module/theflow/search/HistorySearch.js";
+import LLMGateway from "./services/ai/LLMGateway.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
 } from "./config/app.config.js";
@@ -624,6 +626,39 @@ flow
       }
 
       await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+flow
+  .command("search")
+  .description("Search the corpus (ROADMAP 9.1): keyword via FTS5, or --semantic via one embedding call")
+  .argument("<query...>", "words to find")
+  .option("--semantic", "embedding similarity instead of keywords (one low-priority provider call)")
+  .option("--topic <t>", "only this topic")
+  .option("--signal <s>", "only this signal")
+  .option("--days <n>", "only the last n days")
+  .option("--source <id>", "only this source id")
+  .option("--limit <n>", "results, up to 25", "10")
+  .action(async (words, options) => {
+    try {
+      await database.connect();
+      const gateway = options.semantic ? new LLMGateway() : null;
+      const search = new HistorySearch({ gateway });
+      const res = await search.search({
+        query: words.join(" "),
+        mode: options.semantic ? "semantic" : "keyword",
+        topic: options.topic,
+        signal: options.signal,
+        days: options.days,
+        sourceId: options.source,
+        limit: options.limit,
+      });
+      process.stdout.write(res.text + "\n");
+      await database.disconnect();
+      if (res.error) process.exitCode = 1;
     } catch (error) {
       print(`Error: ${error.message}`, "error");
       process.exit(1);

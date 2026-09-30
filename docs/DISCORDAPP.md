@@ -83,6 +83,34 @@ edits the ephemeral message it sits on (its buttons and attachments cleared)
 instead of replying anew — the Apply button uses this so it cannot be pressed
 twice. A new command is a file in `commands/` and a line in `commands/index.js`.
 
+**Asking the core for data (D1).** A command that needs an answer from the
+core — not just to hand something off — uses the bus's request/reply, never an
+import:
+
+```js
+const res = await ctx.eventBus.request("theflow.search", { query }, { timeoutMs: 20_000 });
+```
+
+The core registers the one handler with `eventBus.handle(name, fn)` in
+`src/inemuri.js`. A missing handler or a timeout is an error, which the
+registry turns into an ephemeral message like any other. Known requests:
+
+| Request | Handler | Answers |
+|---|---|---|
+| `theflow.search` | `HistorySearch.search()` (`src/module/theflow/search/`) | `{ mode, query, results[], note?, error?, text }` — `text` is ready to show |
+
+## Feature: `/search`
+
+Search over TheFlow's corpus (theflow/ROADMAP.md §9.1). Admin (D7): the
+corpus is the content of channels the operator follows. Options: `query`
+(required), `mode` — `keyword` (default: SQLite FTS5, no provider call, works
+with the quota spent) or `semantic` (one low-priority embedding, then cosine
+over stored vectors of the same model) — and the filters `topic`, `signal`
+(choices from `categories.json`), `days`, `limit` (≤ 25). One row per event:
+posts of the same dedup cluster collapse into one, marked `×N`. Each row
+links to the original Telegram post. The command only sends the
+`theflow.search` request; the answer, and its formatting, come from the core.
+
 ## Permission model
 
 The bot is invited with a minimal set and never holds `Administrator` in
@@ -575,8 +603,9 @@ Deliberately not done — each is a small, separate change if it is ever needed:
 - **`/export-chats` to Telegram** was built on the normal delivery path but
   has not been run live yet.
 
-Natural next steps, none started: search over TheFlow's corpus as a slash
-command (theflow/ROADMAP.md §9.1), and anything above that practice asks for.
+`/search` (theflow/ROADMAP.md §9.1) was added in v4.46.0, with the bus's
+request/reply for asking the core. Natural next steps: anything above that
+practice asks for.
 
 ## Work plan
 

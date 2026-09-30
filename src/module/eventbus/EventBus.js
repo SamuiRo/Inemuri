@@ -8,8 +8,49 @@ import { print } from "../../shared/utils.js";
 class EventBus extends EventEmitter {
   constructor() {
     super();
+    // Обробники запитів (request/reply): одна назва — один обробник.
+    this._requestHandlers = new Map();
     this.setupDefaultHandlers();
     this.setupErrorHandling();
+  }
+
+  /**
+   * Реєструє обробник запиту. Запит — це подія, на яку хтось чекає відповіді:
+   * discordapp (`/search`) питає ядро, не імпортуючи його (DISCORDAPP.md D1).
+   * Той, хто питає, знає лише назву; той, хто відповідає, реєструється тут.
+   *
+   * @param {string} name
+   * @param {(data: any) => any} handler  Може бути async.
+   */
+  handle(name, handler) {
+    if (this._requestHandlers.has(name)) {
+      throw new Error(`EventBus: a handler for "${name}" is already registered`);
+    }
+    this._requestHandlers.set(name, handler);
+  }
+
+  /**
+   * Запит із відповіддю. Немає обробника — помилка з назвою (а не вічне
+   * очікування); довше за timeoutMs — помилка тайм-ауту.
+   *
+   * @param {string} name
+   * @param {any} data
+   * @param {{ timeoutMs?: number }} [options]
+   * @returns {Promise<any>}
+   */
+  async request(name, data, { timeoutMs = 30_000 } = {}) {
+    const handler = this._requestHandlers.get(name);
+    if (!handler) throw new Error(`EventBus: nothing handles "${name}"`);
+
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`EventBus: "${name}" timed out after ${timeoutMs} ms`)), timeoutMs);
+    });
+    try {
+      return await Promise.race([Promise.resolve().then(() => handler(data)), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**

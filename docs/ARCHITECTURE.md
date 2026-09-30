@@ -272,6 +272,12 @@ cosine, richness, `decide()`), `DedupStage.js` reads and writes `posts` and
 decision log; a duplicate that adds nothing becomes `suppressed`. The delta
 call and appends to delivered messages (ROADMAP §6.6) wait for delivery.
 
+**History search.** `src/module/theflow/search/HistorySearch.js` — keyword
+(FTS5 `posts_fts`, migration `012`) and semantic (one `embed()` at `low`
+priority). discordapp's `/search` reaches it through
+`EventBus.request("theflow.search")`, registered in `inemuri.js`; the CLI's
+`flow search` calls it directly.
+
 **Health monitoring.** `src/module/theflow/FlowHealth.js` checks the corpus on
 a timer (ROADMAP §13.10) — failing enrichment, a stalled queue, silent ingest
 — and posts on transitions to `health_destinations` in `routing.json` via a
@@ -306,5 +312,5 @@ enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]` checks discordapp's setup on a server, shows or applies its provisioning plan, or exports the server as a config, from a terminal.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
-- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), `flow requeue` (return failed or untrusted posts to the enrich queue), `flow health` (the health check; exits 1 on a problem), and `flow dedup` (deduplication report, backfill, reset, calibration pairs).
+- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), `flow requeue` (return failed or untrusted posts to the enrich queue), `flow health` (the health check; exits 1 on a problem), `flow dedup` (deduplication report, backfill, reset, calibration pairs), and `flow search` (keyword or semantic search over the corpus).
 - `npm test` runs the `node --test` suites under `test/` through `scripts/run-tests.js`, on a throwaway database (`SQLITE_STORAGE`), never on `database/pot.sqlite`.

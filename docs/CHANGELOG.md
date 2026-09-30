@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.46.0] - 2026-09-30
+
+### Added
+- **History search (ROADMAP §9.1).** `src/module/theflow/search/` with two
+  modes. **Keyword**: SQLite FTS5 over `text_en`, `raw_text` and `title`
+  (migration `012`, `posts_fts` kept in sync by triggers), every word a quoted
+  prefix, bm25-ranked — no provider call, works with the quota spent, and
+  finds Cyrillic case-insensitively. **Semantic**: one embedding of the query
+  at `low` priority, cosine over the 20 000 most recent vectors of the same
+  model. Filters: topic, signal, days, source. Results collapse by dedup
+  cluster (`×N` = how many channels reported it) and link to the original
+  Telegram post. `skipped_*` posts are never returned.
+- **`/search` in discordapp** (admin, ephemeral) and **`node src/cli.js flow
+  search <words> [--semantic] [--topic] [--signal] [--days] [--source]
+  [--limit]`**.
+- **`EventBus.handle(name, fn)` / `EventBus.request(name, data)`** — one
+  handler per request name, a missing handler or a timeout is an error. It is
+  how `/search` asks the core without importing it (DISCORDAPP.md D1); the
+  contract is in DISCORDAPP.md § Command module contract.
+- **Run `npm run migrate` before starting this version** (`012`).
+
 ## [4.45.0] - 2026-09-30
 
 ### Added
