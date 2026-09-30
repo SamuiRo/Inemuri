@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.51.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.51.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -16,7 +16,7 @@ goes to `digest_destinations` once that key is set. The delivery mechanism (§5.
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
 the final template exist. 14 migrations exist
 (`database/migrations/001`–`014`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 525 green `node --test` cases,
+is clean on the dev database. `npm test` is 527 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and

@@ -21,6 +21,7 @@ import DeltaStage from "./module/theflow/dedup/DeltaStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
 import FewShotStore from "./module/theflow/FewShot.js";
+import { collectStorage, assessStorage } from "./module/theflow/Storage.js";
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import mediaResolver from "./module/theflow/media/index.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
@@ -246,6 +247,15 @@ class Inemuri {
           })`,
           "warning",
         );
+      }
+
+      // 8a'. Точка перегляду зберігання (§13.9): одне попередження на старті,
+      //      не алерт — нічого не зламалось, просто час вирішити.
+      try {
+        const storage = assessStorage(await collectStorage());
+        if (storage.reviewDue) print(`[THEFLOW] ${storage.note}`, "warning");
+      } catch (error) {
+        print(`[THEFLOW] storage check failed: ${error.message}`, "debug");
       }
 
       // 8b. Нагляд за TheFlow: застій pending, лавина failed, тиша ingest.

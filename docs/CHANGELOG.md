@@ -7,6 +7,16 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.51.1] - 2026-09-30
+
+### Added
+- **Retention decided (ROADMAP §13.9): keep everything, with a review
+  point.** `raw_text` is kept by invariant, so nothing is pruned. `flow stats`
+  and `flow health` now print the corpus size (posts, database file,
+  embeddings, text); at 500k posts or 2 GB (`FLOW_STORAGE_REVIEW_ROWS`,
+  `FLOW_STORAGE_REVIEW_GB`) they add a note and the service warns once at
+  startup that it is time to decide on archiving old embeddings or VACUUM.
+
 ## [4.51.0] - 2026-09-30
 
 ### Added

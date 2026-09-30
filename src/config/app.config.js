@@ -345,6 +345,13 @@ export const FLOW_DIGEST = {
   excludeSignals: ["giveaway_result", "stream"],
 };
 
+// Зберігання корпусу (ROADMAP §13.9): нічого не видаляється, але після цієї
+// точки треба переглянути рішення (архівування старих ембеддингів, VACUUM).
+export const FLOW_STORAGE = {
+  reviewRows: optionalNumber("FLOW_STORAGE_REVIEW_ROWS", process.env.FLOW_STORAGE_REVIEW_ROWS, 500_000),
+  reviewBytes: optionalNumber("FLOW_STORAGE_REVIEW_GB", process.env.FLOW_STORAGE_REVIEW_GB, 2) * 1024 ** 3,
+};
+
 // Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
 // хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
 // Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.

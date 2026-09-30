@@ -11,6 +11,7 @@ import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/thef
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
+import { collectStorage, assessStorage, storageLine } from "./module/theflow/Storage.js";
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import {
@@ -286,6 +287,14 @@ async function collectFlowStats() {
   }
 }
 
+/** §13.9: розмір корпусу і точка перегляду — у stats і health. */
+async function printStorage() {
+  const s = await collectStorage();
+  print(storageLine(s), "info");
+  const a = assessStorage(s);
+  if (a.reviewDue) print(a.note, "warning");
+}
+
 const flow = program.command("flow").description("TheFlow corpus inspection (ROADMAP 2.8)");
 
 flow
@@ -295,6 +304,7 @@ flow
     try {
       await database.connect();
       await collectFlowStats();
+      await printStorage();
       await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
@@ -769,6 +779,7 @@ flow
       );
       for (const e of w.topErrors) print(`  ×${e.count} ${e.error}`, "warning");
       for (const n of report.notes) print(n, "info");
+      await printStorage();
       for (const p of report.problems) print(`${p.key}: ${p.message}`, "error");
       if (report.ok) print("TheFlow healthy", "success");
 
