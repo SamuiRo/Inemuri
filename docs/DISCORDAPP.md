@@ -428,7 +428,11 @@ AutoMod rules are another resource kind, in the `automod` list of the config:
   API answers 404. Apply then fails that one rule with an explanation (delete
   it in Server Settings → AutoMod and apply again, or drop it from the config)
   and does **not** record it as managed, so the plan does not pretend
-  otherwise.
+  otherwise. This is not universal: on the operator's server (2026-09-30) the
+  same default rule, with the owner as `creator_id`, answered a full PATCH
+  with 200. And Discord's own UI refuses to delete the mention-spam rule on a
+  Community server ("disable the rule instead"), so "delete it" is not always
+  available — dropping it from the config is.
 - Reading rules needs Manage Server. Without Administrator the plan says it
   could not read them (a warning, not an error); apply has Administrator.
 - Applied after channels, since alerts and exemptions need their ids. Never

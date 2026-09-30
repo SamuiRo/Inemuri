@@ -7,6 +7,14 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.42.1] - 2026-09-30
+
+### Changed
+- `DISCORDAPP.md`, AutoMod: the default *Block Mention Spam* rule is not
+  always read-only. On the operator's server it accepted a full edit from the bot
+  (200), and Discord's UI refuses to delete it on a Community server at all,
+  so the doc no longer presents deleting it as the way out. Documentation only.
+
 ## [4.42.0] - 2026-09-30
 
 ### Added
