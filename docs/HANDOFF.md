@@ -2,16 +2,16 @@
 
 ## Current state
 
-`v4.47.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.48.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
-and 2 run in the enrich worker (ROADMAP §6; the delta call §6.6 and threshold
-calibration §6.8 are open). History search (§9.1) is built: `/search` in
+and 2 run in the enrich worker, with the delta call and updates to delivered
+messages (§6.6); threshold calibration (§6.8) is open. History search (§9.1) is built: `/search` in
 discordapp and `flow search` on the CLI. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
 the final template exist. 13 migrations exist
 (`database/migrations/001`–`013`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 478 green `node --test` cases,
+is clean on the dev database. `npm test` is 493 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -174,6 +174,17 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — §6.6
+
+- Operator: calibration, channels and templates come last; build what does
+  not depend on them — §6.6, then phase 3.5.
+- Built §6.6 (`v4.48.0`): delta prompt and `LLMGateway.delta()`,
+  `DeltaStage`, updates in `FlowDelivery` (edit with the cap, corrections as
+  edit + reply, fallback reply, canonical rewrite), `editMessageData()` on
+  both adapters. Found and fixed on the way: a Telegram album's identity was
+  `null`, `replyTo` was dropped, a Discord edit would have lost the image. One
+  live delta call returned a correct `corrects`.
 
 ### 2026-09-30 — delivery mechanism
 

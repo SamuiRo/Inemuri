@@ -103,7 +103,22 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       channel_id: sentMessage?.channel_id ?? String(destinationId),
       message_id: sentMessage?.id ?? null,
       sent_at: new Date(),
+      // CDN-адреса картинки embed після завантаження. Правка embed
+      // (editMessageData) без неї загубила б картинку: `attachment://…`
+      // має сенс лише в тому ж запиті, що й файл.
+      image_url: sentMessage?.embeds?.[0]?.image?.url ?? null,
     };
+  }
+
+  /**
+   * Переписати надіслане з messageData так само, як його складає
+   * sendMessage(): той самий embed, без файлів; картинка — з `identity.image_url`
+   * (describeSent), вкладення повідомлення PATCH без `attachments` не чіпає.
+   */
+  async editMessageData(channelId, messageId, messageData, identity = null) {
+    const payload = await this._buildPayload({ ...messageData, downloadedMedia: [], replyTo: null });
+    if (identity?.image_url) payload.embeds[0].setImage(identity.image_url);
+    return await this.editMessage(channelId, messageId, { embeds: payload.embeds });
   }
 
   /**
@@ -268,6 +283,13 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
     const embed  = this._buildEmbed(embedSpec);
     const payload = { embeds: [embed] };
+
+    // Відповідь на надіслане (TheFlow: спростування — новим повідомленням).
+    // fail_if_not_exists: false — якщо оригінал видалено, повідомлення все
+    // одно піде, просто без посилання.
+    if (messageData.replyTo) {
+      payload.message_reference = { message_id: String(messageData.replyTo), fail_if_not_exists: false };
+    }
 
     if (files.length > 0) {
       payload.files = files;

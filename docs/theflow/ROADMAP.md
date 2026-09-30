@@ -990,8 +990,23 @@ Spec: [DEDUPLICATION.md](DEDUPLICATION.md).
 > - Gate-passed joins are `linked` with no `adds` until the delta call (6.6);
 >   `security` is never suppressed.
 >
-> **Still open:** 6.6 (delta call and appends) needs delivery (§5.4); 6.8
-> needs cross-source pairs, and the corpus has none yet — the other two
+> **6.6 done (v4.48.0).** `prompts/delta.js` + `LLMGateway.delta()` (priority
+> `normal`, sheds before enrich; cached by the pair; verified with one live
+> call — a moved start time came back `corrects` with both facts and their
+> Ukrainian text). `dedup/DeltaStage.js` runs in the worker tick after dedup:
+> `same` → duplicate/suppressed (never for `security`), `adds` → stays linked,
+> `corrects`/`denies` → `correction`, `denies` closes the cluster. In
+> `FlowDelivery`, updates run before new posts each tick: an addition
+> re-renders and edits every delivered message, at most `MAX_APPENDS` (3) per
+> cluster, then only counts; a correction or denial edits **and** sends a reply
+> (an edit does not notify), with no cap; a failed edit falls back to a reply
+> with the re-rendered message; a new canonical in a delivered cluster rewrites
+> it. Adapters: `editMessageData()` on both (compose as `sendMessage` does);
+> `replyTo` passed through on Telegram, `message_reference` on Discord; Discord
+> identities keep the embed's CDN `image_url` so an edit does not drop the
+> picture; a Telegram album's identity is now its first message (was `null`).
+>
+> **Still open:** 6.8 needs cross-source pairs, and the corpus has none yet — the other two
 > flow-enabled sources had produced no post by 2026-09-30. HIGH 0.90 / LOW
 > 0.75 are uncalibrated for cross-source matches.
 

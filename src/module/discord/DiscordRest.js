@@ -20,6 +20,7 @@ export function toRestPayload(payload) {
   if (rest.embeds) body.embeds = rest.embeds.map(toJSON);
   if (rest.components) body.components = rest.components.map(toJSON);
   if (rest.allowed_mentions) body.allowed_mentions = rest.allowed_mentions;
+  if (rest.message_reference) body.message_reference = rest.message_reference;
 
   if (!files?.length) return { body };
   return {

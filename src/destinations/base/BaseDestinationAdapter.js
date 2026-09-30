@@ -78,6 +78,20 @@ class BaseDestinationAdapter {
   }
 
   /**
+   * Переписати надіслане повідомлення з уніфікованого messageData — дзеркало
+   * sendMessage(): адаптер складає текст так само, як при надсиланні. Потрібне
+   * TheFlow для повного перерендеру при доповненнях (DELIVERY.md, рішення 1);
+   * медіа не змінюється. Опційне — як і editMessage().
+   * @param {string} destinationId
+   * @param {(number|string)} messageId
+   * @param {object} messageData
+   * @param {object} [identity]  Запис із clusters.delivered (напр. image_url).
+   */
+  async editMessageData(destinationId, messageId, messageData, identity = null) {
+    throw new Error(`editMessageData() is not supported by the ${this.platform} adapter`);
+  }
+
+  /**
    * Форматування повідомлення під специфіку платформи (може бути перевизначено)
    * @param {Object} messageData - Дані повідомлення
    * @returns {Object} - Відформатовані дані

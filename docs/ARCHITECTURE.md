@@ -276,6 +276,9 @@ call and appends to delivered messages (ROADMAP §6.6) wait for delivery.
 DELIVERY.md) and `FlowDelivery.js`, which sends through the unchanged
 `MessageRouter.routeMessage` injected by `inemuri.js`, with media fetched
 lazily through the media resolver. Off unless `FLOW_DELIVERY_ENABLED=true`.
+It also keeps sent messages current (§6.6): `dedup/DeltaStage.js` asks the
+gateway what a later post adds, and delivery edits the sent message, or
+replies for a correction, through the adapters' `editMessageData()`.
 
 **History search.** `src/module/theflow/search/HistorySearch.js` — keyword
 (FTS5 `posts_fts`, migration `012`) and semantic (one `embed()` at `low`

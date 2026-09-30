@@ -16,6 +16,7 @@ import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import VisionStage from "./module/theflow/VisionStage.js";
 import { FlowHealthMonitor, collectHealthSnapshot, primaryQuota } from "./module/theflow/FlowHealth.js";
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
+import DeltaStage from "./module/theflow/dedup/DeltaStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
 import mediaResolver from "./module/theflow/media/index.js";
@@ -194,7 +195,9 @@ class Inemuri {
             log: print,
           })
           : null;
-        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup });
+        // Delta-виклик (§6.6) — що новий пост кластера додає до канонічного.
+        const delta = DEDUP.enabled ? new DeltaStage({ gateway, log: print }) : null;
+        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup, delta });
         this.enrichWorker.start();
 
         // Прибирання кешу vision: на старті й далі кожні 6 год. unref() — щоб
@@ -252,6 +255,14 @@ class Inemuri {
         const sources = new Map();
         this.flowDelivery = new FlowDelivery({
           route: (messageData) => this.messageRouter.routeMessage(messageData),
+          // §6.6: відповідь в одне призначення і правка надісланого — через
+          // ті самі адаптери, що й відправка.
+          sendTo: (platform, id, messageData) => this.messageRouter.sendToDestination(platform, id, messageData),
+          edit: (platform, channelId, messageId, messageData, identity) => {
+            const adapter = this.messageRouter.adapters.get(platform);
+            if (!adapter?.capabilities?.edit) throw new Error(`${platform} adapter cannot edit`);
+            return adapter.editMessageData(channelId, messageId, messageData, identity);
+          },
           resolveMedia: (post, opts) => mediaResolver.resolve(post, opts),
           routing: ROUTING,
           flowFor: async (post) => {

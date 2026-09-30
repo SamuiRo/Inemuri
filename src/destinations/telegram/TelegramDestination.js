@@ -81,10 +81,14 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
    * @param {string} destinationId
    */
   describeSent(sentMessage, destinationId) {
+    // Альбом GramJS повертає масивом; підпис стоїть на першому повідомленні,
+    // тож саме його id редагуватиме TheFlow. Раніше тут був `sentMessage.id`
+    // масиву — undefined, і доставлений альбом не мав би чого правити.
+    const first = Array.isArray(sentMessage) ? sentMessage[0] : sentMessage;
     return {
       platform: "telegram",
       channel_id: String(destinationId),
-      message_id: sentMessage?.id ?? null,
+      message_id: first?.id ?? null,
       sent_at: new Date(),
     };
   }
@@ -113,7 +117,10 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
         entityOffset,
       );
 
-      const sendOptions = { formattingEntities };
+      // replyTo — відповідь на надіслане (TheFlow: спростування мусить прийти
+      // новим повідомленням зі сповіщенням, DELIVERY.md). Класичний шлях його
+      // не ставить.
+      const sendOptions = { formattingEntities, replyTo: messageData.replyTo ?? null };
 
       const hasMedia = messageData.downloadedMedia?.length > 0;
 
@@ -790,6 +797,23 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
       );
       throw error;
     }
+  }
+
+  /**
+   * Переписати надіслане з messageData так само, як його складає sendMessage():
+   * `source.name + "\n" + rawText`, entities зсунуті на заголовок. Для
+   * повідомлення з медіа це правка підпису (caption) — GramJS editMessage з
+   * text робить саме її.
+   */
+  async editMessageData(destinationId, messageId, messageData) {
+    const sourceName = messageData.source?.name ?? "";
+    const text = sourceName + "\n" + (messageData.rawText ?? messageData.text ?? "");
+    const formattingEntities = this.buildFormattingEntities(messageData.entities ?? [], sourceName.length + 1);
+    return await this.editMessage(destinationId, Number(messageId), {
+      text: this.truncateText(text, this.limits.message),
+      parseMode: null,
+      ...(formattingEntities.length ? { formattingEntities } : {}),
+    });
   }
 
   /**

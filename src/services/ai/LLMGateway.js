@@ -18,6 +18,7 @@ import { TokenBucket, CircuitBreaker, TtlCache } from "./internal.js";
 import { validateEnrichResponse } from "./schemas.js";
 import { buildEnrichPrompt } from "./prompts/enrich.js";
 import { buildVisionPrompt, validateVisionResponse } from "./prompts/vision.js";
+import { buildDeltaPrompt, validateDeltaResponse } from "./prompts/delta.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
@@ -117,6 +118,39 @@ export class LLMGateway {
   async vision(image, { priority = "normal" } = {}) {
     if (this._candidates("vision").length === 0) return null;
     return this._enqueue(priority, () => this._vision(image, priority));
+  }
+
+  /**
+   * Що новий пост кластера додає до канонічного (ROADMAP §6.6,
+   * DEDUPLICATION.md «Step 2»). Пріоритет `normal`: доповнення може
+   * почекати, під тиском квоти воно поступається enrich — повертається shed,
+   * і стадія спробує пізніше.
+   *
+   * @param {{ canonical: string, candidate: string }} input  Обидва — text_en.
+   * @returns {Promise<{relation, adds, confidence, model_used}|{shed: true}>}
+   */
+  async delta(input, { priority = "normal" } = {}) {
+    return this._enqueue(priority, () => this._delta(input, priority));
+  }
+
+  async _delta(input, priority) {
+    const key = "delta:" + this._hash(JSON.stringify({ a: this._norm(input.canonical), b: this._norm(input.candidate) }));
+    const hit = this.cache.get(key);
+    if (hit) return { ...hit, cached: true };
+
+    const prompt = buildDeltaPrompt({ canonical: input.canonical, candidate: input.candidate });
+    const run = await this._runComplete(prompt, priority, {});
+    if (run.shed) return run;
+
+    const checked = validateDeltaResponse(run.parsed);
+    if (!checked.ok) {
+      const err = new Error(`delta: invalid response — ${checked.errors.join("; ")}`);
+      err.kind = "bad_response";
+      throw err;
+    }
+    const result = { ...checked.value, model_used: run.model };
+    this.cache.set(key, result);
+    return result;
   }
 
   get cacheSize() {

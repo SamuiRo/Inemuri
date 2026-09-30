@@ -144,8 +144,15 @@ Whatever the final wording, these are fixed by other documents:
 - `FlowDelivery.js` does the rest: selection, resolve, lazy media (types and
   count limited before download; a media failure sends the text with the
   error recorded), one `routeMessage` per platform, `posts.delivery` and
-  `clusters.delivered`. Edits and appends to a sent message (§6.6) are not
-  built yet.
+  `clusters.delivered`.
+- Updates to a sent message (§6.6, v4.48.0) follow Decision 1 and 3 exactly:
+  every update is a full re-render of the cluster through the adapter's
+  `editMessageData()`; additions are edited in up to three times per cluster;
+  a `corrects` or `denies` is edited in **and** sent as a reply
+  (`renderNotice()`), cap or no cap; a failed edit becomes a reply. Where the
+  length would not fit, the original is cut, not the addition — so the
+  "reply instead of edit when too long" rule from DEDUPLICATION.md is not
+  needed.
 
 ## Testing
 

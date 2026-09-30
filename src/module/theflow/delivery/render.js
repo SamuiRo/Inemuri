@@ -75,7 +75,8 @@ export function collectUpdates(members = []) {
     const adds = m?.adds;
     if (!adds || typeof adds !== "object") continue;
     const texts = (Array.isArray(adds.adds) ? adds.adds : [])
-      .map((a) => (typeof a === "string" ? a : a?.text))
+      // Українською, коли delta-виклик дав переклад: лід теж український.
+      .map((a) => (typeof a === "string" ? a : a?.text_uk || a?.text))
       .filter(Boolean);
     if (adds.relation === "corrects" || adds.relation === "denies") {
       corrections.push({ relation: adds.relation, text: texts.join("; ") || adds.summary || "see update" });
@@ -130,6 +131,27 @@ export function composeBody({ before, original, originalEntities = [], after, ma
   return {
     text: pre + cut.text + post,
     entities: cut.entities.map((e) => ({ ...e, offset: e.offset + shift })),
+  };
+}
+
+/**
+ * Окреме повідомлення про виправлення чи спростування — відповідь на вже
+ * надіслане (DELIVERY.md, рішення 3). Редагування не дає сповіщення, тож
+ * спростування, доставлене лише правкою, — спростування, якого ніхто не
+ * побачить.
+ *
+ * @param {{ header: string, relation: "corrects"|"denies", text: string, platform: string }} args
+ */
+export function renderNotice({ header, relation, text, platform }) {
+  const line = relation === "denies" ? TEMPLATE.denial(text) : TEMPLATE.correction(text);
+  if (platform === "telegram") return { platform, header, body: line, entities: [] };
+  return {
+    platform,
+    author: header,
+    description: line,
+    footer: null,
+    color: relation === "denies" ? TEMPLATE.signalColor.security : TEMPLATE.signalColor.outage,
+    url: null,
   };
 }
 

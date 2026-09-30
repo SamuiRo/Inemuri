@@ -183,7 +183,11 @@ old:
 | `corrects` | Refines or corrects the earlier post | `correction`, **always delivered** |
 | `denies` | Retracts the event entirely | `correction`, **always delivered**, cluster closed |
 
-The result is written to `posts.adds`.
+The result is written to `posts.adds` (`relation`, `adds[]` with `kind`,
+`text` and `text_uk`, `confidence`, `model_used`; after delivery also
+`applied_at` and what was done to each message). Implemented in
+`prompts/delta.js`, `LLMGateway.delta()` and `dedup/DeltaStage.js`. A
+`security` post answered `same` stays `linked` — counted, never suppressed.
 
 ### Step 3 — delivering the addition
 

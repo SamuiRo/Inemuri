@@ -7,6 +7,35 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.48.0] - 2026-09-30
+
+### Added
+- **The delta call and updates to delivered messages (ROADMAP §6.6).** For a
+  post that joined a cluster and passed the richness gate, the gateway's new
+  `delta()` (priority `normal`) says what it adds over the canonical post:
+  `same`, `adds`, `corrects` or `denies`, with each new fact in English and
+  Ukrainian. `DeltaStage` writes it to `posts.adds`: `same` suppresses (never
+  for `security`), `corrects`/`denies` make the post a `correction`, `denies`
+  closes the cluster. `FlowDelivery` then updates what was sent: an addition
+  re-renders and edits every delivered message, up to three per cluster; a
+  correction or denial is edited in **and** sent as a reply, since an edit
+  gives no notification — never capped; a failed edit falls back to a reply;
+  a new canonical in a delivered cluster rewrites the message. Verified with
+  one live Gemini call.
+- `editMessageData()` on both destination adapters — composes the edit the
+  way `sendMessage()` composes the message.
+
+### Fixed
+- **A Telegram album was recorded with `message_id: null`.** GramJS returns an
+  album as an array and `describeSent()` read `.id` of the array. The identity
+  is now the first message, which carries the caption.
+- `TelegramDestination.sendMessage()` dropped `messageData.replyTo` although
+  the send helpers below it support it; Discord gained `message_reference`.
+  Classic forwarding sets neither.
+- A Discord edit of an embed would have lost its picture: `attachment://`
+  resolves only in the request that uploads the file. The delivery identity
+  now keeps the embed's CDN `image_url`, and an edit reuses it.
+
 ## [4.47.0] - 2026-09-30
 
 ### Added

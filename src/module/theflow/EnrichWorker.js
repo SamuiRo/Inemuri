@@ -38,6 +38,7 @@ export class EnrichWorker {
     vision = null,
     flowFor = null,
     dedup = null,
+    delta = null,
   } = {}) {
     if (!gateway) throw new Error("EnrichWorker: a gateway is required");
     if (vision && typeof flowFor !== "function") {
@@ -48,6 +49,8 @@ export class EnrichWorker {
     // Стадія дедуплікації (§6) — теж ін'єкція: вона працює лише з posts і
     // clusters, але рішення, чи вона є, належить складанню в inemuri.js.
     this.dedup = dedup;
+    // Delta-виклик (§6.6) — після дедуплікації, тією ж ін'єкцією.
+    this.delta = delta;
     this.gateway = gateway;
     this.taxonomy = taxonomy;
     this.tickMs = tickMs;
@@ -95,6 +98,13 @@ export class EnrichWorker {
         advanced += await this.dedup.runOnce();
       } catch (error) {
         print(`[DEDUP] tick error: ${error.message}`, "error");
+      }
+    }
+    if (this.delta) {
+      try {
+        advanced += await this.delta.runOnce();
+      } catch (error) {
+        print(`[DELTA] tick error: ${error.message}`, "error");
       }
     }
     // Drain a backlog quickly, then idle at the configured cadence.
