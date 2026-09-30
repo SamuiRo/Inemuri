@@ -35,6 +35,20 @@ export const ENRICH_FIELDS = [
   "is_ad",
 ];
 
+// Роль посилання в пості (фаза 4): claim — де забрати / взяти участь,
+// source — першоджерело новини, signup — реєстрація, docs — інструкція.
+export const LINK_ROLES = ["claim", "source", "signup", "docs", "other"];
+
+// ISO-дата або дата-час, який модель повертає як нормалізоване значення.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2})?)?$/;
+
+/** ISO-рядок, що справді є датою, або null. */
+export function isoOrNull(v) {
+  if (typeof v !== "string" || !ISO_DATE.test(v.trim())) return null;
+  const t = Date.parse(v.trim().length === 10 ? `${v.trim()}T00:00:00Z` : v.trim());
+  return Number.isFinite(t) ? v.trim() : null;
+}
+
 /**
  * A JSON-Schema object for provider structured output (Gemini `responseSchema`
  * / OpenAI `response_format: json_schema`). Enums are filled from the taxonomy
@@ -63,6 +77,9 @@ export function enrichResponseSchema(taxonomy) {
           tickers: { type: "array", items: { type: "string" } },
         },
       },
+      // Фаза 4 (ROADMAP §8): гібридне витягування. Кожне нормалізоване
+      // значення має дослівний якір у тексті (`*_text`), і перевіряється саме
+      // якір — нормалізовану дату дослівно не звіриш.
       extracted: {
         type: "object",
         properties: {
@@ -74,11 +91,45 @@ export function enrichResponseSchema(taxonomy) {
                 code: { type: "string" },
                 reward: { type: ["string", "null"] },
                 expires_at: { type: ["string", "null"] },
+                expires_text: { type: ["string", "null"] },
               },
               required: ["code"],
             },
           },
-          event: { type: ["object", "null"] },
+          links: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                url: { type: "string" },
+                role: { type: "string", enum: LINK_ROLES },
+              },
+              required: ["url", "role"],
+            },
+          },
+          amounts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: { type: "string" },
+                value: { type: ["number", "null"] },
+                unit: { type: ["string", "null"] },
+                what: { type: ["string", "null"] },
+              },
+              required: ["text"],
+            },
+          },
+          event: {
+            type: ["object", "null"],
+            properties: {
+              name: { type: "string" },
+              starts_at: { type: ["string", "null"] },
+              ends_at: { type: ["string", "null"] },
+              date_text: { type: ["string", "null"] },
+            },
+            required: ["name"],
+          },
         },
       },
       why_interesting: { type: "string" },
@@ -246,10 +297,95 @@ export function validateVerbatim(obj, rawText, textOcr = "") {
       }
       // На об'єкті, бо саме звідси доставка (DELIVERY.md) і tier 1 дедуплікації
       // читатимуть позначку: неперевірений код не може бути авторитетом.
-      kept.push({ ...c, source: from, verified: from === "text" });
+      const code = { ...c, source: from, verified: from === "text" };
+      // Дата закінчення — нормалізована; дослівно звіряється її якір.
+      const expires = anchoredDate(c?.expires_at, c?.expires_text);
+      if (c?.expires_at != null && !expires) {
+        discarded.push({ path: "extracted.promo_codes[].expires_at", value: c.expires_at });
+      }
+      code.expires_at = expires;
+      code.expires_text = expires ? c.expires_text : null;
+      kept.push(code);
       if (from === "ocr") unverified.push({ path: "extracted.promo_codes[].code", value: c.code });
     }
     value.extracted.promo_codes = kept;
+  }
+
+  // ── Фаза 4 (ROADMAP §8). Необов'язкові поля: некоректний елемент
+  // відкидається з записом у discarded, а не валить увесь пост — одна
+  // зламана сума не варта спроби збагачення.
+  if (value.extracted) {
+    const ex = value.extracted;
+
+    if (ex.links != null) {
+      const kept = [];
+      for (const l of Array.isArray(ex.links) ? ex.links : []) {
+        const from = isPlainObject(l) ? provenance(l.url) : null;
+        if (!from || !/^https?:\/\//i.test(l.url.trim())) {
+          discarded.push({ path: "extracted.links[].url", value: l?.url ?? l });
+          continue;
+        }
+        kept.push({
+          url: l.url.trim(),
+          role: LINK_ROLES.includes(l.role) ? l.role : "other",
+          source: from,
+          verified: from === "text",
+        });
+        if (from === "ocr") unverified.push({ path: "extracted.links[].url", value: l.url });
+      }
+      ex.links = kept;
+    }
+
+    if (ex.amounts != null) {
+      const kept = [];
+      for (const a of Array.isArray(ex.amounts) ? ex.amounts : []) {
+        const from = isPlainObject(a) ? provenance(a.text) : null;
+        if (!from) {
+          discarded.push({ path: "extracted.amounts[].text", value: a?.text ?? a });
+          continue;
+        }
+        kept.push({
+          text: a.text.trim(),
+          value: typeof a.value === "number" && Number.isFinite(a.value) ? a.value : null,
+          unit: usable(a.unit) ? a.unit.trim() : null,
+          what: usable(a.what) ? a.what.trim() : null,
+          source: from,
+          verified: from === "text",
+        });
+      }
+      ex.amounts = kept;
+    }
+
+    if (ex.event != null) {
+      if (!isPlainObject(ex.event) || !usable(ex.event.name)) {
+        discarded.push({ path: "extracted.event", value: ex.event });
+        ex.event = null;
+      } else {
+        // Назву події не звіряємо дослівно — як і project, її легітимно
+        // перекладають. Дати — лише з дослівним якорем у тексті.
+        const e = ex.event;
+        const anchor = usable(e.date_text) ? provenance(e.date_text) : null;
+        const starts = anchor ? isoOrNull(e.starts_at) : null;
+        const ends = anchor ? isoOrNull(e.ends_at) : null;
+        if ((e.starts_at != null && !starts) || (e.ends_at != null && !ends)) {
+          discarded.push({ path: "extracted.event.dates", value: { starts_at: e.starts_at, ends_at: e.ends_at, date_text: e.date_text } });
+        }
+        const hasDate = Boolean(starts || ends);
+        ex.event = {
+          name: e.name.trim(),
+          starts_at: starts,
+          ends_at: ends,
+          date_text: hasDate ? e.date_text.trim() : null,
+          ...(hasDate ? { source: anchor, verified: anchor === "text" } : {}),
+        };
+        if (hasDate && anchor === "ocr") unverified.push({ path: "extracted.event.date_text", value: e.date_text });
+      }
+    }
+  }
+
+  function anchoredDate(iso, text) {
+    const d = isoOrNull(iso);
+    return d && usable(text) && provenance(text) ? d : null;
   }
 
   return { value, discarded, unverified };

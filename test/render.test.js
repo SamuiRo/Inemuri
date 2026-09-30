@@ -156,3 +156,15 @@ test("DiscordDestination takes colour, footer and author url from a flow message
   assert.equal(classic.footer, undefined);
   assert.equal(classic.author.url, undefined);
 });
+
+test("phase 4 — the event line sits under the lead; a date from an image says so", async () => {
+  const { eventLine } = await import("../src/module/theflow/delivery/render.js");
+  const withEvent = (event) => post({ analysis: { summary_uk: "Лід", extracted: { event } } });
+  const r = render({ post: withEvent({ name: "Case drop", starts_at: "2026-10-05T18:00+00:00", ends_at: "2026-10-12", verified: true }),
+    source: "C", resolved: routed, platform: "telegram" });
+  assert.match(r.body, /^🇺🇦 Лід\n📅 Case drop — 2026-10-05 18:00 → 2026-10-12\n\n/);
+  const e = r.entities[0];
+  assert.equal(r.body.slice(e.offset, e.offset + e.length), "SAVE20", "entities still rebased past two lead lines");
+  assert.match(eventLine(withEvent({ name: "X", starts_at: "2026-10-05", verified: false })), /unverified/);
+  assert.equal(eventLine(withEvent({ name: "No date", starts_at: null, ends_at: null })), null);
+});

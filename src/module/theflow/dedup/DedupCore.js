@@ -86,7 +86,35 @@ export function tier1Keys(post, boilerplate = new Set()) {
   if (ext) keys.add(`ext:${ext}`);
   if (post.text_hash) keys.add(`hash:${post.text_hash}`);
 
+  // «Тікер + дата» (DEDUPLICATION.md, фаза 4): `$ABC` і дата лістингу з двох
+  // каналів — одна подія. Лише з перевірених частин: тікер із тексту (не з
+  // OCR) і дата події з дослівним якорем у тексті.
+  const day = eventDay(post);
+  if (day) {
+    for (const t of verifiedTickers(post)) keys.add(`evt:${t}:${day}`);
+  }
+
   return [...keys];
+}
+
+/** Дата події (YYYY-MM-DD), лише якщо її якір перевірено в тексті. */
+export function eventDay(post) {
+  const e = post.analysis?.extracted?.event;
+  if (!e || e.verified !== true) return null;
+  const d = e.starts_at ?? e.ends_at;
+  return typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : null;
+}
+
+/** Тікери з тексту поста (OCR-тікери перелічені в analysis.unverified). */
+export function verifiedTickers(post) {
+  const fromOcr = new Set(
+    asList(post.analysis?.unverified)
+      .filter((u) => u?.path === "entities.tickers")
+      .map((u) => String(u.value).toUpperCase()),
+  );
+  return [...new Set(asList(post.analysis?.entities?.tickers)
+    .map((t) => String(t).toUpperCase().replace(/^\$/, ""))
+    .filter((t) => t && !fromOcr.has(t) && !fromOcr.has(`$${t}`)))];
 }
 
 /**
@@ -151,6 +179,14 @@ export function entitySet(post) {
   }
   for (const d of asList(c.dates)) out.add(`date:${String(d)}`);
   for (const m of asList(c.amounts)) out.add(`amount:${String(m).replace(/\s+/g, "")}`);
+  // Фаза 4: нормалізована дата події й підтверджені посилання — нова дата чи
+  // нове посилання у пізнішому пості означає «щось додає».
+  const day = eventDay(post);
+  if (day) out.add(`event:${day}`);
+  for (const l of asList(a.extracted?.links)) {
+    const n = normalizeUrl(l?.url);
+    if (n) out.add(`url:${n}`);
+  }
   return out;
 }
 

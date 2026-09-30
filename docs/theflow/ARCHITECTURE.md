@@ -214,6 +214,12 @@ Presence validation closes hallucination completely.
 links, amounts. If a field claims to be verbatim, verify it exists in the
 source text, otherwise discard it.
 
+**Normalized values keep their words.** A date the model normalizes
+(`2026-10-05` from "до 5 октября") cannot be checked verbatim, so the model
+also returns the exact words that state it (`date_text`, `expires_text`), and
+those are checked; without them the date is dropped. Implemented in phase 4
+for event dates and promo-code expiry; links and amounts are verbatim fields.
+
 **The one exception is text that came from an image.** A code transcribed by a
 vision model was never in `raw_text`, so presence validation cannot apply.
 Those entities carry `source: "ocr"` and `verified: false`, and are marked as

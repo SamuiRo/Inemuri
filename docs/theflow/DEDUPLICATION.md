@@ -41,7 +41,7 @@ The cheapest and most reliable. Runs **before** any vectors.
 | Promo code | `HY45OLK8QRE2` from five channels collapses via one `WHERE code = ?` |
 | Normalized URL | the same link to the original source |
 | `text_hash` | a word-for-word repost |
-| Event ID, or ticker plus date | `$ABC` plus a listing date |
+| Ticker plus date | `$ABC` plus a listing date — key `evt:ABC:2026-10-05`, built only from a ticker found in the text and an event date whose words were found in the text (phase 4) |
 
 Cost: **0 requests**, 100% precision. It covers the promo code case completely,
 which is why entity extraction (phase 4) strengthens deduplication

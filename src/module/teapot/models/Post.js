@@ -391,11 +391,19 @@ Post.releaseClaim = async function (id) {
  * @param {{ status?: string[], errorLike?: string, modelUsed?: string, dryRun?: boolean }} filter
  * @returns {Promise<{ ids: number[], withFeedback: number }>}
  */
-Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, dryRun = false } = {}) {
+Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, promptBelow, dryRun = false } = {}) {
   const { Op } = database.sequelize.Sequelize;
   const where = { status };
   if (errorLike) where.last_error = { [Op.like]: `%${errorLike}%` };
   if (modelUsed) where.model_used = modelUsed;
+  // Вердикти старішої версії промпту (analysis.prompt_version; до v4.50 її не
+  // писали — це версія 1). Перезбагачення після зміни промпту/схеми.
+  const below = Number(promptBelow);
+  if (Number.isFinite(below) && below > 0) {
+    where[Op.and] = [database.sequelize.literal(
+      `COALESCE(json_extract(\`analysis\`, '$.prompt_version'), 1) < ${Math.floor(below)}`,
+    )];
+  }
 
   const rows = await this.findAll({ where, attributes: ["id"] });
   const ids = rows.map((r) => r.id);

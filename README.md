@@ -476,6 +476,7 @@ node src/cli.js flow review
 node src/cli.js flow requeue --dry-run
 node src/cli.js flow requeue --error "HTTP 400"
 node src/cli.js flow requeue --status enriched --model some-model
+node src/cli.js flow requeue --status enriched --prompt-below 2
 node src/cli.js flow health
 node src/cli.js flow dedup
 node src/cli.js flow dedup --pairs 30
@@ -488,7 +489,8 @@ node src/cli.js flow preview --ignore-age --limit 5
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
 verdict and embedding cleared, `text_ocr` kept so vision is not paid for
 twice. Default is every `failed` post; `--error` narrows by `last_error`,
-`--status`/`--model` pick verdicts that cannot be trusted. It reports how many
+`--status`/`--model` pick verdicts that cannot be trusted, `--prompt-below`
+re-extracts verdicts made by an older enrich prompt (`analysis.prompt_version`). It reports how many
 of them carry `post_feedback` labels for the old verdict.
 
 `flow search` searches the TheFlow corpus: by keywords through SQLite FTS5

@@ -1111,6 +1111,25 @@ nothing else.
 
 ## 8. Phase 4 — entity extraction
 
+> **Done (v4.50.0).** Enrich prompt version 2 (`ENRICH_PROMPT_VERSION`,
+> written to every verdict as `analysis.prompt_version`). `extracted` gains
+> `links[]` (`url`, closed `role`: claim / source / signup / docs / other),
+> `amounts[]` (`text`, `value`, `unit`, `what`) and a real `event` (`name`,
+> `starts_at`, `ends_at`, `date_text`), and promo codes gain `expires_text`.
+> The rule that makes it safe: **a normalized value is kept only with its
+> exact words** — dates cannot be checked verbatim, so their anchor
+> (`date_text`, `expires_text`) is, and without it the date is dropped. URLs
+> and amounts are checked verbatim; OCR-only matches are kept as
+> `verified: false`. A malformed optional item is dropped into `discarded`
+> rather than failing the post. The model gets the post's publication date,
+> outside the untrusted block, to resolve dates written without a year. Tier 1
+> gains the "ticker + date" key (`evt:ABC:2026-10-05`) — from text tickers
+> and an anchored event date only; `render()` shows the event under the lead.
+> Two live calls on real posts: a Major start and a giveaway deadline in
+> Moscow time came back correct and anchored. The 102 existing verdicts are
+> prompt 1 — `flow requeue --status enriched --prompt-below 2` re-extracts
+> them.
+
 Regex candidates confirmed by the model, every verbatim field validated against
 `raw_text`, OCR-derived entities carrying `source: "ocr"`, `verified: false`.
 Strengthens tier 1 considerably — the argument for doing it after phase 3 — and

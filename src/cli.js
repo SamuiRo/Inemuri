@@ -457,6 +457,7 @@ flow
   .option("--status <list>", "comma-separated statuses to requeue", "failed")
   .option("--error <text>", "only posts whose last_error contains this text")
   .option("--model <model_used>", "only posts whose verdict came from this model")
+  .option("--prompt-below <n>", "only verdicts from an enrich prompt version below n (re-extract after a prompt change)")
   .option("--dry-run", "count, change nothing")
   .action(async (options) => {
     try {
@@ -466,6 +467,7 @@ flow
         status,
         errorLike: options.error,
         modelUsed: options.model,
+        promptBelow: options.promptBelow,
         dryRun: Boolean(options.dryRun),
       });
 

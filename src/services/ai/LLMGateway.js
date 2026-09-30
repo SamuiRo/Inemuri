@@ -275,6 +275,7 @@ export class LLMGateway {
     const key = "enrich:" + this._hash(JSON.stringify({
       t: this._norm(input.text),
       h: this._norm(input.title),
+      d: input.postedAt ? new Date(input.postedAt).toISOString().slice(0, 10) : null,
       o: this._norm(input.textOcr),
       c: input.candidates ?? {},
       v: taxonomy?.version ?? null,
@@ -285,6 +286,7 @@ export class LLMGateway {
     const prompt = buildEnrichPrompt({
       text: input.text,
       title: input.title,
+      postedAt: input.postedAt,
       candidates: input.candidates,
       textOcr: input.textOcr,
       taxonomy,

@@ -1,5 +1,6 @@
 import { print } from "../../shared/utils.js";
 import { Post } from "../teapot/models/index.js";
+import { ENRICH_PROMPT_VERSION } from "../../services/ai/prompts/enrich.js";
 import {
   CATEGORIES,
   ENRICH_TICK_MS,
@@ -147,6 +148,7 @@ export class EnrichWorker {
       {
         text: post.raw_text ?? "",
         title: post.title ?? null,
+        postedAt: post.posted_at ?? post.createdAt ?? null,
         candidates: post.candidates ?? {},
         textOcr: post.text_ocr ?? "",
         taxonomy: this.taxonomy,
@@ -187,7 +189,11 @@ export class EnrichWorker {
         is_ad: v.is_ad ?? null,
         summary_uk: v.summary_uk ?? null,
         discarded: enr.discarded ?? [],
+        // Що прийшло лише з OCR (тікери не мають місця для позначки на
+        // елементі) — tier 1 дедуплікації не бере їх за ключ.
+        unverified: enr.unverified ?? [],
         tiered: Boolean(enr.tiered),
+        prompt_version: ENRICH_PROMPT_VERSION,
       },
       model_used: enr.model_used,
       taxonomy_version: this.taxonomy?.version ?? null,

@@ -2,18 +2,19 @@
 
 ## Current state
 
-`v4.49.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.50.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
 messages (§6.6); threshold calibration (§6.8) is open. History search (§9.1) is built: `/search` in
 discordapp and `flow search` on the CLI. Phase 3.5 is built: Reddit and
 RSS/Atom sources through `src/sources/feeds/` (Reddit needs OAuth
-credentials in practice — see Next steps). The delivery mechanism (§5.3–5.6) is
+credentials in practice — see Next steps). Phase 4 (entity extraction) is
+built: enrich prompt version 2. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
 the final template exist. 14 migrations exist
 (`database/migrations/001`–`014`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 510 green `node --test` cases,
+is clean on the dev database. `npm test` is 517 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -108,6 +109,10 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
+- **Re-extract the pilot's verdicts with prompt 2** when convenient:
+  `node src/cli.js flow requeue --status enriched --prompt-below 2` (102
+  posts, one day of quota). Their dedup decisions stay as they are.
+
 - **Adding a news or Reddit source** is a `sources.json` entry
   (`"platform": "rss"`, `channel_id` = feed URL; or `"platform": "reddit"`,
   `channel_id` = `r/name`) and `npm run seed` — README § Feed sources.
@@ -183,6 +188,14 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — phase 4
+
+- Operator: phase 4 and onwards in ROADMAP order.
+- Built entity extraction (`v4.50.0`): links, amounts, events, anchored
+  dates, prompt version 2, tier-1 "ticker + date", the event line in
+  `render()`, `flow requeue --prompt-below`. Two live Gemini calls on real
+  posts: both dates correct and anchored, nothing discarded.
 
 ### 2026-09-30 — phase 3.5
 

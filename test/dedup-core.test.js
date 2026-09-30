@@ -152,3 +152,24 @@ test("decide: a much richer post replaces the canonical", () => {
   assert.equal(d.role, "canonical");
   assert.equal(d.suppress, false);
 });
+
+test("phase 4 — tier 1 'ticker + date' key only from verified parts; entity set gains the event day", async () => {
+  const { eventDay, verifiedTickers } = await import("../src/module/theflow/dedup/DedupCore.js");
+  const post = {
+    text_hash: "h",
+    analysis: {
+      entities: { tickers: ["$ABC", "XYZ", "$OCR"] },
+      unverified: [{ path: "entities.tickers", value: "$OCR" }],
+      extracted: { event: { name: "Listing", starts_at: "2026-10-05T12:00Z", verified: true } },
+    },
+  };
+  assert.deepEqual(verifiedTickers(post), ["ABC", "XYZ"]);
+  assert.equal(eventDay(post), "2026-10-05");
+  assert.deepEqual(tier1Keys(post).filter((k) => k.startsWith("evt:")).sort(), ["evt:ABC:2026-10-05", "evt:XYZ:2026-10-05"]);
+  assert.ok(entitySet(post).has("event:2026-10-05"));
+
+  const ocrDate = { ...post, analysis: { ...post.analysis, extracted: { event: { name: "L", starts_at: "2026-10-05", verified: false } } } };
+  assert.equal(eventDay(ocrDate), null, "a date read from an image never keys tier 1");
+  assert.deepEqual(tier1Keys(ocrDate).filter((k) => k.startsWith("evt:")), []);
+  assert.deepEqual(tier1Keys({ text_hash: "h", analysis: { entities: { tickers: ["$A"] } } }), ["hash:h"]);
+});

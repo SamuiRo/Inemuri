@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.50.0] - 2026-09-30
+
+### Added
+- **Entity extraction (ROADMAP §8, phase 4).** The enrich response now
+  extracts links with a role (claim, source, signup, docs, other), amounts
+  (exact text, value, unit, what), the dated event the post is about (name,
+  start, end) and promo-code expiry. Every normalized value is kept only with
+  the exact words that state it — a date whose words are not in the text is
+  dropped — and URLs and amounts are verified verbatim; OCR-only matches stay
+  `verified: false`. A malformed optional item is dropped, not fatal. The
+  prompt gets the post's publication date so "5 October" gets the right year.
+  Verified with two live calls on real posts.
+- **Tier 1 "ticker + date"** (DEDUPLICATION.md): a ticker found in the text
+  and an anchored event date form the key `evt:<TICKER>:<date>`; an event date
+  now also counts as a new entity in the richness gate. `render()` shows the
+  event under the lead, marking a date read from an image.
+- **`analysis.prompt_version`** on every verdict (2 from now on; absent means
+  1), next to `model_used` and `taxonomy_version`, and **`flow requeue
+  --prompt-below <n>`** to re-extract older verdicts. `analysis.unverified`
+  is now stored, so tier 1 never keys on an OCR-only ticker.
+
 ## [4.49.0] - 2026-09-30
 
 ### Added

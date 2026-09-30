@@ -89,3 +89,11 @@ test("requeue by model clears the verdict and reports stale feedback", async () 
   }
   assert.equal((await Post.findByPk(real.id)).status, "enriched");
 });
+
+test("requeue --prompt-below picks verdicts of an older prompt (none recorded = version 1)", async () => {
+  const v1 = await make({ status: "enriched", text_en: "a", topic: "steam", signal_type: "launch", confidence: 0.9, analysis: { summary_uk: null } });
+  const v2 = await make({ status: "enriched", text_en: "b", topic: "steam", signal_type: "launch", confidence: 0.9, analysis: { prompt_version: 2 } });
+  const res = await Post.requeue({ status: ["enriched"], promptBelow: 2, dryRun: true });
+  assert.ok(res.ids.includes(v1.id));
+  assert.ok(!res.ids.includes(v2.id));
+});

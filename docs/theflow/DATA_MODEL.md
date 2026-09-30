@@ -59,7 +59,7 @@ The central table. One row per incoming message.
 | `topic` | STRING | Axis 1 of the taxonomy. Closed enum from `categories.json` |
 | `signal_type` | STRING | Axis 2 of the taxonomy. Closed enum |
 | `confidence` | FLOAT | 0..1. Below threshold routes to `#unsorted` |
-| `analysis` | JSON | Entities, extracted codes, summary, why it is interesting |
+| `analysis` | JSON | `entities` (project, tickers), `extracted` (promo_codes with reward / anchored expiry, links with role, amounts, event with anchored dates — each quoted item carries `source` and `verified`), `summary_uk`, `why_interesting`, `is_ad`, `discarded` and `unverified` from validation, `prompt_version` (2 since v4.50.0; absent = 1) |
 | `candidates` | JSON | What the regex stage found, kept for audit and re-runs |
 | `embedding` | BLOB | Float32Array as a BLOB, **normalized to unit length at write time** so cosine is a plain dot product. Little-endian; `buffer.length === embedding_dim * 4` |
 | `embedding_model` | STRING | Which model produced the vector, e.g. `gemini:text-embedding-004`. **Not** `model_used`, which is the enrichment model |

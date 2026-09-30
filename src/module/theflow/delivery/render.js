@@ -39,6 +39,8 @@ export const TEMPLATE = {
   header: ({ source, topic, signal, emoji }) =>
     [source, topic ? `${emoji} ${topic} · ${signal}` : null].filter(Boolean).join(" — "),
   lead: (summary) => `🇺🇦 ${summary}`,
+  // Фаза 4: подія з датою. `when` — «2026-10-05» або «2026-10-05 → 2026-10-12».
+  event: ({ name, when, unverified }) => `📅 ${name} — ${when}${unverified ? " (date read from an image, unverified)" : ""}`,
   unverified: (codes) => `⚠️ Unverified (read from an image): ${codes.join(", ")}`,
   alsoReported: (n) => `📡 Also reported by ${n} more channel${n === 1 ? "" : "s"}`,
   addition: (a) => `➕ ${a}`,
@@ -54,6 +56,16 @@ export const TEMPLATE = {
 export const MAX_ADDITIONS = 3;
 
 // ── Механізм ────────────────────────────────────────────────────────────────
+
+/** Рядок події (фаза 4), лише коли в неї є дата з перевіреним якорем або з OCR. */
+export function eventLine(post) {
+  const e = post.analysis?.extracted?.event;
+  if (!e?.name || !(e.starts_at || e.ends_at)) return null;
+  // «2026-10-05» або «2026-10-05 18:00» (зсув пояса не показуємо).
+  const day = (d) => String(d).slice(0, 16).replace("T", " ");
+  const when = e.starts_at && e.ends_at ? `${day(e.starts_at)} → ${day(e.ends_at)}` : day(e.starts_at ?? e.ends_at);
+  return TEMPLATE.event({ name: e.name, when, unverified: e.verified === false });
+}
 
 /** Неперевірені коди: `verified: false` (з OCR) — VISION.md, hazard 1. */
 export function unverifiedCodes(post) {
@@ -183,6 +195,8 @@ export function render({ post, cluster = null, members = [], source = null, reso
   }
   const summary = post.analysis?.summary_uk;
   if (typeof summary === "string" && summary.trim()) before.push(TEMPLATE.lead(summary.trim()));
+  const ev = eventLine(post);
+  if (ev) before.push(ev);
 
   // Під оригіналом: доповнення з капом, неперевірене, розмір кластера, лінк,
   // діагностика лише для #unsorted.

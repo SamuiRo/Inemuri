@@ -149,7 +149,13 @@ test("toGeminiSchema turns the enrich JSON Schema into Gemini's OpenAPI subset",
   assert.deepEqual(g.properties.summary_uk, { nullable: true, type: "string" });
   assert.equal(g.propertyOrdering[0], "text_en");
   assert.deepEqual(g.properties.topic.enum, ["steam", "other"]);
-  assert.equal(g.properties.extracted.properties.event, undefined);
+  // Фаза 4: event має властивості — nullable-об'єкт, а не порожня заготовка.
+  const ev = g.properties.extracted.properties.event;
+  assert.equal(ev.nullable, true);
+  assert.deepEqual(ev.propertyOrdering, ["name", "starts_at", "ends_at", "date_text"]);
+  assert.equal(g.properties.extracted.properties.links.items.properties.role.enum.includes("claim"), true);
+  assert.equal(toGeminiSchema({ type: "object", properties: { e: { type: ["object", "null"] } } }).properties.e, undefined,
+    "a property-less object is still dropped");
   assert.deepEqual(g.properties.extracted.properties.promo_codes.items.required, ["code"]);
   assert.deepEqual(g.required, ["text_en", "lang", "topic", "signal_type", "confidence"]);
   assert.throws(() => toGeminiSchema({ type: ["string", "number"] }), /unsupported type union/);

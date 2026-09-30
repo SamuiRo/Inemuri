@@ -6,6 +6,7 @@ import {
   validateStructural,
   validateVerbatim,
   validateEnrichResponse,
+  isoOrNull,
 } from "../src/services/ai/schemas.js";
 
 const taxonomy = {
@@ -139,7 +140,7 @@ const verdictWith = (codes, tickers = []) => ({
 
 test("provenance — a code found in the post text is verified", () => {
   const { value, unverified } = validateVerbatim(verdictWith(["SAVE20"]), "Use SAVE20 today", "");
-  assert.deepEqual(value.extracted.promo_codes, [{ code: "SAVE20", source: "text", verified: true }]);
+  assert.deepEqual(value.extracted.promo_codes, [{ code: "SAVE20", source: "text", verified: true, expires_at: null, expires_text: null }]);
   assert.deepEqual(unverified, []);
 });
 
@@ -149,7 +150,7 @@ test("provenance — a code found ONLY in the transcription is kept, but unverif
   const { value, discarded, unverified } = validateVerbatim(
     verdictWith(["HY45OLK8QRE2"]), "see the screenshot", "Promo: HY45OLK8QRE2",
   );
-  assert.deepEqual(value.extracted.promo_codes, [{ code: "HY45OLK8QRE2", source: "ocr", verified: false }]);
+  assert.deepEqual(value.extracted.promo_codes, [{ code: "HY45OLK8QRE2", source: "ocr", verified: false, expires_at: null, expires_text: null }]);
   assert.deepEqual(discarded, []);
   assert.deepEqual(unverified, [{ path: "extracted.promo_codes[].code", value: "HY45OLK8QRE2" }]);
 });
@@ -180,13 +181,84 @@ test("provenance — OCR-only tickers stay strings and are listed as unverified"
   assert.deepEqual(unverified, [{ path: "entities.tickers", value: "$SOL" }]);
 });
 
-test("provenance — reward and expiry survive the annotation", () => {
+test("provenance — reward and an anchored expiry survive the annotation", () => {
   const verdict = {
-    extracted: { promo_codes: [{ code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01" }] },
+    extracted: { promo_codes: [{ code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01", expires_text: "до 1 октября" }] },
   };
-  const { value } = validateVerbatim(verdict, "SAVE20");
-  assert.deepEqual(value.extracted.promo_codes[0],
-    { code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01", source: "text", verified: true });
+  const { value } = validateVerbatim(verdict, "SAVE20 действует до 1 октября");
+  assert.deepEqual(value.extracted.promo_codes[0], {
+    code: "SAVE20", reward: "60 jade", expires_at: "2026-10-01", expires_text: "до 1 октября",
+    source: "text", verified: true,
+  });
+});
+
+test("phase 4 — an expiry without its words in the text is dropped, the code stays", () => {
+  const { value, discarded } = validateVerbatim(
+    { extracted: { promo_codes: [{ code: "SAVE20", expires_at: "2026-10-01", expires_text: "until October 1" }] } },
+    "SAVE20 works",
+  );
+  assert.equal(value.extracted.promo_codes[0].code, "SAVE20");
+  assert.equal(value.extracted.promo_codes[0].expires_at, null);
+  assert.deepEqual(discarded, [{ path: "extracted.promo_codes[].expires_at", value: "2026-10-01" }]);
+});
+
+test("phase 4 — links and amounts must be quoted; roles are closed; malformed items are dropped, not fatal", () => {
+  const text = "Claim at https://claim.example.com/drop — pool $50,000, 20% bonus";
+  const { value, discarded } = validateVerbatim({ extracted: {
+    links: [
+      { url: "https://claim.example.com/drop", role: "claim" },
+      { url: "https://invented.example.com", role: "source" },
+      { url: "https://claim.example.com/drop", role: "weird" },
+      "not an object",
+    ],
+    amounts: [
+      { text: "$50,000", value: 50000, unit: "USD", what: "prize pool" },
+      { text: "$1,000,000", value: 1e6 },
+      { text: "20%", value: "twenty", unit: " % ", what: "" },
+    ],
+  } }, text);
+  assert.deepEqual(value.extracted.links, [
+    { url: "https://claim.example.com/drop", role: "claim", source: "text", verified: true },
+    { url: "https://claim.example.com/drop", role: "other", source: "text", verified: true },
+  ]);
+  assert.deepEqual(value.extracted.amounts.map((a) => [a.text, a.value, a.unit, a.what]), [
+    ["$50,000", 50000, "USD", "prize pool"], ["20%", null, "%", null],
+  ]);
+  assert.deepEqual(discarded.map((d) => d.path), [
+    "extracted.links[].url", "extracted.links[].url", "extracted.amounts[].text",
+  ]);
+});
+
+test("phase 4 — event dates need their exact words; a name alone is kept without dates", () => {
+  const text = "Мейджор начнётся 2 июня в Кёльне";
+  const ok = validateVerbatim({ extracted: { event: {
+    name: "Major", starts_at: "2026-06-02", ends_at: null, date_text: "начнётся 2 июня",
+  } } }, text).value.extracted.event;
+  assert.deepEqual(ok, { name: "Major", starts_at: "2026-06-02", ends_at: null, date_text: "начнётся 2 июня", source: "text", verified: true });
+
+  const invented = validateVerbatim({ extracted: { event: {
+    name: "Major", starts_at: "2026-06-02", date_text: "June 2nd",
+  } } }, text);
+  assert.deepEqual(invented.value.extracted.event, { name: "Major", starts_at: null, ends_at: null, date_text: null });
+  assert.equal(invented.discarded[0].path, "extracted.event.dates");
+
+  const badIso = validateVerbatim({ extracted: { event: { name: "X", starts_at: "2 June", date_text: "2 июня" } } }, text);
+  assert.equal(badIso.value.extracted.event.starts_at, null);
+
+  const ocr = validateVerbatim({ extracted: { event: { name: "Drop", starts_at: "2026-10-05T18:00Z", date_text: "Oct 5 18:00" } } },
+    "see image", "Drop starts Oct 5 18:00 UTC");
+  assert.equal(ocr.value.extracted.event.verified, false);
+  assert.deepEqual(ocr.unverified, [{ path: "extracted.event.date_text", value: "Oct 5 18:00" }]);
+
+  assert.equal(validateVerbatim({ extracted: { event: { starts_at: "2026-01-01" } } }, "x").value.extracted.event, null);
+});
+
+test("isoOrNull accepts dates and date-times, nothing else", () => {
+  assert.equal(isoOrNull("2026-10-05"), "2026-10-05");
+  assert.equal(isoOrNull("2026-10-05T18:00+03:00"), "2026-10-05T18:00+03:00");
+  assert.equal(isoOrNull("2026-13-45"), null);
+  assert.equal(isoOrNull("5 Oct"), null);
+  assert.equal(isoOrNull(null), null);
 });
 
 test("provenance — the caller's object is not mutated", () => {
