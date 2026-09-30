@@ -126,3 +126,8 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Per-server AI skills hold deployment data (names, ids, conventions); only
+# general skills such as discord-provisioning are tracked.
+/.claude/skills/server-*/
+/.claude/settings.local.json

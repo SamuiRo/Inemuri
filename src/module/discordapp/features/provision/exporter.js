@@ -42,7 +42,7 @@ export function exportConfig(current, state = []) {
       if (role.hoist) out.hoist = true;
       if (role.mentionable) out.mentionable = true;
       out.permissions = bitNames(role.permissions);
-      return [role.id, out];
+      return [role.id, withAdopt(out, role.id)];
     });
   const roleKeyById = new Map(roles.map(([id, role]) => [id, role.key]));
   for (const role of current.roles.filter((r) => r.managed)) skipped.push(`role @${role.name} (managed by an integration)`);
@@ -84,7 +84,7 @@ export function exportConfig(current, state = []) {
       skipped.push(`#${channel.name} (${channel.kind} channels are not provisioned)`);
       return null;
     }
-    const out = { key: channelKeys.make(channel.name, channel.kind, channel.id), name: channel.name };
+    const out = withAdopt({ key: channelKeys.make(channel.name, channel.kind, channel.id), name: channel.name }, channel.id);
     channelIdToKey.set(channel.id, out.key);
     if (channel.kind !== "text") out.type = channel.kind;
     if (channel.topic) out.topic = channel.topic;
@@ -105,18 +105,18 @@ export function exportConfig(current, state = []) {
   const config = {
     _readme: "Exported from the server. Review before applying: keys are derived from names, the archive block is a placeholder, and messages are not exported.",
     guildId: current.guildId,
-    archive: {
+    archive: withAdopt({
       key: channelKeys.make("archive", "category", archiveCategory?.id),
       name: archiveCategory?.name ?? "🗄 ARCHIVE",
       // Ролі архіву — ті, кому в наявній архівній категорії дозволено бачити.
       roles: (archiveCategory?.overwrites ?? [])
         .filter((overwrite) => roleKeyById.has(overwrite.id) && (overwrite.allow & VIEW_CHANNEL) !== 0n)
         .map((overwrite) => roleKeyById.get(overwrite.id)),
-    },
+    }, archiveCategory?.id),
     roles: roles.map(([, role]) => role),
     categories: categories.map((category) => {
       const targets = toTargets(category.overwrites, `📁 ${category.name}`);
-      const out = { key: channelKeys.make(category.name, "category", category.id), name: category.name };
+      const out = withAdopt({ key: channelKeys.make(category.name, "category", category.id), name: category.name }, category.id);
       if (Object.keys(targets).length) out.overwrites = targets;
       out.channels = channelsOf(category.id).map((channel) => exportChannel(channel, targets)).filter(Boolean);
       return out;
@@ -182,6 +182,16 @@ function exportAutomod(rules, { roleKeyById, channelIdToKey, skipped, stateKeys 
 }
 
 // ── Дрібниці ───────────────────────────────────────────────────────────────
+
+/**
+ * `adopt` з id ресурсу: експорт, який потім перейменовують, при першому apply
+ * перейменує саме ці ресурси, а не створить нові поруч (docs/PROVISIONING.md,
+ * «Taking over an existing server»). Лише для справжніх snowflake-id.
+ */
+function withAdopt(out, id) {
+  if (/^[0-9]{17,20}$/.test(String(id ?? ""))) out.adopt = String(id);
+  return out;
+}
 
 function bits({ allow, deny }) {
   const out = {};

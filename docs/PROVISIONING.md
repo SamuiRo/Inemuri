@@ -202,12 +202,13 @@ For a server that already has channels, history and roles:
 1. **Export first.** `/export-chats` for a history backup, and
    `/provision export` for a config of the server as it is.
 2. **Write the target config** from the export: new names, new grouping.
-3. **Pin every existing resource by id** with `"adopt": "<discord id>"` on the
-   role, category or channel. Without it the first import matches by exact
-   name — so a channel you are renaming would be *created new* and the original
-   archived. `adopt` also resolves resources that share a name (a server whose
-   categories all have the same decorative name). After the first apply the id
-   is in state and `adopt` is redundant.
+3. **Keep every existing resource pinned by id** with `"adopt": "<discord id>"`
+   on the role, category or channel. The export already writes it (since
+   v4.43.0); keep it when you move or rename entries. Without it the first
+   import matches by exact name — so a channel you are renaming would be
+   *created new* and the original archived. `adopt` also resolves resources
+   that share a name (a server whose categories all have the same decorative
+   name). After the first apply the id is in state and `adopt` is redundant.
 4. `"archiveUnmanaged": true` to sweep the rest into the archive.
 5. Plan, read every line, apply. Plan again: it should be empty.
 

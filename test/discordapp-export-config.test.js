@@ -148,3 +148,29 @@ test("permission bits discord.js does not know are neither a change nor erased",
   assert.equal(roleFields(spec, { permissions: P.ManageMessages | UNKNOWN }).permissions & UNKNOWN, UNKNOWN, "при записі невідомий біт зберігається");
   assert.equal(roleFields(spec).permissions & UNKNOWN, 0n);
 });
+
+test("exportConfig — real ids become adopt, so renaming the export renames the server, not twins", () => {
+  const K = "20000000000000001", C = "20000000000000002", R = "20000000000000003", A = "20000000000000004";
+  const current = {
+    guildId: GUILD, name: "Real", community: false, everyoneId: GUILD,
+    bot: { userId: "bot", roleId: BOT_ROLE, highestPosition: 50, admin: true },
+    roles: [role(BOT_ROLE, "Inemuri", 50, { managed: true }), role(R, "Member", 5)],
+    channels: [channel(K, "DECOR", "category"), channel(C, "general", "text", { parentId: K }), channel(A, "Archive", "category")],
+    messages: [], automod: [], specialChannelIds: [],
+  };
+  const { config } = exportConfig(current);
+  assert.equal(config.roles[0].adopt, R);
+  assert.equal(config.categories[0].adopt, K);
+  assert.equal(config.categories[0].channels[0].adopt, C);
+  assert.equal(config.archive.adopt, A);
+
+  config.categories[0].name = "LOBBY";
+  config.categories[0].channels[0].name = "lounge";
+  config.roles[0].name = "Guest";
+  const { errors, desired } = validateServerConfig(config);
+  assert.deepEqual(errors, []);
+  const plan = planProvision(desired, current, []);
+  assert.deepEqual(plan.errors, []);
+  assert.ok(!actionableOps(plan).some((op) => op.op === "create" || op.op === "archive"), "лише перейменування");
+  assert.ok(plan.ops.find((op) => op.id === C).changes.includes('name "general" → "lounge"'));
+});

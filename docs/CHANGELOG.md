@@ -7,6 +7,23 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.43.0] - 2026-09-30
+
+### Added
+- **`/provision export` writes `adopt` ids.** Every exported role, category,
+  channel and the archive carries the id of the resource it came from, so an
+  export that is then renamed and regrouped renames the real server on the
+  first apply instead of creating empty twins. Taking over the main server
+  needed these ids collected by hand. Test: export, rename, plan — only
+  renames, no create or archive.
+- **AI skill `discord-provisioning`** (`.claude/skills/`): a map for an
+  assistant doing provisioning — ground rules, commands, config and text cheat
+  sheet, takeover steps, Discord naming facts, code map, known traps — so it
+  does not have to rediscover the code. Points at `PROVISIONING.md` and
+  `DISCORDAPP.md` as the source of truth.
+- `.gitignore`: per-server skills (`.claude/skills/server-*/`) and
+  `.claude/settings.local.json` stay local; they hold deployment data.
+
 ## [4.42.3] - 2026-09-30
 
 ### Fixed

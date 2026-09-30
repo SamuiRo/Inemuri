@@ -39,7 +39,10 @@ and must never depend on it. See [docs/DISCORDAPP.md](docs/DISCORDAPP.md) for th
 contract and [docs/PROVISIONING.md](docs/PROVISIONING.md) for running a server
 with it. Real server configs and texts (`src/config/discordapp/servers/*.json`,
 `src/config/discordapp/messages/**`) are git-ignored; only `*.sample.*` files
-are tracked — never commit a real one.
+are tracked — never commit a real one. For provisioning work, load the
+`discord-provisioning` skill (`.claude/skills/`); per-server skills
+(`.claude/skills/server-*/`) are git-ignored and hold that server's
+conventions — load the matching one when working on a specific server.
 
 ## Documentation
 

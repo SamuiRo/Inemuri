@@ -458,6 +458,11 @@ server, **only adopts**. The one deliberate exception is the bot's own
 overwrite in private channels, which provisioning always sets (see Permission
 model) and the export leaves out. Verified on the live test server.
 
+Every exported role, category, channel and the archive carry `"adopt": "<id>"`
+(v4.43.0). Rewriting the export — new names, new grouping — then renames and
+moves the existing resources on the first apply instead of creating twins, and
+same-named resources are no longer a plan error.
+
 - Keys come from state for resources already managed, from names otherwise
   (Latin letters, digits, dashes; `<kind>-N` for names without Latin letters;
   `-2` for repeats). Without the state lookup the plan would not recognise a
