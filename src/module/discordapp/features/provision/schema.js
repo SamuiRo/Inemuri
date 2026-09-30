@@ -44,16 +44,21 @@ const TARGET_RE = /^(@everyone|role:[a-z0-9][a-z0-9-]*)$/;
 const EMOJI_RE = /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}])[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}\u200d\ufe0f\u20e3]+$/u;
 // Шлях відносно src/config/discordapp/messages/, без виходу за теку.
 const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
+// Аватар персони: картинка в тій самій теці повідомлень.
+const AVATAR_RE = /^(?!.*[.][.])[a-z0-9][a-z0-9_./-]*[.](png|jpe?g|webp|gif)$/i;
+// Discord не приймає вебхук з такими словами в назві.
+const WEBHOOK_NAME_BANNED = ["discord", "clyde"];
 
 const FIELDS = {
-  root: ["guildId", "archive", "archiveUnmanaged", "presets", "roles", "categories", "channels", "automod"],
+  root: ["guildId", "archive", "archiveUnmanaged", "presets", "personas", "roles", "categories", "channels", "automod"],
   archive: ["key", "name", "roles", "adopt"],
   role: ["key", "name", "color", "hoist", "mentionable", "permissions", "adopt"],
   category: ["key", "name", "overwrites", "requires", "optIn", "channels", "adopt"],
   channel: ["key", "name", "type", "topic", "nsfw", "slowmode", "overwrites", "requires", "messages", "adopt"],
   overwrite: ["allow", "deny"],
   optIn: ["role", "panel"],
-  message: ["key", "file", "embed", "rolePanel"],
+  message: ["key", "file", "embed", "rolePanel", "as"],
+  persona: ["name", "avatar"],
   embed: ["title", "color"],
   rolePanel: ["mode", "text", "roles"],
   panelRole: ["role", "label", "emoji"],
@@ -80,6 +85,7 @@ export function validateServerConfig(raw) {
   if (!SNOWFLAKE_RE.test(String(raw.guildId ?? ""))) v.error("guildId", "must be the server id (17–20 digits)");
 
   const presets = parsePresets(raw.presets, v);
+  const personas = parsePersonas(raw.personas, v);
   const roles = v.list(raw.roles, "roles").map((role, i) => parseRole(role, `roles[${i}]`, v));
   if (roles.length > MAX_ROLES) v.error("roles", `Discord allows at most ${MAX_ROLES} roles`);
   const roleKeys = new Set(roles.map((role) => role.key));
@@ -123,13 +129,13 @@ export function validateServerConfig(raw) {
       const channelPath = `${path}.channels[${j}]`;
       const parsedChannel = parseChannel(channel, parsed, overwrites, presets, roleKeys, channelPath, v);
       channels.push(parsedChannel);
-      messages.push(...parseMessages(channel, parsedChannel, roleKeys, channelPath, v));
+      messages.push(...parseMessages(channel, parsedChannel, roleKeys, personas, channelPath, v));
     }
   }
   for (const [i, channel] of v.list(raw.channels, "channels").entries()) {
     const parsedChannel = parseChannel(channel, null, null, presets, roleKeys, `channels[${i}]`, v);
     channels.push(parsedChannel);
-    messages.push(...parseMessages(channel, parsedChannel, roleKeys, `channels[${i}]`, v));
+    messages.push(...parseMessages(channel, parsedChannel, roleKeys, personas, `channels[${i}]`, v));
   }
 
   if (archive) categories.push(archive.category);
@@ -147,6 +153,7 @@ export function validateServerConfig(raw) {
       guildId: String(raw.guildId),
       archive: { key: archive.category.key, name: archive.category.name, roleKeys: archive.roleKeys },
       archiveUnmanaged,
+      personas,
       roles,
       categories,
       channels: channels.filter(Boolean),
@@ -257,17 +264,17 @@ function parseChannel(channel, category, categoryOverwrites, presets, roleKeys, 
 
 // ── Повідомлення і панелі ролей ────────────────────────────────────────────
 
-function parseMessages(channel, parsedChannel, roleKeys, path, v) {
+function parseMessages(channel, parsedChannel, roleKeys, personas, path, v) {
   if (!channel || typeof channel !== "object" || channel.messages === undefined) return [];
   const list = v.list(channel.messages, `${path}.messages`);
   if (list.length && parsedChannel && !MESSAGE_KINDS.includes(parsedChannel.kind)) {
     v.error(`${path}.messages`, `messages can be posted only in ${MESSAGE_KINDS.join(" or ")} channels`);
     return [];
   }
-  return list.map((message, i) => parseMessage(message, parsedChannel?.key, roleKeys, `${path}.messages[${i}]`, v)).filter(Boolean);
+  return list.map((message, i) => parseMessage(message, parsedChannel?.key, roleKeys, personas, `${path}.messages[${i}]`, v)).filter(Boolean);
 }
 
-function parseMessage(message, channelKey, roleKeys, path, v) {
+function parseMessage(message, channelKey, roleKeys, personas, path, v) {
   if (!v.object(message, path)) return null;
   v.fields(message, FIELDS.message, path);
   const key = v.key(message.key, `${path}.key`);
@@ -281,10 +288,17 @@ function parseMessage(message, channelKey, roleKeys, path, v) {
     if (typeof message.file !== "string" || !FILE_RE.test(message.file)) {
       v.error(`${path}.file`, "must be a .md path inside src/config/discordapp/messages/");
     }
-    return { key, channelKey, kind: "text", file: message.file, embed: parseEmbed(message.embed, `${path}.embed`, v) };
+    const parsed = { key, channelKey, kind: "text", file: message.file, embed: parseEmbed(message.embed, `${path}.embed`, v), as: null };
+    if (message.as !== undefined) {
+      if (typeof message.as === "string" && personas.has(message.as)) parsed.as = message.as;
+      else v.error(`${path}.as`, `unknown persona "${message.as}" (personas: ${[...personas.keys()].join(", ") || "none"})`);
+    }
+    return parsed;
   }
 
   if (message.embed !== undefined) v.error(`${path}.embed`, "applies to text messages only");
+  // Кнопки панелі обробляє бот; від імені вебхука їх не публікуємо.
+  if (message.as !== undefined) v.error(`${path}.as`, "applies to text messages only — a role panel is posted by the bot");
   const panel = message.rolePanel;
   const panelPath = `${path}.rolePanel`;
   if (!v.object(panel, panelPath)) return null;
@@ -298,6 +312,35 @@ function parseMessage(message, channelKey, roleKeys, path, v) {
 
   const roles = v.list(panel.roles ?? [], `${panelPath}.roles`).map((entry, i) => parsePanelRole(entry, roleKeys, `${panelPath}.roles[${i}]`, v));
   return { key, channelKey, kind: "rolePanel", panel: { mode, text: panel.text, roles: roles.filter(Boolean) } };
+}
+
+/**
+ * Персони: від чийого імені провіжн публікує текст — вебхук каналу з цим
+ * ім'ям і аватаром, створений і керований самим провіжном.
+ * @returns {Map<string, { key: string, name: string, avatar: string|null }>}
+ */
+function parsePersonas(raw, v) {
+  const personas = new Map();
+  if (raw === undefined) return personas;
+  if (!v.object(raw, "personas")) return personas;
+  for (const [key, persona] of Object.entries(raw)) {
+    if (key.startsWith("_")) continue;
+    const path = `personas.${key}`;
+    if (!v.key(key, path) || !v.object(persona, path)) continue;
+    v.fields(persona, FIELDS.persona, path);
+    const name = typeof persona.name === "string" ? persona.name.trim() : "";
+    if (!name || name.length > 80) v.error(`${path}.name`, "must be non-empty text up to 80 characters");
+    else if (WEBHOOK_NAME_BANNED.some((word) => name.toLowerCase().includes(word))) {
+      v.error(`${path}.name`, `Discord refuses webhook names containing ${WEBHOOK_NAME_BANNED.join(" or ")}`);
+    }
+    let avatar = null;
+    if (persona.avatar !== undefined) {
+      if (typeof persona.avatar === "string" && AVATAR_RE.test(persona.avatar)) avatar = persona.avatar;
+      else v.error(`${path}.avatar`, "must be a .png, .jpg, .webp or .gif path inside src/config/discordapp/messages/");
+    }
+    personas.set(key, { key, name, avatar });
+  }
+  return personas;
 }
 
 function parseEmbed(embed, path, v) {

@@ -328,22 +328,39 @@ async function applyAutomodOp(op, { guild, plan, store }) {
  * місці. Payload рендериться тут наново: у цій фазі ролі вже існують, тож
  * кнопки панелей мають справжні id.
  */
-async function applyMessageOp(op, { guild, plan, store }) {
+async function applyMessageOp(op, { guild, desired, plan, store }) {
   const channelId = plan.context.channelIds.get(op.spec.channelKey);
   const channel = channelId && guild.channels.cache.get(channelId);
   if (!channel) throw new Error(`channel "${op.spec.channelKey}" does not exist — it failed to create`);
 
   const { payload, pending } = renderMessage(op.spec, plan.context);
-  if (pending.length) throw new Error(`role(s) ${pending.join(", ")} do not exist — they failed to create`);
-  const extra = { content_hash: hashPayload(payload), parent_id: channelId };
+  if (pending.length) throw new Error(`${pending.join(", ")} do not exist — they failed to create`);
+  const extra = { content_hash: hashPayload(payload, op.spec.as), parent_id: channelId };
+  const body = { ...payload, allowedMentions: NO_MENTIONS };
+  // Від імені персони — через вебхук каналу; інакше — бот.
+  const author = op.spec.as ? await personaWebhook(channel, desired.personas.get(op.spec.as)) : null;
 
   if (op.op === "edit") {
-    await channel.messages.edit(op.id, { ...payload, allowedMentions: NO_MENTIONS });
+    if (author) await author.editMessage(op.id, body);
+    else await channel.messages.edit(op.id, body);
     await store.remember(guild.id, "message", op.key, op.id, extra);
     return;
   }
-  const message = await channel.send({ ...payload, allowedMentions: NO_MENTIONS });
+  const message = author ? await author.send(body) : await channel.send(body);
   await store.remember(guild.id, "message", op.key, message.id, extra);
+}
+
+/**
+ * Вебхук персони в каналі: наш (створений цим ботом) з її ім'ям, або новий.
+ * Токен наших вебхуків Discord віддає ботові сам, тож його ніде не зберігаємо.
+ * Перейменована в конфігу персона отримає новий вебхук, а старі пости
+ * лишаться за старим — редагувати їх зможе лише він.
+ */
+async function personaWebhook(channel, persona) {
+  const hooks = await channel.fetchWebhooks();
+  const ours = hooks.find((hook) => hook.owner?.id === channel.client.user.id && hook.name === persona.name && hook.token);
+  if (ours) return ours;
+  return channel.createWebhook({ name: persona.name, avatar: persona.avatarData ?? null, reason: REASON });
 }
 
 // ── Стан ───────────────────────────────────────────────────────────────────

@@ -82,6 +82,22 @@ export async function resolveServerConfig(guildId, name = null) {
 }
 
 /**
+ * Двійковий файл (аватар персони) з src/config/discordapp/messages/.
+ * @throws {Error} Людський текст: файлу немає.
+ */
+export async function loadMessageAsset(file) {
+  const fullPath = path.resolve(DISCORD_MESSAGES_DIR, file);
+  if (!fullPath.startsWith(path.resolve(DISCORD_MESSAGES_DIR) + path.sep)) {
+    throw new Error(`${file} is outside the messages folder`);
+  }
+  try {
+    return await fs.readFile(fullPath);
+  } catch {
+    throw new Error("there is no messages/" + file);
+  }
+}
+
+/**
  * Текст повідомлення з src/config/discordapp/messages/. Шлях уже перевірив
  * schema.js; тут — ще раз, що він не вийшов за теку.
  * @throws {Error} Людський текст: файлу немає.

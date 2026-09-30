@@ -104,15 +104,16 @@ async function automodRules(guild) {
   }));
 }
 
-/** Керовані повідомлення, які ще є в Discord: [{ id, channelId }]. */
+/** Керовані повідомлення, які ще є в Discord: [{ id, channelId, webhookId }]. */
 async function existingMessages(channels, state) {
   const found = [];
   for (const row of state.filter((r) => r.kind === "message" && r.parent_id)) {
     const channel = channels.get(row.parent_id);
     if (!channel?.messages) continue;
     try {
-      await channel.messages.fetch({ message: row.discord_id, force: true });
-      found.push({ id: row.discord_id, channelId: row.parent_id });
+      const message = await channel.messages.fetch({ message: row.discord_id, force: true });
+      // webhookId — чи опублікував його вебхук (персона), чи сам бот.
+      found.push({ id: row.discord_id, channelId: row.parent_id, webhookId: message.webhookId ?? null });
     } catch (error) {
       // Лише «такого повідомлення немає» означає, що його видалили вручну, —
       // тоді planner запропонує опублікувати знову. Мережевий збій чи брак

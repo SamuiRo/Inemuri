@@ -259,6 +259,27 @@ messages, role panels, AutoMod rules — is described in
   Text over Discord's limit (2000, or 4096 in an embed) is a config error
   before anything is read from the server. Provisioned messages never ping:
   `@everyone` in a rules text is text.
+- **Several embeds, links, personas** (v4.42.0):
+  - In an embed message, a line `---` starts the next embed (up to 10, 6000
+    characters in all), and a first line `# Title` becomes that embed's
+    title. One message then carries a stack of small embeds, each with its
+    own side bar.
+  - `{{#channel-key}}` and `{{@role-key}}` in a text become `<#id>` and
+    `<@&id>` at apply, so a rename or re-creation never breaks a link. A key
+    the config does not have is a config error; a resource created in the
+    same apply is linked once it exists. Limits count a link at its resolved
+    length.
+  - `"personas": { "sekai": { "name": "Sekai", "avatar": "folder/sekai.png" } }`
+    at the root, and `"as": "sekai"` on a text message, post it through a
+    webhook with that name and avatar instead of as the bot. Provisioning
+    creates the webhook in the channel itself and finds it again by owner and
+    name (Discord returns the token of the bot's own webhooks), so there is
+    nothing to set up and no secret to keep. Role panels stay with the bot:
+    their buttons are the bot's interactions. A message whose author changes
+    (bot ↔ persona) is posted anew — Discord does not let one author edit the
+    other's message (50005, checked live) — and the old copy is left for a
+    human to delete. Renaming a persona gives it a new webhook; messages of
+    the old one can then only be reposted.
 - `"requires": "community"` on a resource skips it on a non-Community server.
   Without the flag, a Community-only resource (announcement channels, rules and
   updates channels, onboarding) on a plain server is a **plan error** with the

@@ -7,6 +7,32 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.42.0] - 2026-09-30
+
+### Added
+- **Provisioning messages: several embeds, links by key, personas.** For the
+  the operator's server texts, which are posted by "Sekai" as a stack of small
+  embeds with links to channels.
+  - `---` splits an embed message into up to 10 embeds; a first line
+    `# Title` is the embed's title. Limits (10 embeds, 6000 in total, 4096
+    each, 256 per title) are checked before anything is read from Discord.
+  - `{{#channel-key}}` / `{{@role-key}}` resolve to mentions at apply. Unknown
+    keys are config errors.
+  - `personas` + `"as"` post a text through a webhook the bot creates and owns
+    in that channel, with the persona's name and avatar; edits go through the
+    same webhook. `readGuild` now records whether a managed message came from
+    a webhook, and a change of author is planned as a new post, because
+    Discord refuses cross-author edits (verified live: 50005).
+  - The author is part of the message hash.
+- Tests: embed splitting, link resolution, body limits, persona schema
+  checks, and an apply run with a fake webhook (post, edit in place, author
+  change).
+
+### Verified
+- Live on the test server: the bot finds its own webhook with its token via
+  `fetchWebhooks`, posts two embeds through it, edits in place, and cannot
+  edit the webhook's message as the bot.
+
 ## [4.41.0] - 2026-09-30
 
 ### Added

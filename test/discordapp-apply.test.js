@@ -92,10 +92,34 @@ class FakeGuild {
   }
 
   textChannel(channelId) {
+    this.webhookList ??= [];
+    const hookApi = (hook) => ({
+      ...hook,
+      send: async (payload) => {
+        this.calls.push("webhook.send");
+        const message = { id: `m${this.nextId++}`, channelId, payload, webhookId: hook.id };
+        this.messageList.push(message);
+        return message;
+      },
+      editMessage: async (id, payload) => {
+        this.calls.push("webhook.edit");
+        const message = this.messageList.find((m) => m.id === id);
+        if (message.webhookId !== hook.id) throw new Error("Cannot edit a message authored by another user");
+        message.payload = payload;
+      },
+    });
     return {
+      client: { user: { id: "bot-user" } },
+      fetchWebhooks: async () => this.webhookList.filter((h) => h.channelId === channelId).map(hookApi),
+      createWebhook: async ({ name, avatar }) => {
+        this.calls.push("webhook.create");
+        const hook = { id: `w${this.nextId++}`, channelId, name, avatar, token: "t", owner: { id: "bot-user" } };
+        this.webhookList.push(hook);
+        return hookApi(hook);
+      },
       send: async (payload) => {
         this.calls.push("message.send");
-        const message = { id: `m${this.nextId++}`, channelId, payload };
+        const message = { id: `m${this.nextId++}`, channelId, payload, webhookId: null };
         this.messageList.push(message);
         return message;
       },
@@ -156,7 +180,7 @@ class FakeGuild {
       bot: { userId: "bot-user", roleId: BOT_ROLE, highestPosition: this.roleList.find((r) => r.id === BOT_ROLE).position, admin: true },
       roles: this.roleList,
       channels: this.channelList,
-      messages: this.messageList.map(({ id, channelId }) => ({ id, channelId })),
+      messages: this.messageList.map(({ id, channelId, webhookId }) => ({ id, channelId, webhookId: webhookId ?? null })),
       automod: this.automodList,
       specialChannelIds: this.specialChannelIds,
     });
@@ -411,6 +435,50 @@ test("apply — messages are posted once, edited in place when the text changes,
   guild.messageList.splice(0, 1);
   const again = await remaining(guild, edited, store);
   assert.deepEqual(again.map((op) => `${op.op} ${op.key}`), ["post rules-main"]);
+});
+
+const WITH_PERSONA = {
+  archive: { key: "archive", name: "ARCHIVE" },
+  personas: { sekai: { name: "Sekai" } },
+  categories: [
+    { key: "info", name: "INFO", channels: [
+      { key: "intro", name: "intro", messages: [{ key: "welcome", file: "welcome.md", embed: { color: "#f47c9b" }, as: "sekai" }] },
+      { key: "lounge", name: "lounge" },
+    ] },
+  ],
+};
+
+test("apply — a persona posts through its own webhook, edits in place, links become channel mentions", async () => {
+  const guild = new FakeGuild();
+  const store = memoryStore();
+  const body = "# Hello\nGo to {{#lounge}}\n---\n# Rules\nBe nice";
+  const desired = desiredOf(WITH_PERSONA, { "welcome.md": body });
+  await apply(guild, desired, store);
+
+  const lounge = guild.byName("lounge");
+  const [message] = guild.messageList;
+  assert.ok(message.webhookId, "опубліковано вебхуком, не ботом");
+  assert.equal(guild.webhookList.length, 1);
+  assert.equal(guild.webhookList[0].name, "Sekai");
+  assert.deepEqual(message.payload.embeds, [
+    { title: "Hello", description: `Go to <#${lounge.id}>`, color: 0xf47c9b },
+    { title: "Rules", description: "Be nice", color: 0xf47c9b },
+  ]);
+  assert.deepEqual(await remaining(guild, desired, store), []);
+
+  const edited = desiredOf(WITH_PERSONA, { "welcome.md": body.replace("Be nice", "Be kind") });
+  await apply(guild, edited, store);
+  assert.equal(guild.messageList.length, 1, "правка — на місці");
+  assert.equal(guild.webhookList.length, 1, "той самий вебхук, не новий");
+  assert.equal(guild.messageList[0].payload.embeds[1].description, "Be kind");
+  assert.ok(guild.calls.includes("webhook.edit"));
+
+  // Автор змінився на бота — старе повідомлення чуже, тож нове.
+  const asBot = structuredClone(WITH_PERSONA);
+  delete asBot.categories[0].channels[0].messages[0].as;
+  const ops = await remaining(guild, desiredOf(asBot, { "welcome.md": body }), store);
+  assert.deepEqual(ops.map((op) => op.op), ["post"]);
+  assert.match(ops[0].changes[0], /now posted as the bot/);
 });
 
 // ── AutoMod ────────────────────────────────────────────────────────────────

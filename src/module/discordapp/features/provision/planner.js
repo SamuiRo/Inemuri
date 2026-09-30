@@ -431,7 +431,7 @@ export function channelOrderPositions(desired, current, context) {
  * перенесене в інший канал — публікується там, стара копія лишається.
  */
 function planMessages(desired, current, stateOf, context, plan) {
-  const existing = new Set((current.messages ?? []).map((message) => message.id));
+  const existing = new Map((current.messages ?? []).map((message) => [message.id, message]));
   const skippedChannels = new Set(plan.ops.filter((op) => op.op === "skip").map((op) => op.key));
   const wanted = new Set(desired.messages.map((message) => message.key));
   const channelName = (key) => desired.channels.find((channel) => channel.key === key)?.name ?? key;
@@ -444,11 +444,14 @@ function planMessages(desired, current, stateOf, context, plan) {
       continue;
     }
     const { payload, pending } = renderMessage(message, context);
-    const hash = pending.length ? null : hashPayload(payload);
+    const hash = pending.length ? null : hashPayload(payload, message.as);
     const channelId = context.channelIds.get(message.channelKey) ?? null;
     const saved = stateOf.get("message", message.key);
     const base = { phase: "messages", kind: "message", key: message.key, name: message.key, channel: channelName(message.channelKey), spec: message };
-    const changes = pending.length ? [`buttons for ${pending.map((key) => `@${context.roleNames.get(key)}`).join(", ")} once the roles exist`] : [];
+    const changes = !pending.length ? []
+      : message.kind === "rolePanel" ? [`buttons for ${pending.map((key) => `@${context.roleNames.get(key)}`).join(", ")} once the roles exist`]
+      : [`links ${pending.map((link) => `{{${link}}}`).join(", ")} filled in once those exist`];
+    const author = message.as ? desired.personas.get(message.as).name : "the bot";
 
     if (!saved) {
       plan.ops.push({ ...base, op: "post", changes });
@@ -456,6 +459,9 @@ function planMessages(desired, current, stateOf, context, plan) {
       plan.ops.push({ ...base, op: "post", changes: ["the posted copy was deleted — posting it again", ...changes] });
     } else if (channelId && saved.parent_id !== channelId) {
       plan.ops.push({ ...base, op: "post", changes: ["moved to another channel — the old copy stays where it is", ...changes] });
+    } else if (Boolean(message.as) !== Boolean(existing.get(saved.discord_id).webhookId)) {
+      // Чуже повідомлення не редагується: бот не править пост вебхука, і навпаки.
+      plan.ops.push({ ...base, op: "post", changes: [`now posted as ${author} — the old copy stays where it is; delete it by hand`, ...changes] });
     } else if (hash !== saved.content_hash) {
       plan.ops.push({ ...base, op: "edit", id: saved.discord_id, changes: changes.length ? changes : [message.kind === "rolePanel" ? "panel" : `text of ${message.file}`] });
     }

@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { loadMessageBody, resolveServerConfig } from "./configStore.js";
+import { loadMessageAsset, loadMessageBody, resolveServerConfig } from "./configStore.js";
 import { exportConfig } from "./exporter.js";
 import { DISCORD_EXPORT_DIR } from "../../../../config/app.config.js";
 import { bodyProblem } from "./messages.js";
@@ -40,6 +40,18 @@ export async function preparePlan(guild, configName = null, { loadState = (id) =
  */
 async function attachBodies(desired) {
   const errors = [];
+  const known = {
+    channels: new Set(desired.channels.map((channel) => channel.key)),
+    roles: new Set(desired.roles.map((role) => role.key)),
+  };
+  for (const persona of desired.personas.values()) {
+    if (!persona.avatar) continue;
+    try {
+      persona.avatarData = await loadMessageAsset(persona.avatar);
+    } catch (error) {
+      errors.push(`persona "${persona.key}": ${error.message}`);
+    }
+  }
   for (const message of desired.messages.filter((m) => m.kind === "text")) {
     try {
       message.body = await loadMessageBody(message.file);
@@ -47,7 +59,7 @@ async function attachBodies(desired) {
       errors.push(`message "${message.key}": ${error.message}`);
       continue;
     }
-    const problem = bodyProblem(message);
+    const problem = bodyProblem(message, known);
     if (problem) errors.push(`message "${message.key}": ${problem}`);
   }
   return errors;

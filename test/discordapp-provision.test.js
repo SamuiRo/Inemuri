@@ -15,6 +15,7 @@ import {
 } from "../src/module/discordapp/features/provision/planner.js";
 import { finalOverwrites, managedTargetIds, resolveOverwrites } from "../src/module/discordapp/features/provision/overwrites.js";
 import { formatPlan } from "../src/module/discordapp/features/provision/formatPlan.js";
+import { bodyProblem, resolveLinks, splitEmbeds } from "../src/module/discordapp/features/provision/messages.js";
 import { resolveServerConfig } from "../src/module/discordapp/features/provision/configStore.js";
 import { textReply } from "../src/module/discordapp/reply.js";
 import { DISCORD_SERVERS_DIR } from "../src/config/app.config.js";
@@ -240,6 +241,40 @@ test("planner — adopt by id: a missing id, a wrong kind or a managed role is a
   assert.match(all, /#talk: adopt id .* wrong kind/);
   assert.match(all, /Role "Bot": adopt id .* managed by an integration/);
   assert.ok(!plan.ops.some((op) => op.op === "create" && ["gone", "talk", "bot"].includes(op.key)));
+});
+
+test("messages — --- splits embeds, a leading # line is the title, links resolve by key", () => {
+  assert.deepEqual(splitEmbeds("# A\none\n---\ntwo\n---\n"), [{ title: "A", description: "one" }, { description: "two" }]);
+  assert.deepEqual(splitEmbeds("## not a title\ntext"), [{ description: "## not a title\ntext" }], "## лишається заголовком Markdown");
+  const context = { channelIds: new Map([["lounge", "123"]]), roleIds: new Map([["herald", "456"]]) };
+  assert.deepEqual(resolveLinks("{{#lounge}} {{@herald}} {{#later}}", context), { text: "<#123> <@&456> {{#later}}", pending: ["#later"] });
+});
+
+test("messages — body limits: unknown link keys, more than 10 embeds, over 6000 characters in total", () => {
+  const known = { channels: new Set(["lounge"]), roles: new Set() };
+  const text = (body, embed = {}) => bodyProblem({ file: "x.md", body, embed }, known);
+  assert.equal(text("{{#lounge}}"), null);
+  assert.match(text("{{#nowhere}} {{@nobody}}"), /keys the config does not have: [{][{]#nowhere[}][}], [{][{]@nobody[}][}]/);
+  assert.match(text(Array(11).fill("x").join("\n---\n")), /11 embeds/);
+  assert.match(text(Array(2).fill("y".repeat(3500)).join("\n---\n")), /7000 characters across its embeds/);
+  assert.match(text("# Title only"), /has a title but no text/);
+  assert.equal(bodyProblem({ file: "x.md", body: "z".repeat(1990) + "{{#lounge}}", embed: null }, known) !== null, true, "посилання рахується за довжиною після підстановки");
+});
+
+test("schema — personas: name checks, as only on text messages, unknown persona", () => {
+  const { errors } = validateServerConfig(config({
+    personas: { sekai: { name: "Sekai", avatar: "sekai.png" }, bad: { name: "Discord Helper" }, pic: { name: "P", avatar: "../x.png" } },
+    channels: [{ key: "intro", name: "intro", messages: [
+      { key: "a", file: "a.md", as: "sekai" },
+      { key: "b", file: "b.md", as: "ghost" },
+      { key: "c", rolePanel: { roles: ["admin"] }, as: "sekai" },
+    ] }],
+  }));
+  assert.equal(errors.length, 4, errors.join(" | "));
+  assert.ok(errors.some((e) => e.startsWith("personas.bad.name")));
+  assert.ok(errors.some((e) => e.startsWith("personas.pic.avatar")));
+  assert.ok(errors.some((e) => /unknown persona "ghost"/.test(e)));
+  assert.ok(errors.some((e) => /role panel is posted by the bot/.test(e)));
 });
 
 test("schema — adopt must be a snowflake and unique", () => {
