@@ -10,9 +10,11 @@ import { print } from "./shared/utils.js";
 import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/theflow/FlowHealth.js";
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
+import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
+  FLOW_DELIVERY, ROUTING,
 } from "./config/app.config.js";
 
 const program = new Command();
@@ -659,6 +661,56 @@ flow
       process.stdout.write(res.text + "\n");
       await database.disconnect();
       if (res.error) process.exitCode = 1;
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+flow
+  .command("preview")
+  .description("Show what delivery would send and where (ROADMAP 5.4) — sends nothing")
+  .option("--id <postId>", "preview this post (any status the stage would take)")
+  .option("--limit <n>", "how many waiting posts to preview", "3")
+  .option("--ignore-age", "preview posts older than FLOW_DELIVERY_MAX_AGE_HOURS too")
+  .option("--platform <p>", "only telegram or discord")
+  .action(async (options) => {
+    try {
+      await database.connect();
+      const stage = new FlowDelivery({
+        route: async () => [],
+        routing: ROUTING,
+        dedupEnabled: DEDUP.enabled,
+        maxAgeHours: options.ignoreAge ? Number.MAX_SAFE_INTEGER / 3_600_000 : FLOW_DELIVERY.maxAgeHours,
+      });
+      const posts = options.id
+        ? [await Post.findByPk(Number(options.id))].filter(Boolean)
+        : await stage.candidates(Math.max(1, Number(options.limit) || 3));
+      if (posts.length === 0) print("Nothing waiting for delivery.", "info");
+
+      print(`delivery is ${FLOW_DELIVERY.enabled ? "ON" : "OFF (shadow mode)"}`, "system");
+      for (const post of posts) {
+        const p = await stage.plan(post);
+        const head = `#${post.id} ${post.status} ${post.topic ?? "-"}/${post.signal_type ?? "-"}`;
+        if (p.skip) {
+          print(`${head} — skipped: ${p.skip}${p.resolved ? ` (${p.resolved.outcome}, ${p.resolved.reason})` : ""}`, "warning");
+          continue;
+        }
+        print(`${head} → ${p.resolved.outcome} (${p.resolved.reason})`, "system");
+        for (const m of p.messages) {
+          if (options.platform && m.platform !== options.platform) continue;
+          const r = m.rendered;
+          process.stdout.write(`\n── ${m.platform} → ${m.ids.join(", ")}\n`);
+          if (m.platform === "telegram") {
+            process.stdout.write(`${r.header}\n${r.body}\n`);
+            process.stdout.write(`   [${r.entities.length} entities, ${r.header.length + 1 + r.body.length}/4096 chars]\n`);
+          } else {
+            process.stdout.write(`author: ${r.author}\n${r.description}\nfooter: ${r.footer ?? ""} · color #${r.color.toString(16)} · url ${r.url ?? "-"}\n`);
+          }
+        }
+        process.stdout.write("\n");
+      }
+      await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
       process.exit(1);

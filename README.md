@@ -439,6 +439,7 @@ node src/cli.js flow dedup --pairs 30
 node src/cli.js flow dedup --reset --run
 node src/cli.js flow search hamster airdrop
 node src/cli.js flow search --semantic "which teams made the playoffs" --topic steam
+node src/cli.js flow preview --ignore-age --limit 5
 ```
 
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
@@ -452,6 +453,12 @@ of them carry `post_feedback` labels for the old verdict.
 embedding call — a query in one language finds posts in another. Filters:
 `--topic`, `--signal`, `--days`, `--source`, `--limit`. The same search is
 the `/search` slash command in discordapp.
+
+`flow preview` shows what TheFlow delivery would send, where, rendered for
+each platform — without sending. Delivery itself is off until
+`FLOW_DELIVERY_ENABLED=true`; posts older than `FLOW_DELIVERY_MAX_AGE_HOURS`
+(24) are never sent. `--ignore-age` previews older posts too, for working on
+the template.
 
 `flow dedup` reports deduplication (ROADMAP §6): per day and per signal how
 many posts started a new event, joined one by tier 1 (exact code, link or

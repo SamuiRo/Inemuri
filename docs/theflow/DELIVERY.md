@@ -121,6 +121,32 @@ Whatever the final wording, these are fixed by other documents:
 | Additions | At most three shown, then a counter. `corrects` and `denies` are exempt | DEDUPLICATION.md |
 | Diagnostics | `confidence`, `model_used` and `taxonomy_version` render **only** into `#unsorted`. That channel exists to be debugged; everywhere else they are noise | ROADMAP.md 13.4 |
 
+## Implementation (v4.47.0)
+
+- `src/module/theflow/delivery/render.js` — `render({ post, cluster, members,
+  source, resolved, link, platform })`, pure. Every wording is in the one
+  `TEMPLATE` object at the top: header, lead, unverified line, "also reported
+  by N", additions and their counter, correction and denial banners, the
+  original-post link, diagnostics. **It is a draft**; changing the template
+  means editing that object, not the mechanism.
+- Output fits the adapters as they are. Telegram: `{ header, body, entities }`
+  — `TelegramDestination` already sends `source.name + "\n" + rawText` and
+  shifts the entities by the header, so the header goes in `source.name` and
+  the entities are relative to the body. Discord: `{ author, description,
+  footer, color, url }` — the body is `text_md` (Markdown); `DiscordDestination`
+  reads the optional `messageData.embed` for colour, footer and the author
+  link (an `embed.url` without a title is not shown).
+- Only the original is ever cut. Lead and banners go above it, the mandatory
+  lines below it, and truncation leaves both intact — a denial survives any
+  length. Entities are clipped to the text they index even without a cut:
+  offsets index the text before replacements, and an entity past the end is
+  refused by Telegram. A cut never splits a surrogate pair.
+- `FlowDelivery.js` does the rest: selection, resolve, lazy media (types and
+  count limited before download; a media failure sends the text with the
+  error recorded), one `routeMessage` per platform, `posts.delivery` and
+  `clusters.delivered`. Edits and appends to a sent message (§6.6) are not
+  built yet.
+
 ## Testing
 
 `render()` is pure and belongs in the 2.7 test list: offset rebasing across

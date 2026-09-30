@@ -228,6 +228,13 @@ export const Post = database.sequelize.define("Post", {
     allowNull: true,
     comment: "Що цей пост додає над канонічним (DEDUPLICATION.md)",
   },
+  delivery: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment:
+      "Журнал доставки (ROADMAP §5.4–5.6): outcome, reason, куди, що надіслано, " +
+      "або чому ні. NULL = ще не оброблено. Міграція 013",
+  },
   dedup: {
     type: DataTypes.JSON,
     allowNull: true,

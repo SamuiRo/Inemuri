@@ -7,6 +7,34 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.47.0] - 2026-09-30
+
+### Added
+- **TheFlow delivery mechanism (ROADMAP §5.3–5.6, DELIVERY.md) — off by
+  default.** `render()` is pure: full re-render, segments with the body's
+  MTProto entities rebased past the lead, truncation of the original only (a
+  denial, the unverified-OCR line and "also reported by N" always survive),
+  at most three additions then a counter, diagnostics only in `#unsorted`,
+  per-platform output fitted to the existing adapters. The wording is a
+  **draft** in one `TEMPLATE` object — the final template is the operator's
+  (§5.4). `FlowDelivery` sends canonical posts that passed dedup and `failed`
+  posts (to `#unsorted`) through the unchanged `MessageRouter`, fetches media
+  lazily, sets `routed`/`unsorted`, logs to `posts.delivery` (migration
+  `013`) and appends to `clusters.delivered`. A delivered cluster is never
+  sent twice; a failed send is retried up to three times.
+- **`FLOW_DELIVERY_ENABLED`** (default `false`) — the shadow-mode switch.
+  Until the §5.1 channels exist `unsorted_destinations` is the old firehose,
+  so it stays off. **`FLOW_DELIVERY_MAX_AGE_HOURS`** (24): older posts are
+  marked `too_old` and never sent, so turning delivery on cannot dump a
+  source's history into a channel.
+- **`node src/cli.js flow preview [--id n] [--limit n] [--ignore-age]
+  [--platform p]`** — what would be sent where, rendered, without sending.
+  `--ignore-age` renders history too, for designing the template on real
+  posts.
+- `DiscordDestination` reads an optional `messageData.embed` — colour,
+  footer, author link. Classic forwarding does not set it and is unchanged.
+- **Run `npm run migrate` before starting this version** (`013`).
+
 ## [4.46.0] - 2026-09-30
 
 ### Added

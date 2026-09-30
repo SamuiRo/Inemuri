@@ -913,6 +913,25 @@ Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 �
 > result carries a `reason`. Not yet wired into a delivery path — that is 5.4.
 > 5.1 (the channels) is still the operator's and still gates enabling any of it.
 
+> **5.3–5.6 built (v4.47.0), off by default.** `src/module/theflow/delivery/`:
+> `render.js` (pure — DELIVERY.md's mechanism, with a **draft** template in
+> one `TEMPLATE` object) and `FlowDelivery.js` (selects canonical posts that
+> passed dedup, plus `failed` ones for `#unsorted`; resolve → lazy media →
+> render per platform → the existing `MessageRouter.routeMessage`, unchanged;
+> `posts.status` → `routed`/`unsorted`, `posts.delivery` log, migration `013`;
+> `clusters.delivered` appended). `FLOW_DELIVERY_ENABLED` is the shadow-mode
+> switch §3.6 deferred to here and stays `false`: until the §5.1 channels
+> exist, `unsorted_destinations` is the old firehose chat. Posts older than
+> `FLOW_DELIVERY_MAX_AGE_HOURS` (24) are never sent — marked `too_old` — so
+> switching it on cannot flood a channel with a source's history. A sent
+> cluster is never sent again. `node src/cli.js flow preview [--id] [--ignore-age]`
+> prints what would go where, and is where the template gets designed.
+> `DiscordDestination` gained optional `messageData.embed` (colour, footer,
+> author link); classic forwarding does not set it.
+>
+> **Still open:** 5.1 (channels), the final template (5.4 — the operator's),
+> 5.7 (reactions).
+
 Resolve is a pure function and is tested as one: rules in descending `priority`,
 first match wins, a single value equals a one-element array in `when`, and
 `confidence` below `flow.min_confidence` forces `#unsorted` regardless of what

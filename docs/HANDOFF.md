@@ -2,14 +2,16 @@
 
 ## Current state
 
-`v4.46.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.47.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker (ROADMAP §6; the delta call §6.6 and threshold
 calibration §6.8 are open). History search (§9.1) is built: `/search` in
-discordapp and `flow search` on the CLI. 12 migrations exist
-(`database/migrations/001`–`012`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 456 green `node --test` cases,
+discordapp and `flow search` on the CLI. The delivery mechanism (§5.3–5.6) is
+built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
+the final template exist. 13 migrations exist
+(`database/migrations/001`–`013`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 478 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -140,8 +142,13 @@ destinations is worse than not starting. A fresh clone now starts — before
    against the live session; deploy to the VPS per
    [DEPLOYMENT.md](DEPLOYMENT.md) — on an empty database run
    `npm run db:bootstrap` before `npm run migrate`.
-5. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least.
-   Resolve (§5.2) is built and waiting on them.
+5. **Create the destination channels** (ROADMAP §5.1), `#unsorted` at least,
+   and `security`. Resolve and delivery are built and waiting on them. Then:
+   put them in `routing.json` (`unsorted_destinations` off the firehose,
+   `routing` rules), design the template with
+   `node src/cli.js flow preview --ignore-age --limit 10` (the wording is the
+   `TEMPLATE` object in `src/module/theflow/delivery/render.js`), and only
+   then `FLOW_DELIVERY_ENABLED=true`. Posts older than 24 h are never sent.
 6. **Vision stays per source.** `flow.vision.enabled` belongs where
    `flow stats` shows a high "has_media & len<200" share — a channel posting
    code screenshots is the intended case — and **not** on meme-heavy ones,
@@ -167,6 +174,15 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — delivery mechanism
+
+- Built §5.3–5.6 (`v4.47.0`, migration `013` applied to the dev database):
+  pure `render()` with a draft template, `FlowDelivery` over the unchanged
+  `MessageRouter`, `flow preview`. Off by default; history never sent.
+  Previewed on real posts: 17 Telegram entities kept, Discord Markdown kept,
+  `security` red, `#unsorted` diagnostics. Not sent anywhere live — there is
+  no destination channel yet.
 
 ### 2026-09-30 — history search
 

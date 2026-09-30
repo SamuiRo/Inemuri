@@ -17,6 +17,8 @@ import VisionStage from "./module/theflow/VisionStage.js";
 import { FlowHealthMonitor, collectHealthSnapshot, primaryQuota } from "./module/theflow/FlowHealth.js";
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
+import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
+import mediaResolver from "./module/theflow/media/index.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
 import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
 import {
@@ -27,6 +29,7 @@ import {
   ENRICH_WORKER_ENABLED,
   FLOW_HEALTH,
   DEDUP,
+  FLOW_DELIVERY,
   LLM_PRIMARY,
   LLM_PROVIDERS,
   DISCORD_BOT_TOKEN,
@@ -242,6 +245,32 @@ class Inemuri {
       });
       this.flowHealth.start();
 
+      // 8b'. Доставка TheFlow (§5.4–5.6). Вимкнена, доки оператор не
+      //      ввімкне FLOW_DELIVERY_ENABLED — тіньовий режим. Відправка — через
+      //      наявний MessageRouter, медіа — через резолвер, ліниво.
+      if (FLOW_DELIVERY.enabled) {
+        const sources = new Map();
+        this.flowDelivery = new FlowDelivery({
+          route: (messageData) => this.messageRouter.routeMessage(messageData),
+          resolveMedia: (post, opts) => mediaResolver.resolve(post, opts),
+          routing: ROUTING,
+          flowFor: async (post) => {
+            if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
+            return sources.get(post.source_id)?.getFlowConfig() ?? null;
+          },
+          dedupEnabled: DEDUP.enabled,
+          maxAgeHours: FLOW_DELIVERY.maxAgeHours,
+          batchSize: FLOW_DELIVERY.batchSize,
+          maxAttempts: FLOW_DELIVERY.maxAttempts,
+          intervalMs: FLOW_DELIVERY.intervalMs,
+          log: print,
+        });
+        this.flowDelivery.start();
+        print(`TheFlow delivery ON — posts newer than ${FLOW_DELIVERY.maxAgeHours}h are sent`, "warning");
+      } else {
+        print("TheFlow delivery off (shadow mode) — FLOW_DELIVERY_ENABLED=true to send; `flow preview` to look first");
+      }
+
       // 8c. Пошук по історії (§9.1). Відповідає на запит "theflow.search" —
       //     так його питає discordapp (/search), не імпортуючи ядро (D1).
       //     Keyword працює завжди; semantic — лише коли є gateway.
@@ -285,6 +314,7 @@ class Inemuri {
         this.enrichWorker.stop();
       }
       if (this.flowHealth) this.flowHealth.stop();
+      if (this.flowDelivery) this.flowDelivery.stop();
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);
         this.visionSweepTimer = null;

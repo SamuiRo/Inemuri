@@ -270,6 +270,21 @@ export const DEDUP = {
   enabled: process.env.DEDUP_ENABLED !== "false",
 };
 
+// Доставка TheFlow (ROADMAP §5.4–5.6, DELIVERY.md). ВИМКНЕНА за замовчуванням:
+// це перемикач тіньового режиму, який ROADMAP §3.6 відклав до появи читача
+// вердиктів. Поки каналів з §5.1 немає, `unsorted_destinations` — це
+// загальний чат, і увімкнення спрямувало б туди весь потік. Перед увімкненням
+// — `node src/cli.js flow preview`.
+export const FLOW_DELIVERY = {
+  enabled: process.env.FLOW_DELIVERY_ENABLED === "true",
+  // Старші пости не надсилаються ніколи, лише позначаються too_old: корпус
+  // може бути історією каналу (пілот — травень–липень).
+  maxAgeHours: optionalNumber("FLOW_DELIVERY_MAX_AGE_HOURS", process.env.FLOW_DELIVERY_MAX_AGE_HOURS, 24),
+  intervalMs: 15_000,
+  batchSize: 5,
+  maxAttempts: 3,
+};
+
 // Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
 // хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
 // Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.

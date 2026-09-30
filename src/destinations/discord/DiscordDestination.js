@@ -230,6 +230,16 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       color:       0x5865f2,             // Discord Blurple за замовчуванням
     };
 
+    // TheFlow (docs/theflow/DELIVERY.md): render() задає колір за сигналом,
+    // footer з осями таксономії і посилання на оригінал. Класичний
+    // форвардинг `embed` не передає — для нього нічого не змінюється.
+    const flowEmbed = messageData.embed;
+    if (flowEmbed) {
+      if (flowEmbed.color != null) embedSpec.color = flowEmbed.color;
+      if (flowEmbed.footer) embedSpec.footer = flowEmbed.footer;
+      if (flowEmbed.url) embedSpec.authorUrl = flowEmbed.url;
+    }
+
     let files = [];
 
     // Обробка медіа
@@ -251,7 +261,8 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       // Попередження про oversized файли (додаємо до footer embed)
       if (mediaResult.oversizedFiles.length > 0) {
         const limitMb = (this.fileSizeLimit / (1024 * 1024)).toFixed(0);
-        embedSpec.footer = `⚠️ ${mediaResult.oversizedFiles.length} file(s) skipped — exceeds ${limitMb}MB limit`;
+        const warning = `⚠️ ${mediaResult.oversizedFiles.length} file(s) skipped — exceeds ${limitMb}MB limit`;
+        embedSpec.footer = embedSpec.footer ? `${embedSpec.footer} · ${warning}` : warning;
       }
     }
 
@@ -291,6 +302,8 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     if (spec.author) {
       embed.setAuthor({
         name: this._truncate(spec.author, this.limits.embedAuthorLength),
+        // Посилання на автора видно й без title — на відміну від embed.url.
+        ...(spec.authorUrl ? { url: spec.authorUrl } : {}),
       });
     }
 

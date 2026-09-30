@@ -68,6 +68,7 @@ The central table. One row per incoming message.
 | `cluster_id` | INTEGER | NULL means not yet assigned to an event |
 | `link_role` | STRING | `canonical` \| `linked` \| `duplicate` \| `correction` |
 | `adds` | JSON | What this post adds over the canonical one (see DEDUPLICATION.md) |
+| `delivery` | JSON | The delivery log: `outcome` (`routed`/`unsorted`), resolve's `reason` and `rule`, `delivered[]` identities, `partial`, `media_error`; or `skipped` (`too_old`, `no_destinations`, `cluster_already_delivered`); or `failed` with `attempts` and `error`. NULL = not handled. Migration `013` |
 | `dedup` | JSON | The deduplication decision log: `decision` (`new`/`join`), `tier`, `s` (nearest other-source similarity), `s_same_source`, `nearest_post_id`, `key` (tier 1), `gray`, `gate` (richness and new entities), `cluster_id`, `t`, `at`; `{error}` if the stage failed on the post. NULL = not deduplicated yet. Migration `011` |
 | `status` | STRING | See the status table below |
 | `model_used` | STRING | Which model produced the verdict. **Required** |
@@ -222,6 +223,10 @@ triggers `posts_fts_ai` / `_ad` / `_au` (the update trigger fires only on
 those three columns), and builds the index from existing rows. Used by history
 search (ROADMAP §9.1). `db:bootstrap` does not create it — `sync()` knows only
 models — so a fresh install gets it from `npm run migrate`.
+
+### `013-post-delivery`
+
+Adds `posts.delivery` (JSON), the delivery log. Plain `ADD COLUMN`.
 
 ### Fresh installs
 
