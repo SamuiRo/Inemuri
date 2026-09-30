@@ -79,7 +79,11 @@ function planRoles(desired, current, stateOf, context, plan) {
     let have = saved && byId.get(saved.discord_id);
     let op = "update";
 
-    if (!have) {
+    if (!have && role.adopt) {
+      have = adoptById(byId, claimed, role.adopt, `Role "${role.name}"`, plan, (r) => !r.managed);
+      if (!have) continue;
+      op = "adopt";
+    } else if (!have) {
       const byName = current.roles.filter((r) => !r.managed && r.name === role.name && !claimed.has(r.id));
       if (byName.length > 1) {
         plan.errors.push(`${byName.length} roles are named "${role.name}" — rename all but one so the config can adopt it.`);
@@ -126,6 +130,21 @@ function diffRole(want, have) {
   return changes;
 }
 
+/**
+ * Явне `adopt`: прийняти ресурс за id, а не за назвою. Немає такого, уже
+ * зайнятий іншим ключем або не того виду — помилка плану, не тихе створення
+ * нового поруч зі старим.
+ * @returns {object|null}
+ */
+function adoptById(byId, claimed, id, label, plan, fits = () => true) {
+  const have = byId.get(id);
+  if (!have) plan.errors.push(`${label}: adopt id ${id} is not on the server (or is not of this kind).`);
+  else if (claimed.has(have.id)) plan.errors.push(`${label}: adopt id ${id} already belongs to another config entry.`);
+  else if (!fits(have)) plan.errors.push(`${label}: adopt id ${id} ("${have.name}") cannot be adopted as this — wrong kind or managed by an integration.`);
+  else return have;
+  return null;
+}
+
 // ── Категорії ──────────────────────────────────────────────────────────────
 
 function planCategories(desired, current, stateOf, context, plan) {
@@ -143,7 +162,11 @@ function planCategories(desired, current, stateOf, context, plan) {
     const saved = stateOf.get("category", category.key);
     let have = saved && byId.get(saved.discord_id);
     let op = "update";
-    if (!have) {
+    if (!have && category.adopt) {
+      have = adoptById(byId, claimed, category.adopt, `Category "${category.name}"`, plan);
+      if (!have) continue;
+      op = "adopt";
+    } else if (!have) {
       const byName = categories.filter((c) => c.name === category.name && !claimed.has(c.id));
       if (byName.length > 1) {
         plan.errors.push(`${byName.length} categories are named "${category.name}" — rename all but one.`);
@@ -208,7 +231,11 @@ function planChannels(desired, current, stateOf, context, plan) {
     let have = saved && byId.get(saved.discord_id);
     let op = saved?.archived_at && have ? "restore" : "update";
 
-    if (!have) {
+    if (!have && channel.adopt) {
+      have = adoptById(byId, claimed, channel.adopt, `#${channel.name}`, plan, (c) => compatibleKinds(c.kind, channel.kind));
+      if (!have) continue;
+      op = "adopt";
+    } else if (!have) {
       const candidates = channels.filter((c) => c.name === channel.name && compatibleKinds(c.kind, channel.kind) && !claimed.has(c.id));
       const preferred = candidates.filter((c) => c.parentId === parentId);
       const pool = preferred.length ? preferred : candidates;

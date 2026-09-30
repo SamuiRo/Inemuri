@@ -295,6 +295,16 @@ content_hash, archived_at, archived_from)`.
 - The first plan on an existing server **imports**: resources matching config
   entries by name are adopted into state (`⇄ adopt`). Two resources with the
   same name are a plan error — adoption never guesses.
+- **`"adopt": "<id>"`** on a role, category, channel or the archive block
+  adopts that exact resource instead of matching by name (v4.41.0). It is what
+  makes a rebrand possible in one pass: the entry carries its *new* name and
+  the id of the old resource, so the first apply renames it with its history
+  instead of creating an empty twin and archiving the original. It also
+  resolves same-named resources (a server whose categories all share one
+  decorative name). A missing id, an id already taken by another entry, a
+  wrong channel kind or an integration-managed role is a plan error, never a
+  silent create. Used only while the key has no state; once adopted, the id in
+  the config is redundant and may be left or removed.
 
 ### Plan and apply
 

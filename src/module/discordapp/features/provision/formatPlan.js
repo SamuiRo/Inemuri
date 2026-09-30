@@ -94,7 +94,7 @@ function formatOp(op) {
   head += NOTE[op.op] ?? "";
 
   const changes = (op.changes ?? []).map((change) => `    · ${change}`);
-  if (op.op === "adopt" && !changes.length) changes.push("    · matched by name, already as configured");
+  if (op.op === "adopt" && !changes.length) changes.push(`    · matched by ${op.spec?.adopt ? "id" : "name"}, already as configured`);
   return [head, ...changes];
 }
 

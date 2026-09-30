@@ -190,6 +190,70 @@ test("planner — with state, a rename in the config is an update, not a new cha
   assert.deepEqual(plan.ops[0].changes, ['name "general" → "lobby"']);
 });
 
+test("planner — adopt by id: first import takes a renamed channel, category and role, and two same-named categories", () => {
+  const K1 = "10000000000000001", K2 = "10000000000000002", C1 = "10000000000000003", R1 = "10000000000000004";
+  const desired = desiredOf(config({
+    roles: [{ key: "admin", name: "Admin" }, { key: "mod", name: "Wardens", adopt: R1 }],
+    categories: [
+      { key: "hearth", name: "HEARTH", adopt: K2, channels: [{ key: "lounge", name: "・lounge", adopt: C1 }] },
+    ],
+  }));
+  const current = server({
+    roles: [role("1", "Admin", 10), role(R1, "Rune Warders", 9)],
+    channels: [
+      channel(K1, "DECOR", "category"),
+      channel(K2, "DECOR", "category"),
+      channel(C1, "-lounge", "text", { parentId: K1 }),
+      channel("a1", "ARCHIVE", "category"),
+    ],
+  });
+  const plan = planProvision(desired, current, []);
+  assert.deepEqual(plan.errors, []);
+  const byKey = (key) => plan.ops.find((op) => op.key === key && op.phase !== "order");
+  assert.equal(byKey("hearth").op, "adopt");
+  assert.equal(byKey("hearth").id, K2);
+  assert.deepEqual(byKey("hearth").changes.filter((c) => c.startsWith("name")), ['name "DECOR" → "HEARTH"']);
+  assert.equal(byKey("lounge").op, "adopt");
+  assert.equal(byKey("lounge").id, C1);
+  assert.ok(byKey("lounge").changes.includes('name "-lounge" → "・lounge"'));
+  assert.equal(byKey("mod").id, R1);
+  assert.ok(!plan.ops.some((op) => op.op === "create"));
+});
+
+test("planner — adopt by id: a missing id, a wrong kind or a managed role is an error, never a silent create", () => {
+  const C1 = "10000000000000003", R1 = "10000000000000004", GONE = "10000000000000009";
+  const desired = desiredOf(config({
+    roles: [{ key: "admin", name: "Admin" }, { key: "bot", name: "Bot", adopt: R1 }],
+    channels: [
+      { key: "gone", name: "gone", adopt: GONE },
+      { key: "talk", name: "talk", type: "voice", adopt: C1 },
+    ],
+  }));
+  const current = server({
+    roles: [role("1", "Admin", 10), role(R1, "Bot", 9, { managed: true })],
+    channels: [channel(C1, "general"), channel("a1", "ARCHIVE", "category")],
+  });
+  const plan = planProvision(desired, current, []);
+  assert.equal(plan.errors.length, 3);
+  const all = plan.errors.join(" | ");
+  assert.match(all, /#gone: adopt id 10000000000000009 is not on the server/);
+  assert.match(all, /#talk: adopt id .* wrong kind/);
+  assert.match(all, /Role "Bot": adopt id .* managed by an integration/);
+  assert.ok(!plan.ops.some((op) => op.op === "create" && ["gone", "talk", "bot"].includes(op.key)));
+});
+
+test("schema — adopt must be a snowflake and unique", () => {
+  const { errors } = validateServerConfig(config({
+    channels: [
+      { key: "a", name: "a", adopt: "10000000000000003" },
+      { key: "b", name: "b", adopt: "10000000000000003" },
+      { key: "c", name: "c", adopt: 123 },
+    ],
+  }));
+  assert.ok(errors.some((e) => /duplicate adopt id "10000000000000003"/.test(e)));
+  assert.ok(errors.some((e) => /channels\[2\]\.adopt: must be the id/.test(e)));
+});
+
 test("planner — a managed channel removed from the config is archived, never deleted", () => {
   const desired = desiredOf(config());
   const current = server({

@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.41.0] - 2026-09-30
+
+### Added
+- **Provisioning: `"adopt": "<id>"`** on roles, categories, channels and the
+  archive block. The first import matched existing resources by name only, so
+  a config that renames things — the whole point of rebranding an existing
+  server — would create empty new channels and archive the originals with
+  their history. With `adopt` the entry names the old resource by id and the
+  first apply renames it in place. It also resolves same-named categories,
+  which the name match refuses. Missing, already-claimed, wrong-kind or
+  integration-managed targets are plan errors. Driven by the Plane of
+  operator-server rebrand. Tests cover adoption across rename and duplicate names,
+  every error path, and the schema checks.
+
+### Verified
+- Discord channel names, checked live on the test server: every Unicode space
+  (NBSP, en/em, thin, ideographic and others) in a text or forum channel name
+  becomes `-`; narrow NBSP, the braille blank, Hangul fillers and U+2062 are
+  stripped; `_`, `・` and `·` are kept. `normalizeChannelName` already matches
+  this, so no change was needed there.
+
 ## [4.40.3] - 2026-09-30
 
 ### Fixed

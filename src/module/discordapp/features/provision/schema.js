@@ -47,10 +47,10 @@ const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
 
 const FIELDS = {
   root: ["guildId", "archive", "archiveUnmanaged", "presets", "roles", "categories", "channels", "automod"],
-  archive: ["key", "name", "roles"],
-  role: ["key", "name", "color", "hoist", "mentionable", "permissions"],
-  category: ["key", "name", "overwrites", "requires", "optIn", "channels"],
-  channel: ["key", "name", "type", "topic", "nsfw", "slowmode", "overwrites", "requires", "messages"],
+  archive: ["key", "name", "roles", "adopt"],
+  role: ["key", "name", "color", "hoist", "mentionable", "permissions", "adopt"],
+  category: ["key", "name", "overwrites", "requires", "optIn", "channels", "adopt"],
+  channel: ["key", "name", "type", "topic", "nsfw", "slowmode", "overwrites", "requires", "messages", "adopt"],
   overwrite: ["allow", "deny"],
   optIn: ["role", "panel"],
   message: ["key", "file", "embed", "rolePanel"],
@@ -84,6 +84,7 @@ export function validateServerConfig(raw) {
   if (roles.length > MAX_ROLES) v.error("roles", `Discord allows at most ${MAX_ROLES} roles`);
   const roleKeys = new Set(roles.map((role) => role.key));
   v.unique(roles.map((role) => role.key), "roles", "role key");
+  v.unique(roles.map((role) => role.adopt), "roles", "adopt id");
 
   const archive = parseArchive(raw.archive, roleKeys, v);
   // Усе, чого немає в конфігу, — в архів (канали) або приховати (категорії).
@@ -109,6 +110,7 @@ export function validateServerConfig(raw) {
       name: v.name(category.name, `${path}.name`),
       overwrites: withBot(overwrites),
       requires: parseRequires(category.requires, `${path}.requires`, v),
+      adopt: v.adopt(category.adopt, `${path}.adopt`),
       isArchive: false,
     };
     categories.push(parsed);
@@ -132,6 +134,7 @@ export function validateServerConfig(raw) {
 
   if (archive) categories.push(archive.category);
   v.unique([...categories, ...channels].map((item) => item?.key), "categories/channels", "key");
+  v.unique([...categories, ...channels].map((item) => item?.adopt), "categories/channels", "adopt id");
   v.unique(messages.map((message) => message.key), "messages", "message key");
   attachOptInsToPanels(optIns, messages, v);
   checkPanelRoles(messages, roles, v);
@@ -163,7 +166,12 @@ export function normalizeChannelName(name, kind) {
 function parseRole(role, path, v) {
   if (!v.object(role, path)) return { key: null };
   v.fields(role, FIELDS.role, path);
-  const parsed = { key: v.key(role.key, `${path}.key`), name: v.name(role.name, `${path}.name`), permissions: null };
+  const parsed = {
+    key: v.key(role.key, `${path}.key`),
+    name: v.name(role.name, `${path}.name`),
+    permissions: null,
+    adopt: v.adopt(role.adopt, `${path}.adopt`),
+  };
 
   if (role.color !== undefined) {
     if (COLOR_RE.test(String(role.color))) parsed.color = parseInt(role.color.slice(1), 16);
@@ -201,6 +209,7 @@ function parseArchive(archive, roleKeys, v) {
       name: v.name(archive.name, "archive.name"),
       overwrites: withBot(overwrites),
       requires: null,
+      adopt: v.adopt(archive.adopt, "archive.adopt"),
       isArchive: true,
     },
   };
@@ -225,6 +234,7 @@ function parseChannel(channel, category, categoryOverwrites, presets, roleKeys, 
     // категорійні плюс свої, де свої перемагають для тієї ж цілі.
     overwrites: withBot(mergeOverwrites(categoryOverwrites, own)),
     requires: parseRequires(channel.requires, `${path}.requires`, v) ?? category?.requires ?? null,
+    adopt: v.adopt(channel.adopt, `${path}.adopt`),
   };
 
   if (channel.topic !== undefined) {
@@ -527,6 +537,17 @@ class Validator {
   name(value, path) {
     if (typeof value === "string" && value.trim() && value.length <= 100) return value;
     this.error(path, "must be non-empty text up to 100 characters");
+    return null;
+  }
+
+  /**
+   * Необов'язковий id наявного ресурсу, який прийняти замість пошуку за назвою
+   * (перейменування під час першого імпорту, однакові назви).
+   */
+  adopt(value, path) {
+    if (value === undefined) return null;
+    if (typeof value === "string" && SNOWFLAKE_RE.test(value)) return value;
+    this.error(path, "must be the id of an existing resource, as a string of 17–20 digits");
     return null;
   }
 
