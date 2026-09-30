@@ -484,6 +484,7 @@ node src/cli.js flow dedup --reset --run
 node src/cli.js flow search hamster airdrop
 node src/cli.js flow search --semantic "which teams made the playoffs" --topic steam
 node src/cli.js flow preview --ignore-age --limit 5
+node src/cli.js flow digest --hours 24
 ```
 
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
@@ -498,6 +499,16 @@ of them carry `post_feedback` labels for the old verdict.
 embedding call — a query in one language finds posts in another. Filters:
 `--topic`, `--signal`, `--days`, `--source`, `--limit`. The same search is
 the `/search` slash command in discordapp.
+
+`flow digest` previews the scheduled TheFlow digest: one line per event of the
+period, grouped by topic with security first, "×N" for how many channels
+reported it, and a link to the original. It is sent on `FLOW_DIGEST_CRON`
+(default `0 9 * * *`, server time) to `digest_destinations` in `routing.json`,
+and not scheduled when that key is absent.
+
+Labels written by `flow review` also feed the enrich prompt as examples: a
+`good` label shows a correct verdict, a `wrong` label with a note shows a
+mistake and the reviewer's correction.
 
 `flow preview` shows what TheFlow delivery would send, where, rendered for
 each platform — without sending. Delivery itself is off until

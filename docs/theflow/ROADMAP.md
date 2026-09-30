@@ -1137,6 +1137,28 @@ requires 1–3 settled, or extraction runs over unsorted noise. `L`.
 
 ## 9. Phase 5 — digests and feedback
 
+> **Done (v4.51.0), except reactions (§5.7).**
+>
+> - **Few-shot from labels.** `src/module/theflow/FewShot.js` turns
+>   `post_feedback` into examples: `good` labels (one per signal first, up to
+>   `FLOW_FEWSHOT_GOOD`, 4) and `wrong_topic` labels **with a note** (up to
+>   `FLOW_FEWSHOT_WRONG`, 3); the latest label of a post wins; re-read at most
+>   hourly, so new `flow review` labels apply without a restart. The examples
+>   are source text, so they go into the user message as data in their own
+>   nonced block (`prompts/fewshot.js`), never into the system prompt. The
+>   set's hash is part of the gateway cache key and is recorded as
+>   `analysis.fewshot`. One live call: an example noted "esports results are
+>   other/opinion" steered a new tournament post to `other/opinion`.
+> - **Digest.** `src/module/theflow/digest/Digest.js`, scheduled on the
+>   existing `CronScheduler` (`FLOW_DIGEST_CRON`, default 09:00 server time,
+>   last `FLOW_DIGEST_HOURS` = 24) to `digest_destinations` in `routing.json`;
+>   not scheduled without them. What gets in is decided by rules — canonical
+>   posts only, enriched or routed, not `other`, not below the source's
+>   `min_confidence`, not `is_ad`, not `giveaway_result` / `stream`. A
+>   deterministic score (cluster size, signal weight, confidence) only orders
+>   posts within a section; `security` is its own section, first.
+>   `node src/cli.js flow digest` previews it.
+
 Built on the existing `CronScheduler`, which already emits synthetic messages
 onto the same bus (`cronjobs.js` shows the shape). By then `post_feedback` has
 been collecting since phase 1 via `flow:review` and since phase 2 via reactions;

@@ -323,6 +323,28 @@ export const FEEDS = {
   },
 };
 
+// Few-shot з міток `flow review` (ROADMAP §9, фаза 5). Приклади перечитуються
+// з бази не частіше за refreshMs; кожен приклад — токени в КОЖНОМУ виклику
+// enrich, тож їх мало.
+export const FLOW_FEWSHOT = {
+  enabled: process.env.FLOW_FEWSHOT_ENABLED !== "false",
+  maxGood: optionalNumber("FLOW_FEWSHOT_GOOD", process.env.FLOW_FEWSHOT_GOOD, 4),
+  maxWrong: optionalNumber("FLOW_FEWSHOT_WRONG", process.env.FLOW_FEWSHOT_WRONG, 3),
+  refreshMs: 3_600_000,
+};
+
+// Дайджест TheFlow (ROADMAP §9, фаза 5): найцікавіше за період, один пост на
+// подію, згруповано за топіком. Розклад — cron (час сервера). Надсилається в
+// `digest_destinations` з routing.json; без них не планується.
+export const FLOW_DIGEST = {
+  schedule: process.env.FLOW_DIGEST_CRON || "0 9 * * *",
+  hours: optionalNumber("FLOW_DIGEST_HOURS", process.env.FLOW_DIGEST_HOURS, 24),
+  perTopic: optionalNumber("FLOW_DIGEST_PER_TOPIC", process.env.FLOW_DIGEST_PER_TOPIC, 5),
+  // Сигнали, що «класифікуються і нікуди не йдуть» (TAXONOMY.md) — у
+  // дайджест теж не йдуть.
+  excludeSignals: ["giveaway_result", "stream"],
+};
+
 // Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
 // хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
 // Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.

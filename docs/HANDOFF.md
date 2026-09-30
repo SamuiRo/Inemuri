@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.50.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.51.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -10,11 +10,13 @@ messages (§6.6); threshold calibration (§6.8) is open. History search (§9.1) 
 discordapp and `flow search` on the CLI. Phase 3.5 is built: Reddit and
 RSS/Atom sources through `src/sources/feeds/` (Reddit needs OAuth
 credentials in practice — see Next steps). Phase 4 (entity extraction) is
-built: enrich prompt version 2. The delivery mechanism (§5.3–5.6) is
+built: enrich prompt version 2. Phase 5 is built apart from reactions: labels
+from `flow review` feed the enrich prompt as examples, and a scheduled digest
+goes to `digest_destinations` once that key is set. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
 the final template exist. 14 migrations exist
 (`database/migrations/001`–`014`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 517 green `node --test` cases,
+is clean on the dev database. `npm test` is 525 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -109,6 +111,14 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
+- **Labelling now pays off directly.** Every `flow review` label with `good`,
+  or `wrong` plus a note naming the right answer, becomes an example in the
+  enrich prompt within an hour. A few `wrong` labels with notes on esports
+  posts would fix their `other` misfiling without waiting for taxonomy v2.
+- **Digest:** add `"digest_destinations": { "telegram": ["<chat>"] }` to
+  `routing.json` to schedule it; `node src/cli.js flow digest` shows what it
+  would send.
+
 - **Re-extract the pilot's verdicts with prompt 2** when convenient:
   `node src/cli.js flow requeue --status enriched --prompt-below 2` (102
   posts, one day of quota). Their dedup decisions stay as they are.
@@ -188,6 +198,14 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-09-30 — phase 5
+
+- Built few-shot from labels and the digest (`v4.51.0`). Live call: an
+  example with the note "esports results are other/opinion" steered a new
+  tournament post there. The digest previewed on the pilot corpus: security
+  first, Ukrainian leads, links. Reactions (§5.7) stay open — they need a probe
+  against a live channel.
 
 ### 2026-09-30 — phase 4
 

@@ -11,10 +11,11 @@ import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/thef
 import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
+import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
-  FLOW_DELIVERY, ROUTING,
+  FLOW_DELIVERY, ROUTING, FLOW_DIGEST,
 } from "./config/app.config.js";
 
 const program = new Command();
@@ -712,6 +713,29 @@ flow
         }
         process.stdout.write("\n");
       }
+      await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+flow
+  .command("digest")
+  .description("Preview the TheFlow digest (ROADMAP 9) — sends nothing")
+  .option("--hours <n>", "period, hours back from now", String(FLOW_DIGEST.hours))
+  .option("--per-topic <n>", "posts per section", String(FLOW_DIGEST.perTopic))
+  .action(async (options) => {
+    try {
+      await database.connect();
+      const m = await buildDigestMessage({
+        hours: Math.max(1, Number(options.hours) || FLOW_DIGEST.hours),
+        perTopic: Math.max(1, Number(options.perTopic) || FLOW_DIGEST.perTopic),
+        excludeSignals: FLOW_DIGEST.excludeSignals,
+        topicOrder: Object.keys(CATEGORIES.topics ?? {}),
+      });
+      if (!m) print("Nothing for a digest in that period.", "info");
+      else process.stdout.write(`${m.rawText}\n\n[${m.metadata.posts} post(s), ${m.rawText.length} chars]\n`);
       await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");

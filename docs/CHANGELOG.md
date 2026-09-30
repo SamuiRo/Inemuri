@@ -7,6 +7,25 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.51.0] - 2026-09-30
+
+### Added
+- **Few-shot examples from review labels (ROADMAP §9, phase 5).** Labels
+  written by `flow review` now teach the enrich prompt: posts labelled `good`
+  become "labelled correct" examples, `wrong_topic` labels with a note become
+  "labelled wrong" examples carrying the reviewer's note. The examples are
+  text from the source channels, so they go into the prompt as data in their
+  own delimited block, never as instructions. Each verdict records the example
+  set it was made with (`analysis.fewshot`), and a different set never reuses
+  a cached verdict. `FLOW_FEWSHOT_ENABLED`, `FLOW_FEWSHOT_GOOD` (4),
+  `FLOW_FEWSHOT_WRONG` (3). Verified with a live call.
+- **TheFlow digest.** A scheduled summary of the period — one line per event,
+  grouped by topic, `security` first, with "×N" for how many channels reported
+  it and a link to the original — sent to `digest_destinations` in
+  `routing.json` on `FLOW_DIGEST_CRON` (default `0 9 * * *`). Selection is by
+  rules; a deterministic score only orders within a section. `node src/cli.js
+  flow digest [--hours n]` previews it without sending.
+
 ## [4.50.0] - 2026-09-30
 
 ### Added

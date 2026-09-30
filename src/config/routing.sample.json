@@ -1,5 +1,5 @@
 {
-  "_comment": "Deployment-specific routing for TheFlow. Kept out of categories.json, and out of git, because channel ids belong to one deployment while the taxonomy is shared. `routing` stays empty until the phase 2 channels exist (ROADMAP 5.1); until then every verdict resolves to `unsorted_destinations`, which is also the correct shadow-mode configuration. `health_destinations` is where TheFlow health alerts go (ROADMAP 13.10: failing enrichment, a stalled queue, silent ingest); without it they only reach the log.",
+  "_comment": "Deployment-specific routing for TheFlow. Kept out of categories.json, and out of git, because channel ids belong to one deployment while the taxonomy is shared. `routing` stays empty until the phase 2 channels exist (ROADMAP 5.1); until then every verdict resolves to `unsorted_destinations`, which is also the correct shadow-mode configuration. `health_destinations` is where TheFlow health alerts go (ROADMAP 13.10: failing enrichment, a stalled queue, silent ingest); without it they only reach the log. `digest_destinations` receives the scheduled TheFlow digest (FLOW_DIGEST_CRON); without it no digest is scheduled.",
   "unsorted_destinations": {
     "telegram": [
       "-1001234567890"
@@ -10,6 +10,11 @@
   },
   "routing": [],
   "health_destinations": {
+    "telegram": [
+      "-1001234567890"
+    ]
+  },
+  "digest_destinations": {
     "telegram": [
       "-1001234567890"
     ]

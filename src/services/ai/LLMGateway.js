@@ -276,6 +276,8 @@ export class LLMGateway {
       t: this._norm(input.text),
       h: this._norm(input.title),
       d: input.postedAt ? new Date(input.postedAt).toISOString().slice(0, 10) : null,
+      // Інший набір прикладів — інший промпт: кешований вердикт не підходить.
+      x: input.examplesHash ?? null,
       o: this._norm(input.textOcr),
       c: input.candidates ?? {},
       v: taxonomy?.version ?? null,
@@ -287,6 +289,7 @@ export class LLMGateway {
       text: input.text,
       title: input.title,
       postedAt: input.postedAt,
+      examples: input.examples,
       candidates: input.candidates,
       textOcr: input.textOcr,
       taxonomy,

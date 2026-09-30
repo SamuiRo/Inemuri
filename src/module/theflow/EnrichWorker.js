@@ -40,6 +40,7 @@ export class EnrichWorker {
     flowFor = null,
     dedup = null,
     delta = null,
+    fewShot = null,
   } = {}) {
     if (!gateway) throw new Error("EnrichWorker: a gateway is required");
     if (vision && typeof flowFor !== "function") {
@@ -52,6 +53,8 @@ export class EnrichWorker {
     this.dedup = dedup;
     // Delta-виклик (§6.6) — після дедуплікації, тією ж ін'єкцією.
     this.delta = delta;
+    // Few-shot з міток оператора (фаза 5): { get() → { examples, hash } }.
+    this.fewShot = fewShot;
     this.gateway = gateway;
     this.taxonomy = taxonomy;
     this.tickMs = tickMs;
@@ -143,9 +146,13 @@ export class EnrichWorker {
       }
     }
 
+    const shots = this.fewShot ? await this.fewShot.get() : { examples: [], hash: null };
+
     // Заголовок — окремим полем, не склеєним з тілом (ROADMAP §7).
     const enr = await this.gateway.enrich(
       {
+        examples: shots.examples,
+        examplesHash: shots.hash,
         text: post.raw_text ?? "",
         title: post.title ?? null,
         postedAt: post.posted_at ?? post.createdAt ?? null,
@@ -194,6 +201,9 @@ export class EnrichWorker {
         unverified: enr.unverified ?? [],
         tiered: Boolean(enr.tiered),
         prompt_version: ENRICH_PROMPT_VERSION,
+        // Якими прикладами з міток збагачено (null — без прикладів). Хеш
+        // входить у ключ кешу gateway, тож і кешований вердикт — з ними.
+        fewshot: shots.hash,
       },
       model_used: enr.model_used,
       taxonomy_version: this.taxonomy?.version ?? null,

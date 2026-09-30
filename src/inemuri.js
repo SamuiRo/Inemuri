@@ -20,6 +20,8 @@ import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import DeltaStage from "./module/theflow/dedup/DeltaStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
+import FewShotStore from "./module/theflow/FewShot.js";
+import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import mediaResolver from "./module/theflow/media/index.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
 import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
@@ -32,6 +34,8 @@ import {
   FLOW_HEALTH,
   DEDUP,
   FLOW_DELIVERY,
+  FLOW_FEWSHOT,
+  FLOW_DIGEST,
   LLM_PRIMARY,
   LLM_PROVIDERS,
   DISCORD_BOT_TOKEN,
@@ -166,6 +170,24 @@ class Inemuri {
       this.cronScheduler = new CronScheduler(this.eventBus);
       await this.cronScheduler.initialize(CRON_JOBS);
 
+      // 7b. Дайджест TheFlow (фаза 5) — той самий шлях, що й cron-звіт:
+      //     синтетичний message.received у digest_destinations з routing.json.
+      const digestDestinations = copyDestinations(ROUTING.digest_destinations);
+      if (Object.keys(digestDestinations).length > 0) {
+        this.cronScheduler.scheduleJob({
+          id: "theflow-digest",
+          schedule: FLOW_DIGEST.schedule,
+          description: `TheFlow digest (last ${FLOW_DIGEST.hours}h)`,
+          handler: () => buildDigestMessage({
+            hours: FLOW_DIGEST.hours,
+            perTopic: FLOW_DIGEST.perTopic,
+            excludeSignals: FLOW_DIGEST.excludeSignals,
+            topicOrder: Object.keys(CATEGORIES.topics ?? {}),
+            destinations: digestDestinations,
+          }),
+        });
+      }
+
       // 8. TheFlow enrichment worker — drains `pending` posts through the
       //    LLM gateway. Shadow mode: verdicts land in `posts`, routing
       //    ignores them (phase 1). Off unless a primary provider key is set.
@@ -203,7 +225,9 @@ class Inemuri {
           : null;
         // Delta-виклик (§6.6) — що новий пост кластера додає до канонічного.
         const delta = DEDUP.enabled ? new DeltaStage({ gateway, log: print }) : null;
-        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup, delta });
+        // Few-shot з міток `flow review` (фаза 5); без міток — порожньо.
+        const fewShot = FLOW_FEWSHOT.enabled ? new FewShotStore(FLOW_FEWSHOT) : null;
+        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup, delta, fewShot });
         this.enrichWorker.start();
 
         // Прибирання кешу vision: на старті й далі кожні 6 год. unref() — щоб
