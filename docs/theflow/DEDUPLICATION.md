@@ -47,6 +47,19 @@ Cost: **0 requests**, 100% precision. It covers the promo code case completely,
 which is why entity extraction (phase 4) strengthens deduplication
 significantly.
 
+Two rules keep that precision in the implementation (`dedup/DedupCore.js`):
+
+- **Only verified codes are keys.** A code found only in an image transcription
+  (`verified: false`) never collapses posts — a misread would merge unrelated
+  events.
+- **Boilerplate URLs are not keys.** A link a source puts into three or more
+  posts within 14 days — its signature, its own channel, a referral — would
+  otherwise merge everything that source writes.
+
+URLs are normalized first: lower-case host without `www.`/`m.`, no fragment,
+no `utm_*` or other tracking parameters, sorted query, no trailing slash,
+`youtu.be/ID` as `youtube.com/watch?v=ID`.
+
 ### Tier 2 — embeddings and cosine over a window
 
 ```text
@@ -58,6 +71,15 @@ s >= HIGH  -> duplicate or linked (see below)
 s <= LOW   -> new event
 LOW < s < HIGH -> gray zone
 ```
+
+**Tier 2 compares against other sources only** (unless
+`DEDUP_TIER2_SAME_SOURCE=true`). The first run on real posts, all from one
+channel, merged nine pairs at `s` 0.90–0.95 and every one was wrong: giveaways
+of different items and results of different tournament days written from the
+channel's own template. The embedding sees the template and barely sees the
+item name. A close post from the same channel is the next issue of a series;
+the case tier 2 exists for is the same event reported by another channel. The
+nearest same-source `s` is still logged (`s_same_source`).
 
 Because the comparison runs on `text_en` rather than the original, **the
 threshold does not drift between languages**: a Korean and an English post
@@ -206,7 +228,8 @@ specific channels are worth verifying during phase 3.
 
 ## What to log
 
-Without this, thresholds cannot be tuned:
+Implemented as `posts.dedup` (migration `011`), reported by
+`node src/cli.js flow dedup`. Without this, thresholds cannot be tuned:
 
 - the similarity value `s` behind every decision;
 - which tier made the decision (1, 2, or 3);

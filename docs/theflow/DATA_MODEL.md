@@ -68,6 +68,7 @@ The central table. One row per incoming message.
 | `cluster_id` | INTEGER | NULL means not yet assigned to an event |
 | `link_role` | STRING | `canonical` \| `linked` \| `duplicate` \| `correction` |
 | `adds` | JSON | What this post adds over the canonical one (see DEDUPLICATION.md) |
+| `dedup` | JSON | The deduplication decision log: `decision` (`new`/`join`), `tier`, `s` (nearest other-source similarity), `s_same_source`, `nearest_post_id`, `key` (tier 1), `gray`, `gate` (richness and new entities), `cluster_id`, `t`, `at`; `{error}` if the stage failed on the post. NULL = not deduplicated yet. Migration `011` |
 | `status` | STRING | See the status table below |
 | `model_used` | STRING | Which model produced the verdict. **Required** |
 | `taxonomy_version` | INTEGER | `categories.json` version at verdict time, to separate model regression from a category description you changed |
@@ -86,7 +87,7 @@ pending ---> enriched ---> routed
    +---> skipped_blacklist
    +---> skipped_empty
    +---> skipped_noise
-   +---> skipped_repost
+   +---> skipped_repost             (same text from the same source in the window)
    +---> failed                     (attempts exhausted; kept for review)
 ```
 
@@ -114,8 +115,8 @@ One row per event that one or more channels wrote about.
 | `id` | INTEGER PK | |
 | `canonical_post_id` | INTEGER | The first published post about the event |
 | `topic` / `signal_type` | STRING | Copied from the canonical post, for queries without a join |
-| `centroid` | BLOB | Canonical (or averaged) vector used for comparison. Same format as `posts.embedding` |
-| `embedding_model` | STRING | Which model the centroid belongs to. Vectors from different models are never compared |
+| `centroid` | BLOB | The canonical post's vector. Same format as `posts.embedding` |
+| `embedding_model` / `embedding_dim` | STRING / INTEGER | Which model the centroid belongs to. Vectors from different models are never compared. Migration `011` |
 | `members_count` | INTEGER | "Also reported by N more channels" |
 | `richness` | FLOAT | Informativeness of the current canonical version (see DEDUPLICATION.md) |
 | `delivered` | JSON | `[{platform, channel_id, message_id, sent_at}]`, so sent messages can be edited |
@@ -206,6 +207,12 @@ Adds `source_states.cursor` JSON and backfills
 `{ "last_message_id": <value> }` from the existing checkpoint. The Telegram
 adapter keeps reading `last_message_id`; RSS/Reddit adapters (phase 3.5) store
 their own cursor shape.
+
+### `011-dedup`
+
+Adds `posts.dedup` (JSON), `clusters.embedding_model` and
+`clusters.embedding_dim`, and an index on `clusters (closed, last_seen_at)`.
+All `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`, idempotent.
 
 ### Fresh installs
 

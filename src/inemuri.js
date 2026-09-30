@@ -15,6 +15,7 @@ import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import VisionStage from "./module/theflow/VisionStage.js";
 import { FlowHealthMonitor, collectHealthSnapshot, primaryQuota } from "./module/theflow/FlowHealth.js";
+import DedupStage from "./module/theflow/dedup/DedupStage.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
 import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
 import {
@@ -24,6 +25,7 @@ import {
   CONFIG_WARNINGS,
   ENRICH_WORKER_ENABLED,
   FLOW_HEALTH,
+  DEDUP,
   LLM_PRIMARY,
   LLM_PROVIDERS,
   DISCORD_BOT_TOKEN,
@@ -171,7 +173,19 @@ class Inemuri {
           if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
           return sources.get(post.source_id)?.getFlowConfig() ?? null;
         };
-        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor });
+        // Дедуплікація (§6) — у тіку воркера, одразу після збагачення.
+        const dedup = DEDUP.enabled
+          ? new DedupStage({
+            taxonomy: CATEGORIES,
+            thresholds: DEDUP,
+            flowFor,
+            batchSize: DEDUP.batchSize,
+            boilerplateMin: DEDUP.boilerplateMin,
+            boilerplateDays: DEDUP.boilerplateDays,
+            log: print,
+          })
+          : null;
+        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup });
         this.enrichWorker.start();
 
         // Прибирання кешу vision: на старті й далі кожні 6 год. unref() — щоб

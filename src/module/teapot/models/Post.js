@@ -26,7 +26,7 @@ export const POST_STATUSES = [
   "skipped_empty",      // порожній або коротший за поріг після replacements
   "skipped_noise",      // тільки емодзі / тільки посилання / службовий текст
   "skipped_shouty",     // короткий пост капсом (ритуальні/службові), опційно на джерело
-  "skipped_repost",     // точний хеш-збіг у вікні останніх N годин
+  "skipped_repost",     // точний хеш-збіг у вікні останніх N годин, те саме джерело (§6.1)
   "failed",             // спроби вичерпані; рядок лишається для розбору
 ];
 
@@ -227,6 +227,13 @@ export const Post = database.sequelize.define("Post", {
     type: DataTypes.JSON,
     allowNull: true,
     comment: "Що цей пост додає над канонічним (DEDUPLICATION.md)",
+  },
+  dedup: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment:
+      "Журнал рішення дедуплікації (ROADMAP §6.7): tier, s, cluster/пост-збіг, " +
+      "сіра зона. NULL = ще не дедуплікований. Міграція 011",
   },
 
   // ── Службові ───────────────────────────────────────────────────────

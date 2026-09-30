@@ -434,6 +434,9 @@ node src/cli.js flow requeue --dry-run
 node src/cli.js flow requeue --error "HTTP 400"
 node src/cli.js flow requeue --status enriched --model some-model
 node src/cli.js flow health
+node src/cli.js flow dedup
+node src/cli.js flow dedup --pairs 30
+node src/cli.js flow dedup --reset --run
 ```
 
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
@@ -441,6 +444,15 @@ verdict and embedding cleared, `text_ocr` kept so vision is not paid for
 twice. Default is every `failed` post; `--error` narrows by `last_error`,
 `--status`/`--model` pick verdicts that cannot be trusted. It reports how many
 of them carry `post_feedback` labels for the old verdict.
+
+`flow dedup` reports deduplication (ROADMAP §6): per day and per signal how
+many posts started a new event, joined one by tier 1 (exact code, link or
+text) or tier 2 (embedding similarity to another source's post), were
+suppressed as adding nothing, or were flagged in the gray zone; plus the
+similarity histogram against `DEDUP_HIGH`/`DEDUP_LOW`. `--pairs n` prints the
+closest pairs around the thresholds with both texts, for calibration;
+`--reset --run` recomputes every decision after changing them, and is refused
+once anything has been delivered.
 
 `flow health` runs the check the service runs every 10 minutes and exits 1 if
 anything is wrong: enrichment failing, a queue that is not draining (while

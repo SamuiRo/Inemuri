@@ -945,6 +945,37 @@ Spec: [DEDUPLICATION.md](DEDUPLICATION.md).
 | 6.7 | Decision logging: `s`, tier, `relation`, daily collapse rate per category | S |
 | 6.8 | Threshold calibration from real pairs | M |
 
+> **6.1–6.5 and 6.7 done (v4.45.0).** `src/module/theflow/dedup/` —
+> `DedupCore.js` (pure: tier 1 keys, URL normalization, cosine, `richness()`,
+> the gate, windows, `decide()`) and `DedupStage.js` (I/O, runs in the enrich
+> worker's tick right after enrichment). Migration `011` adds `posts.dedup`
+> (the decision log) and `clusters.embedding_model` / `embedding_dim`.
+> `node src/cli.js flow dedup` reports the daily collapse rate per signal and
+> the `s` histogram; `--run` backfills, `--reset` recomputes after a
+> threshold change (refused once anything is delivered), `--pairs n` prints
+> the pairs around the thresholds for 6.8. Settled along the way:
+>
+> - **6.1: option 1.** The ingest-time repost check is scoped to the source.
+> - **Tier 2 skips the post's own source by default**
+>   (`DEDUP_TIER2_SAME_SOURCE`). The first run on the pilot corpus — one
+>   source — merged nine pairs at s 0.90–0.95, **all wrong**: giveaways of
+>   different skins and results of different tournament days, written from
+>   the same channel template. A close post from the same channel is the next
+>   issue of a series; tier 2 is for the same event from another channel.
+>   Tier 1 (exact text, code, URL) still applies within a source.
+> - **Tier 1 keys:** only `verified` promo codes (an OCR code never collapses
+>   posts, §4 hazard 1), and no URL a source puts into ≥ 3 posts in 14 days —
+>   a channel signature as a key would merge everything the channel writes.
+> - **`closed`** is set relative to the oldest undecided post, not the clock,
+>   so a backfill can still join the clusters of its own time.
+> - Gate-passed joins are `linked` with no `adds` until the delta call (6.6);
+>   `security` is never suppressed.
+>
+> **Still open:** 6.6 (delta call and appends) needs delivery (§5.4); 6.8
+> needs cross-source pairs, and the corpus has none yet — the other two
+> flow-enabled sources had produced no post by 2026-09-30. HIGH 0.90 / LOW
+> 0.75 are uncalibrated for cross-source matches.
+
 ### 6.1 — settle before writing tier 1
 
 `FlowIngest` checks `text_hash` **globally**, across all sources, and marks a

@@ -57,15 +57,20 @@ export class FlowIngest {
     // 1. Regex-стадія (чиста, без I/O)
     const stage = this._regex.evaluate({ text, blacklist, caseSensitive, rejectShouty });
 
-    // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин.
-    //    Кросканальний і внутрішньоканальний: та сама подія з іншим
-    //    external_id у вікні — це repost. Той самий (source_id, external_id)
-    //    ловиться нижче ідемпотентністю findOrCreate, сюди не доходить.
+    // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин, лише в
+    //    межах ЦЬОГО джерела (ROADMAP §6.1, варіант 1). Канал, що повторює
+    //    сам себе, — шум. Той самий текст з ІНШОГО каналу — не шум, а
+    //    tier 1 дедуплікації: він має пройти enrich і приєднатися до
+    //    кластера, інакше «також повідомили N каналів» недораховує саме
+    //    найдешевші дублікати. Повторний enrich однакового тексту поглинає
+    //    кеш gateway. Той самий (source_id, external_id) ловиться нижче
+    //    ідемпотентністю findOrCreate, сюди не доходить.
     let status = stage.status;
     if (status === "ok" && stage.textHash) {
       const since = new Date(Date.now() - this._repostWindowMs);
       const earlier = await Post.findOne({
         where: {
+          source_id: source.id,
           text_hash: stage.textHash,
           createdAt: { [Op.gte]: since },
         },

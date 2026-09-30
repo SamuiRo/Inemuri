@@ -23,8 +23,9 @@ what shipped and why.
 It is the part responsible for producing a stream of validated, categorized,
 deduplicated posts. Phase 0 (persistence), Phase 1 (LLM gateway and
 enrichment, shadow mode, dormant without a provider key) and Phase 1.5
-(vision, off per source by default) are **implemented**, as is Phase 2's
-resolve stage; the rest is still specification — see
+(vision, off per source by default) are **implemented**, as are Phase 2's
+resolve stage and Phase 3's deduplication tiers 1–2; the rest is still
+specification — see
 [docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
 per-task status).
@@ -142,4 +143,5 @@ node src/cli.js flow export    # sanitized JSONL sample of the corpus
 node src/cli.js flow review    # label enriched posts into post_feedback
 node src/cli.js flow requeue   # failed (or --status/--model) back to pending
 node src/cli.js flow health    # stall/failure check, exit 1 on a problem
+node src/cli.js flow dedup     # dedup report; --run, --reset, --pairs n
 ```

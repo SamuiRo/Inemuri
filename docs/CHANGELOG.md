@@ -7,6 +7,45 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.45.0] - 2026-09-30
+
+### Added
+- **Deduplication, tiers 1 and 2 (ROADMAP §6.1–6.5, 6.7).**
+  `src/module/theflow/dedup/` runs in the enrich worker's tick, right after
+  enrichment, over `enriched` posts without a decision, oldest first
+  (first-wins). Tier 1 joins on an exact key — a verified promo code, a
+  normalized URL, `external_url`, `text_hash`; tier 2 on cosine against
+  other-source members of the same topic and embedding model inside the
+  signal's window. A join that adds nothing (richness within ×1.15 and no new
+  entity) is `suppressed`; otherwise `linked`, waiting for the delta call
+  (§6.6). A post twice as rich replaces the canonical. `security` is never
+  suppressed. The gray zone (LOW < s < HIGH) is a new event, flagged.
+  Clusters close when their window passes. Thresholds: `DEDUP_HIGH` (0.90),
+  `DEDUP_LOW` (0.75); `DEDUP_ENABLED=false` turns the stage off.
+- **Migration `011`:** `posts.dedup` — every decision's tier, `s`, nearest
+  post and gate, so thresholds can be calibrated (§6.8) — and
+  `clusters.embedding_model` / `embedding_dim`, which DATA_MODEL.md always
+  listed and the model lacked. **Run `npm run migrate` before starting this
+  version**: the model reads `posts.dedup`.
+- **`node src/cli.js flow dedup`** — daily collapse rate per signal, the
+  nearest-neighbour `s` histogram with HIGH/LOW marked, the largest clusters.
+  `--run` deduplicates the backlog without the service, `--reset` erases all
+  decisions to recompute after a threshold change (refused once a cluster has
+  been delivered), `--pairs n` prints the pairs around the thresholds with
+  both texts.
+
+### Changed
+- **`skipped_repost` is per source (§6.1, option 1).** The same text from
+  another channel is no longer dropped at ingest: it is enriched (the gateway
+  cache absorbs the repeat) and joins the first post's cluster through tier 1,
+  so "also reported by N channels" counts it.
+- **Tier 2 ignores the post's own source by default**
+  (`DEDUP_TIER2_SAME_SOURCE=true` restores it). Measured before shipping: on
+  the pilot corpus, one channel, HIGH 0.90 merged nine pairs and all nine
+  were different events written from the channel's template (different skins
+  given away, different tournament days). The nearest same-source `s` is still
+  logged. With it off, the 102 real verdicts form 102 events.
+
 ## [4.44.1] - 2026-09-30
 
 ### Fixed

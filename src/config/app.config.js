@@ -242,6 +242,34 @@ export const VISION_CACHE_TTL_HOURS = optionalNumber(
 );
 export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
 
+// Дедуплікація, tiers 1–2 (ROADMAP §6, DEDUPLICATION.md). Пороги — стартові
+// значення, НЕ константи: калібруються за журналом `posts.dedup` на реальних
+// парах (§6.8, `node src/cli.js flow dedup --pairs`).
+export const DEDUP = {
+  // s ≥ high — та сама подія. Занизько — зливаються різні події, губляться новини.
+  high: optionalNumber("DEDUP_HIGH", process.env.DEDUP_HIGH, 0.9),
+  // s ≤ low — нова подія; між low і high — сіра зона: нова з позначкою.
+  low: optionalNumber("DEDUP_LOW", process.env.DEDUP_LOW, 0.75),
+  // Дешевий гейт: richness(B) ≤ richness(A) × gateFactor і жодної нової
+  // сутності → дубль, suppressed.
+  gateFactor: 1.15,
+  // richness(B) ≥ richness(A) × replaceFactor → B стає канонічним.
+  replaceFactor: 2,
+  // Tier 2 проти постів ТОГО Ж джерела. Вимкнено: перший прогін на пілоті
+  // (2026-09-30, одне джерело) злив при s 0.90–0.95 дев'ять пар — і всі
+  // хибно: роздачі різних скінів і підсумки різних днів турніру за одним
+  // шаблоном каналу. Близький за формою пост того ж каналу — наступний
+  // випуск серії, а не дубль; tier 2 — для тієї ж події з ІНШОГО каналу.
+  // Tier 1 (дослівний текст, код, URL) у межах джерела працює завжди.
+  tier2SameSource: process.env.DEDUP_TIER2_SAME_SOURCE === "true",
+  batchSize: 50,
+  // URL, що джерело ставить у стільки різних постів за boilerplateDays, —
+  // підпис каналу, а не ключ tier 1.
+  boilerplateMin: 3,
+  boilerplateDays: 14,
+  enabled: process.env.DEDUP_ENABLED !== "false",
+};
+
 // Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
 // хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
 // Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.

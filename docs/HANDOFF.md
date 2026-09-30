@@ -2,11 +2,12 @@
 
 ## Current state
 
-`v4.44.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
-enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
-Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
-10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 423 green `node --test` cases,
+`v4.45.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
+built and waiting on destination channels, and Phase 3's deduplication tiers 1
+and 2 run in the enrich worker (ROADMAP §6; the delta call §6.6 and threshold
+calibration §6.8 are open). 11 migrations exist (`database/migrations/001`–`011`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 445 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -144,7 +145,12 @@ destinations is worse than not starting. A fresh clone now starts — before
    code screenshots is the intended case — and **not** on meme-heavy ones,
    where OCR of a meme is noise. Where it is off the stage costs nothing: the
    gate refuses before any download.
-7. **The plan now needs real enriched posts.** The §5.4 message template is
+7. **Deduplication needs cross-source posts to calibrate.** All flow posts so
+   far come from one source. Once the others produce, `node src/cli.js flow
+   dedup --pairs 30` shows the pairs around HIGH/LOW; judge them, set
+   `DEDUP_HIGH`/`DEDUP_LOW`, then `flow dedup --reset --run` (only while nothing
+   is delivered).
+8. **The plan now needs real enriched posts.** The §5.4 message template is
    deliberately designed against real material, and routing waits on §5.1.
 
 ## Open questions
@@ -157,6 +163,16 @@ destinations is worse than not starting. A fresh clone now starts — before
   first.
 
 ## Session log
+
+### 2026-09-30 — deduplication
+
+- Operator chose option 1 for §6.1: `skipped_repost` is now per source.
+- Built tiers 1 and 2, the cluster lifecycle, the richness gate and the
+  decision log (`v4.45.0`, migration `011`, applied to the dev database).
+- Ran it on the 102 real verdicts: HIGH 0.90 merged nine same-channel pairs,
+  all wrong (template series). Tier 2 now skips the post's own source; rerun
+  gives 102 events, max same-source `s` 0.955. Cross-source calibration waits
+  for the other two flow sources to produce posts.
 
 ### 2026-09-30 — first real enrichment run
 

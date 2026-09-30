@@ -38,6 +38,16 @@ export const Cluster = database.sequelize.define("Cluster", {
     allowNull: true,
     comment: "Канонічний (або усереднений) вектор для порівняння. Float32Array як BLOB",
   },
+  embedding_model: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Модель, якій належить centroid. Вектори різних моделей не порівнюються (§13.2). Міграція 011",
+  },
+  embedding_dim: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: "Розмірність centroid. Міграція 011",
+  },
   members_count: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -85,6 +95,8 @@ export const Cluster = database.sequelize.define("Cluster", {
   indexes: [
     // Пошук відкритого кластера по осях таксономії у вікні дедуплікації
     { fields: ["topic", "signal_type", "closed"] },
+    // Відкриті кластери, активні у вікні (tier 1 і tier 2). Міграція 011
+    { fields: ["closed", "last_seen_at"], name: "clusters_closed_last_seen_at" },
   ],
 });
 

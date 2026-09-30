@@ -2,12 +2,16 @@ import fs from "fs/promises";
 import readline from "node:readline/promises";
 
 import { Command } from "commander";
+import { Op } from "sequelize";
 import database from "./module/teapot/sqlite/sqlite_db.js";
 import SourceSeeder from "./module/seeders/Sourceseeder.js";
-import { Source, Post, PostFeedback } from "./module/teapot/models/index.js";
+import { Source, Post, PostFeedback, Cluster } from "./module/teapot/models/index.js";
 import { print } from "./shared/utils.js";
 import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/theflow/FlowHealth.js";
-import { FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED } from "./config/app.config.js";
+import DedupStage from "./module/theflow/dedup/DedupStage.js";
+import {
+  FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
+} from "./config/app.config.js";
 
 const program = new Command();
 
@@ -472,6 +476,153 @@ flow
       if (!options.dryRun && ids.length) {
         print("The enrich worker picks them up on its next tick; a running service needs no restart.", "info");
       }
+      await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+function dedupLogOf(p) {
+  let d = p.dedup;
+  if (typeof d === "string") {
+    try { d = JSON.parse(d); } catch { d = null; }
+  }
+  return d && typeof d === "object" ? d : null;
+}
+
+flow
+  .command("dedup")
+  .description("Deduplication: report (ROADMAP 6.7), --run to process the backlog, --pairs for threshold calibration (6.8)")
+  .option("--reset", "erase every deduplication decision first (refused once anything is delivered)")
+  .option("--run", "deduplicate enriched posts that have no decision yet")
+  .option("--limit <n>", "with --run: max posts", "100000")
+  .option("--days <n>", "report window in days", "7")
+  .option("--pairs <n>", "print the n closest non-tier-1 pairs around the thresholds, with both texts")
+  .action(async (options) => {
+    try {
+      await database.connect();
+
+      if (options.reset) {
+        const r = await DedupStage.reset();
+        print(`Reset: ${r.posts} post(s) back to undecided, ${r.clusters} cluster(s) removed`, "warning");
+      }
+
+      if (options.run) {
+        const sources = new Map();
+        const flowFor = async (post) => {
+          if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
+          return sources.get(post.source_id)?.getFlowConfig() ?? null;
+        };
+        const stage = new DedupStage({
+          taxonomy: CATEGORIES, thresholds: DEDUP, flowFor,
+          batchSize: DEDUP.batchSize, boilerplateMin: DEDUP.boilerplateMin,
+          boilerplateDays: DEDUP.boilerplateDays, log: print,
+        });
+        const limit = Math.max(1, Number(options.limit) || 100000);
+        let total = 0;
+        for (;;) {
+          const n = await stage.runOnce(Math.min(DEDUP.batchSize, limit - total));
+          total += n;
+          if (n === 0 || total >= limit) break;
+        }
+        print(`Deduplicated ${total} post(s)`, "success");
+      }
+
+      const days = Math.max(1, Number(options.days) || 7);
+      const since = new Date(Date.now() - days * 86_400_000);
+      const rows = await Post.findAll({
+        where: { dedup: { [Op.ne]: null }, updatedAt: { [Op.gte]: since } },
+        attributes: ["id", "signal_type", "status", "link_role", "cluster_id", "text_en", "dedup", "posted_at", "createdAt"],
+      });
+
+      if (rows.length === 0) {
+        print(`No deduplication decisions in the last ${days} day(s).`, "info");
+      } else {
+        const bucket = () => ({ total: 0, new: 0, t1: 0, t2: 0, suppressed: 0, linked: 0, gray: 0, errors: 0 });
+        const byDay = new Map();
+        const bySignal = new Map();
+        const hist = new Map();
+        const add = (map, key, d, p) => {
+          if (!map.has(key)) map.set(key, bucket());
+          const b = map.get(key);
+          b.total += 1;
+          if (d.error) { b.errors += 1; return; }
+          if (d.decision === "new") b.new += 1;
+          if (d.tier === 1) b.t1 += 1;
+          if (d.tier === 2) b.t2 += 1;
+          if (p.status === "suppressed") b.suppressed += 1;
+          if (d.decision === "join" && d.role === "linked") b.linked += 1;
+          if (d.gray) b.gray += 1;
+        };
+        for (const p of rows) {
+          const d = dedupLogOf(p);
+          if (!d) continue;
+          const day = String(d.t ?? new Date(p.posted_at ?? p.createdAt).toISOString()).slice(0, 10);
+          add(byDay, day, d, p);
+          add(bySignal, p.signal_type ?? "?", d, p);
+          if (typeof d.s === "number") {
+            const bin = Math.max(0.5, Math.floor(d.s * 20) / 20);
+            hist.set(bin, (hist.get(bin) ?? 0) + 1);
+          }
+        }
+        const line = (label, b) => {
+          const joined = b.t1 + b.t2;
+          const rate = b.total ? ((joined / b.total) * 100).toFixed(1) : "0.0";
+          return `${label.padEnd(16)} ${String(b.total).padStart(5)} posts · new ${b.new} · joined ${joined} ` +
+            `(t1 ${b.t1}, t2 ${b.t2}) · suppressed ${b.suppressed} · linked ${b.linked} · gray ${b.gray}` +
+            (b.errors ? ` · errors ${b.errors}` : "") + ` · collapse ${rate}%`;
+        };
+        print(`Deduplication — last ${days} day(s), HIGH ${DEDUP.high} / LOW ${DEDUP.low}`, "system");
+        for (const [day, b] of [...byDay].sort()) print(line(day, b));
+        print("by signal", "system");
+        for (const [sig, b] of [...bySignal].sort((a, b2) => b2[1].total - a[1].total)) print(line(sig, b));
+        print("nearest-neighbour similarity s (tier 2 candidates)", "system");
+        if (hist.size === 0) {
+          print(
+            "  none — no post had a candidate from another source in its window" +
+              (DEDUP.tier2SameSource ? "" : " (same-source matches are off: DEDUP_TIER2_SAME_SOURCE)"),
+          );
+        }
+        for (const [bin, n] of [...hist].sort((a, b2) => b2[0] - a[0])) {
+          const mark = bin + 0.05 > DEDUP.high && bin <= DEDUP.high ? " ← HIGH" : bin + 0.05 > DEDUP.low && bin <= DEDUP.low ? " ← LOW" : "";
+          print(`  ${bin.toFixed(2)}–${(bin + 0.05).toFixed(2)}  ${"█".repeat(Math.min(n, 60))} ${n}${mark}`);
+        }
+        const top = await Cluster.findAll({
+          where: { members_count: { [Op.gt]: 1 }, updatedAt: { [Op.gte]: since } },
+          order: [["members_count", "DESC"]],
+          limit: 5,
+        });
+        if (top.length) {
+          print("largest clusters", "system");
+          const canon = new Map((await Post.findAll({
+            where: { id: top.map((c) => c.canonical_post_id) }, attributes: ["id", "text_en"],
+          })).map((p) => [p.id, p.text_en]));
+          for (const c of top) {
+            print(`  #${c.id} ${c.topic}/${c.signal_type} ×${c.members_count}  ${truncateForReview(canon.get(c.canonical_post_id), 120)}`);
+          }
+        }
+      }
+
+      if (options.pairs) {
+        const n = Math.max(1, Number(options.pairs) || 20);
+        const near = rows
+          .map((p) => ({ p, d: dedupLogOf(p) }))
+          .filter(({ d }) => d && d.tier !== 1 && typeof d.s === "number" && d.nearest_post_id &&
+            d.s >= DEDUP.low - 0.05 && d.s <= DEDUP.high + 0.05)
+          .sort((a, b) => b.d.s - a.d.s)
+          .slice(0, n);
+        const other = new Map((await Post.findAll({
+          where: { id: near.map(({ d }) => d.nearest_post_id) }, attributes: ["id", "text_en"],
+        })).map((p) => [p.id, p.text_en]));
+        print(`${near.length} pair(s) around the thresholds — same event or not?`, "system");
+        for (const { p, d } of near) {
+          print(`s=${d.s.toFixed(4)}  ${d.decision}${d.gray ? " (gray)" : ""}  #${p.id} ↔ #${d.nearest_post_id}`, "system");
+          print(`  A: ${truncateForReview(other.get(d.nearest_post_id), 200)}`);
+          print(`  B: ${truncateForReview(p.text_en, 200)}`);
+        }
+      }
+
       await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
