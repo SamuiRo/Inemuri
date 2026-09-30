@@ -14,14 +14,16 @@ import { CRON_JOBS } from "./config/cronjobs.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import VisionStage from "./module/theflow/VisionStage.js";
+import { FlowHealthMonitor, collectHealthSnapshot, primaryQuota } from "./module/theflow/FlowHealth.js";
 import { Source, VisionCache } from "./module/teapot/models/index.js";
-import { validateRouting } from "./module/theflow/ResolveStage.js";
+import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
 import {
   VISION_CACHE_TTL_HOURS,
   CATEGORIES,
   ROUTING,
   CONFIG_WARNINGS,
   ENRICH_WORKER_ENABLED,
+  FLOW_HEALTH,
   LLM_PRIMARY,
   LLM_PROVIDERS,
   DISCORD_BOT_TOKEN,
@@ -53,6 +55,9 @@ class Inemuri {
 
     // TheFlow enrichment worker (phase 1, shadow mode)
     this.enrichWorker = null;
+
+    // Нагляд за TheFlow (ROADMAP §13.10)
+    this.flowHealth = null;
 
     this.setupEventHandlers();
   }
@@ -187,6 +192,36 @@ class Inemuri {
         );
       }
 
+      // 8b. Нагляд за TheFlow: застій pending, лавина failed, тиша ingest.
+      //     Алерт іде тим самим шляхом, що й cron-повідомлення — синтетичним
+      //     message.received у health_destinations з routing.json. Без них —
+      //     лише в лог: мовчазний нагляд кращий, ніж жодного.
+      const healthDestinations = copyDestinations(ROUTING.health_destinations);
+      if (Object.keys(healthDestinations).length === 0) {
+        print("[FLOW HEALTH] no health_destinations in routing.json — alerts go to the log only", "warning");
+      }
+      this.flowHealth = new FlowHealthMonitor({
+        collect: () => collectHealthSnapshot({
+          failureWindowMin: FLOW_HEALTH.failureWindowMin,
+          quota: primaryQuota(LLM_PROVIDERS, LLM_PRIMARY),
+        }),
+        notify: (text) => {
+          if (Object.keys(healthDestinations).length === 0) return;
+          this.eventBus.emitMessageReceived({
+            platform: "theflow",
+            text,
+            source: { name: "TheFlow health", destinations: healthDestinations },
+            metadata: { source: "theflow-health" },
+          });
+        },
+        thresholds: FLOW_HEALTH,
+        intervalMs: FLOW_HEALTH.intervalMin * 60_000,
+        repeatMs: FLOW_HEALTH.repeatHours * 3_600_000,
+        workerRunning: Boolean(this.enrichWorker),
+        log: print,
+      });
+      this.flowHealth.start();
+
       // 9. discordapp — останнім і без права зупинити старт (D3): невдалий
       //    логін лише попереджає і повторюється у фоні.
       print("Starting discordapp...");
@@ -223,6 +258,7 @@ class Inemuri {
         print("Stopping TheFlow enrichment worker...");
         this.enrichWorker.stop();
       }
+      if (this.flowHealth) this.flowHealth.stop();
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);
         this.visionSweepTimer = null;

@@ -141,4 +141,5 @@ node src/cli.js flow stats     # TheFlow corpus stats (per source + total)
 node src/cli.js flow export    # sanitized JSONL sample of the corpus
 node src/cli.js flow review    # label enriched posts into post_feedback
 node src/cli.js flow requeue   # failed (or --status/--model) back to pending
+node src/cli.js flow health    # stall/failure check, exit 1 on a problem
 ```

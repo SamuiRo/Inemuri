@@ -433,6 +433,7 @@ node src/cli.js flow review
 node src/cli.js flow requeue --dry-run
 node src/cli.js flow requeue --error "HTTP 400"
 node src/cli.js flow requeue --status enriched --model some-model
+node src/cli.js flow health
 ```
 
 `flow requeue` returns posts to the enrich queue — `pending`, `attempts` 0,
@@ -440,6 +441,13 @@ verdict and embedding cleared, `text_ocr` kept so vision is not paid for
 twice. Default is every `failed` post; `--error` narrows by `last_error`,
 `--status`/`--model` pick verdicts that cannot be trusted. It reports how many
 of them carry `post_feedback` labels for the old verdict.
+
+`flow health` runs the check the service runs every 10 minutes and exits 1 if
+anything is wrong: enrichment failing, a queue that is not draining (while
+quota is left), or no flow post for a day. The service sends the same alerts
+to `health_destinations` in `routing.json` — set a Telegram chat there, or
+they only reach the log. Thresholds are the `FLOW_HEALTH_*` variables in
+`.env.example`.
 
 ## Media handling
 

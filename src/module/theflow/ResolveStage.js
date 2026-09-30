@@ -44,7 +44,7 @@ export const RESOLVE_REASONS = Object.freeze({
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
 
 /** Копія призначень: викликач не має отримати посилання всередину конфігу. */
-function copyDestinations(d) {
+export function copyDestinations(d) {
   const out = {};
   for (const [platform, ids] of Object.entries(d ?? {})) {
     const list = asArray(ids).map(String).filter((id) => id.trim() !== "");

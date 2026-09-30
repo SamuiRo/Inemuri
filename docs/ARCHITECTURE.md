@@ -265,6 +265,13 @@ routing consumer that would act on a verdict does not exist until phase 2.
 The provider decisions and the free-tier limits behind them are settled
 (ROADMAP §3.1).
 
+**Health monitoring.** `src/module/theflow/FlowHealth.js` checks the corpus on
+a timer (ROADMAP §13.10) — failing enrichment, a stalled queue, silent ingest
+— and posts on transitions to `health_destinations` in `routing.json` via a
+synthetic `message.received`, the path cron messages use. It reads `posts`,
+`sources` and `provider_quota` and knows nothing of Telegram or Discord;
+`inemuri.js` injects the delivery.
+
 **Phase 1.5 (vision) is implemented**, off on every source until
 `flow.vision.enabled` is set. `src/module/theflow/VisionStage.js` runs inside
 the worker between ingest and enrichment — ingest itself still makes no
@@ -292,5 +299,5 @@ enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]` checks discordapp's setup on a server, shows or applies its provisioning plan, or exports the server as a config, from a terminal.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
-- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), and `flow requeue` (return failed or untrusted posts to the enrich queue).
+- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), `flow requeue` (return failed or untrusted posts to the enrich queue), and `flow health` (the health check; exits 1 on a problem).
 - `npm test` runs the `node --test` suites under `test/` through `scripts/run-tests.js`, on a throwaway database (`SQLITE_STORAGE`), never on `database/pot.sqlite`.

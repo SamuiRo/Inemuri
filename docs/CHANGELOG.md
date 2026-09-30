@@ -7,6 +7,37 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.44.0] - 2026-09-30
+
+### Added
+- **TheFlow health monitor (ROADMAP §13.10).** TheFlow's invariant is that AI
+  may fail without stopping ingest; the other side of that is that nothing
+  fails loudly. The pilot spent a day with every Gemini call rejected and the
+  only way to notice was reading `flow stats` by hand.
+  `src/module/theflow/FlowHealth.js` checks the corpus every
+  `FLOW_HEALTH_INTERVAL_MIN` (10) and raises three problems:
+  - `enrich_failing` — at least `FLOW_HEALTH_FAILURE_MIN` (5) posts failed in
+    the last `FLOW_HEALTH_FAILURE_WINDOW_MIN` (60) minutes and they are at
+    least `FLOW_HEALTH_FAILURE_SHARE` (0.5) of everything that finished. This
+    is the one that catches the pilot's bug: those posts became `failed`, they
+    never sat in `pending`. The alert names the most common `last_error`.
+  - `enrich_stalled` — the oldest `pending` post is older than
+    `FLOW_HEALTH_PENDING_MAX_AGE_MIN` (120) **and** nothing has been enriched
+    or failed for as long, **and** the primary complete model's quota is not
+    spent. A backlog after `flow requeue` or downtime is not a stall while the
+    worker drains it; a backlog waiting for the Pacific-midnight quota reset
+    is by design and only noted.
+  - `ingest_silent` — no flow post for `FLOW_HEALTH_INGEST_SILENT_HOURS` (24):
+    a dead channel or a stopped listener/poller.
+
+  Enrichment is judged only when the worker runs in the process. Alerts go
+  out on transitions only — raised, a reminder every `FLOW_HEALTH_REPEAT_HOURS`
+  (6) while it lasts, recovered — as a synthetic `message.received` to
+  `health_destinations` in `routing.json`, the same path cron messages take.
+  Without that key they reach the log only, with a startup warning.
+- **`node src/cli.js flow health`** — the same check from a terminal or an
+  external cron; exits 1 when there is a problem.
+
 ## [4.43.1] - 2026-09-30
 
 ### Fixed

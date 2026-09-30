@@ -242,6 +242,28 @@ export const VISION_CACHE_TTL_HOURS = optionalNumber(
 );
 export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
 
+// Нагляд за TheFlow (ROADMAP §13.10). Інваріант — AI *може* впасти; тоді
+// хтось має це помітити, а не оператор, що випадково запустив `flow stats`.
+// Алерти йдуть у `health_destinations` з routing.json; без них — лише в лог.
+export const FLOW_HEALTH = {
+  // Як часто перевіряти. Запит — кілька COUNT по posts, дешево.
+  intervalMin: optionalNumber("FLOW_HEALTH_INTERVAL_MIN", process.env.FLOW_HEALTH_INTERVAL_MIN, 10),
+  // Найстаріший pending старший за це — застій (якщо квота не вичерпана:
+  // тоді бэклог чекає скидання за дизайном). Бэклог у кілька сотень постів
+  // на безкоштовному тирі розбирається за ~півгодини.
+  pendingMaxAgeMin: optionalNumber("FLOW_HEALTH_PENDING_MAX_AGE_MIN", process.env.FLOW_HEALTH_PENDING_MAX_AGE_MIN, 120),
+  // Вікно для частки failed. Пілот 2026-09-29 валив КОЖЕН запит годинами,
+  // а pending при цьому не старішали — постів ставали failed, не застрягали.
+  failureWindowMin: optionalNumber("FLOW_HEALTH_FAILURE_WINDOW_MIN", process.env.FLOW_HEALTH_FAILURE_WINDOW_MIN, 60),
+  failureMin: optionalNumber("FLOW_HEALTH_FAILURE_MIN", process.env.FLOW_HEALTH_FAILURE_MIN, 5),
+  failureShare: optionalNumber("FLOW_HEALTH_FAILURE_SHARE", process.env.FLOW_HEALTH_FAILURE_SHARE, 0.5),
+  // Жодного нового flow-поста стільки годин — мертвий канал або зламаний
+  // polling (питання S3, ROADMAP §1.2).
+  ingestSilentHours: optionalNumber("FLOW_HEALTH_INGEST_SILENT_HOURS", process.env.FLOW_HEALTH_INGEST_SILENT_HOURS, 24),
+  // Нагадування, поки проблема не зникла. Одне повідомлення на перехід, не на тік.
+  repeatHours: optionalNumber("FLOW_HEALTH_REPEAT_HOURS", process.env.FLOW_HEALTH_REPEAT_HOURS, 6),
+};
+
 // Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
 // embedModel === null, не оголошує capability `embed` — gateway маршрутизує
 // `embed()` на іншого провайдера або деградує до tier 1 (ROADMAP 3.1).

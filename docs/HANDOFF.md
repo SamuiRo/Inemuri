@@ -2,11 +2,11 @@
 
 ## Current state
 
-`v4.43.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.44.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, and
 Phase 2's resolve stage (§5.2) is built and waiting on destination channels.
 10 migrations exist (`database/migrations/001`–`010`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 401 green `node --test` cases,
+is clean on the dev database. `npm test` is 417 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -24,10 +24,16 @@ the dev copy three sources are flow-enabled in the git-ignored `sources.json`
   wrote the fake provider's verdicts into them — all 135 `enriched` rows are
   `model_used = fake-model`, and 30 `failed` ones are its `provider down`.
 
-Both are fixed (CHANGELOG 4.43.1). The corrupted rows are **still in the dev
-database** until the operator restarts the service on the new code and
-requeues them — see Next steps, item 1. `flow review` must not be run before
-that: it would label fake verdicts.
+Both are fixed (CHANGELOG 4.43.1), and the corrupted rows were requeued with
+the service stopped (backup `database/backups/*.pre-requeue`): the dev
+database now holds 217 `pending` posts waiting for the next start. `flow
+review` must wait until they are re-enriched — before that it would have
+nothing real to label.
+
+Since `v4.44.0` the service watches itself (ROADMAP §13.10): failing
+enrichment, a queue that stops draining, and silent ingest raise an alert to
+`health_destinations` in `routing.json`. **That key is not set in the dev
+`routing.json` yet**, so alerts only reach the log until it is.
 
 Phase 1 is still **dormant without a key**: `src/module/theflow/EnrichWorker.js`
 starts only when `ENRICH_WORKER_ENABLED` and
@@ -105,16 +111,12 @@ destinations is worse than not starting. A fresh clone now starts — before
    hand. `.env` defines `DISCORD_COMMAND_WHITELIST` twice; only the first line
    counts. Open for a live run: `/export-chats` with
    `DISCORD_EXPORT_TELEGRAM_CHAT` set.
-1. **Restart on `v4.43.1`, then requeue the pilot's corrupted rows.** Order
-   matters: the running process still has the 400-producing schema, so
-   requeueing first would burn the day's quota on the same error.
-   ```bash
-   node src/cli.js flow requeue --status enriched --model fake-model
-   node src/cli.js flow requeue
-   ```
-   The first returns the 135 fake verdicts, the second the 82 failed posts.
-   217 posts fit one day of free-tier quota. Then `flow stats` again — and
-   only then `flow review`.
+1. **Start the service and let the 217 requeued posts drain.** They fit one
+   day of free-tier quota (~15 min at RPM 15). Add `health_destinations` (a
+   Telegram chat) to the git-ignored `routing.json` first, so a repeat of the
+   pilot's failure reaches you. Then `node src/cli.js flow health` and
+   `flow stats` — `model_used` must now be the Gemini model — and only then
+   `flow review`.
 2. **Gemini is configured.** `GEMINI_API_KEY` is set, and the free-tier
    limits read from AI Studio are the defaults since `v4.30.0` —
    `gemini-3.5-flash-lite` (RPD 500 / RPM 15) and `gemini-embedding-2`
@@ -163,6 +165,13 @@ destinations is worse than not starting. A fresh clone now starts — before
   test had been writing fake verdicts into real pending posts. Fixed both,
   added `flow requeue`, and moved `npm test` onto a throwaway database
   (`v4.43.1`). One live Gemini call verified the fix.
+- With the service stopped by the operator, requeued the 217 corrupted rows
+  (135 fake `enriched`, 82 `failed`) after a backup.
+- Built the health monitor, ROADMAP §13.10 (`v4.44.0`). The first design keyed
+  a stall on the age of the oldest `pending` post; running it against the
+  requeued corpus showed that would alert on every healthy drain of an old
+  backlog, so a stall now also requires no progress for as long. Verified the
+  alert path monitor → EventBus → MessageRouter → adapter with a fake adapter.
 
 ### 2026-09-29
 

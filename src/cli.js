@@ -6,6 +6,8 @@ import database from "./module/teapot/sqlite/sqlite_db.js";
 import SourceSeeder from "./module/seeders/Sourceseeder.js";
 import { Source, Post, PostFeedback } from "./module/teapot/models/index.js";
 import { print } from "./shared/utils.js";
+import { collectHealthSnapshot, assessHealth, primaryQuota } from "./module/theflow/FlowHealth.js";
+import { FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED } from "./config/app.config.js";
 
 const program = new Command();
 
@@ -471,6 +473,43 @@ flow
         print("The enrich worker picks them up on its next tick; a running service needs no restart.", "info");
       }
       await database.disconnect();
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+flow
+  .command("health")
+  .description("Stall / failure check (ROADMAP 13.10); exits 1 when there is a problem")
+  .action(async () => {
+    try {
+      await database.connect();
+      const snap = await collectHealthSnapshot({
+        failureWindowMin: FLOW_HEALTH.failureWindowMin,
+        quota: primaryQuota(LLM_PROVIDERS, LLM_PRIMARY),
+      });
+      // CLI не знає, чи крутиться воркер у сервісі; судимо за конфігом.
+      const workerRunning = ENRICH_WORKER_ENABLED && Boolean(LLM_PROVIDERS[LLM_PRIMARY]?.apiKey);
+      const report = assessHealth(snap, FLOW_HEALTH, { workerRunning });
+      const w = snap.window;
+
+      print(
+        `pending ${snap.pending}` +
+          (snap.oldestPendingAt ? ` (oldest ${snap.oldestPendingAt.toISOString()})` : "") +
+          ` · last ${w.minutes} min: enriched ${w.enriched}, failed ${w.failed}` +
+          ` · last ingest ${snap.lastIngestAt?.toISOString() ?? "never"}` +
+          ` · flow sources ${snap.flowSources}` +
+          (snap.quota ? ` · quota ${snap.quota.key} ${snap.quota.used}/${snap.quota.rpd ?? "?"}${snap.quota.exhausted ? " exhausted" : ""}` : ""),
+        "system",
+      );
+      for (const e of w.topErrors) print(`  ×${e.count} ${e.error}`, "warning");
+      for (const n of report.notes) print(n, "info");
+      for (const p of report.problems) print(`${p.key}: ${p.message}`, "error");
+      if (report.ok) print("TheFlow healthy", "success");
+
+      await database.disconnect();
+      process.exitCode = report.ok ? 0 : 1;
     } catch (error) {
       print(`Error: ${error.message}`, "error");
       process.exit(1);
