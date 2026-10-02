@@ -7,6 +7,13 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.51.3] - 2026-10-02
+
+### Changed
+- ROADMAP §5.7 (reaction capture) is back as **optional and deferred**, not
+  dropped: it waits until delivery channels carry real posts, then the §13.5
+  probe decides it. `flow review` stays the label source. Documentation only.
+
 ## [4.51.2] - 2026-10-02
 
 ### Changed
