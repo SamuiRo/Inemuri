@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.51.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.51.2`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered

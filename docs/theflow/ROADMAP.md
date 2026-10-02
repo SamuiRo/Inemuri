@@ -903,7 +903,7 @@ Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 �
 | 5.4 | Flow delivery: `render()` per [DELIVERY.md](DELIVERY.md), `MediaResolver.resolve(post)`, then send. **The template is designed here** | `FlowDelivery.js` | M |
 | 5.5 | Record deliveries into `clusters.delivered` (needs 2.6) | | S |
 | 5.6 | Status transitions `enriched` → `routed` / `unsorted` | | S |
-| 5.7 | Reaction capture → `post_feedback` (needs 2.6). Run the 13.5 probe first — the estimate depends on it | | M |
+| 5.7 | ~~Reaction capture → `post_feedback`~~ **Dropped (operator, 2026-10-02).** `flow review` is the label source, and since v4.51.0 its labels feed the enrich prompt directly; reactions would only be a second way to write the same labels | | — |
 
 > **5.2 done (v4.24.0).** `src/module/theflow/ResolveStage.js` — `resolve()`
 > and `validateRouting()`, pure, reading `ROUTING` (routing.json) rather than
@@ -1358,7 +1358,8 @@ edit produces no notification. The template itself — exact lines, wording, emo
 and the Discord embed layout — is filled in at phase 2, when the channels from
 5.1 exist and there is real material to look at.
 
-**13.5 — reactions.** Do a short feasibility probe before 5.7 keeps its `M`:
+**13.5 — reactions. Closed: 5.7 was dropped (2026-10-02),** so the probe below
+is not needed. Kept for the reasoning. Do a short feasibility probe before 5.7 keeps its `M`:
 subscribe to `UpdateMessageReactions` on your own channel and see whether the
 user client receives it at all. If it does, keep the mapping minimal — 👍
 `good`, 👎 `noise`, ❓ `wrong_topic`. `missed` cannot be expressed as a reaction

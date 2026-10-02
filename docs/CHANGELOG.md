@@ -7,6 +7,13 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.51.2] - 2026-10-02
+
+### Changed
+- ROADMAP §5.7 (reaction capture) and the §13.5 probe are dropped by operator
+  decision: `flow review` is the label source and already feeds the enrich
+  prompt. Documentation only.
+
 ## [4.51.1] - 2026-09-30
 
 ### Added
