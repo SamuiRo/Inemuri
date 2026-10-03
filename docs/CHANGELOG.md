@@ -7,6 +7,31 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.52.0] - 2026-10-03
+
+### Added
+- **News intake specification (ROADMAP §14, [theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)).**
+  Built on a probe of 31 outlets: most RSS feeds carry a teaser only, the
+  news sitemap is nearly universal and carries titles, and the closed
+  outlets give headlines only. The design: discovery (`rss` · `sitemap` ·
+  `wpjson`) → headline triage → article fetch for what passed → enrich.
+- **Knowledge base — `knowledge_examples` (migration `015`).** Every label
+  is now stored with a snapshot of what was labelled (text, classification,
+  taxonomy version, source name), so labels survive pruning `posts` and move
+  between instances. `node src/cli.js flow knowledge export|import` writes
+  and reads a versioned JSONL file; import is an upsert by `uid`, so a repeat
+  changes nothing, and bad lines are reported by number. `flow knowledge
+  stats` and `flow knowledge backfill` complete it. The migration backfills
+  existing `post_feedback` labels.
+
+### Changed
+- `flow review` writes the `post_feedback` row and the knowledge snapshot in
+  one transaction.
+- Few-shot examples come from `knowledge_examples` instead of joining
+  `post_feedback` to `posts`. A requeued post no longer changes what its label
+  taught; the latest label per content (not per post) wins. The examples-set
+  hash changes once, so the gateway cache misses once.
+
 ## [4.51.3] - 2026-10-02
 
 ### Changed

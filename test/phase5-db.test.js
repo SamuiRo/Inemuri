@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 
 import { assertTestDatabase } from "./support/testDatabase.js";
 import database from "../src/module/teapot/sqlite/sqlite_db.js";
-import { Post, Source, PostFeedback, Cluster } from "../src/module/teapot/models/index.js";
-import { FewShotStore, loadLabelled } from "../src/module/theflow/FewShot.js";
+import { Post, Source, PostFeedback, Cluster, KnowledgeExample } from "../src/module/teapot/models/index.js";
+import { FewShotStore } from "../src/module/theflow/FewShot.js";
+import { recordLabel, loadExamples } from "../src/module/theflow/knowledge/KnowledgeBase.js";
 import { EnrichWorker } from "../src/module/theflow/EnrichWorker.js";
 import { collectDigestRows, buildDigestMessage } from "../src/module/theflow/digest/Digest.js";
 
@@ -23,6 +24,7 @@ test.before(async () => {
 });
 test.after(async () => {
   const ids = (await Post.findAll({ where: { source_id: src.id }, attributes: ["id", "cluster_id"] }));
+  await KnowledgeExample.destroy({ where: { post_id: ids.map((p) => p.id) } });
   await PostFeedback.destroy({ where: { post_id: ids.map((p) => p.id) } });
   const cids = [...new Set(ids.map((p) => p.cluster_id).filter(Boolean))];
   await Post.destroy({ where: { source_id: src.id } });
@@ -42,8 +44,8 @@ async function post(over) {
 
 test("a reviewed label reaches the enrich call as an example; the verdict records which set", async () => {
   const labelled = await post({ status: "enriched", text_en: `${XID} Free case drop Friday`, topic: "steam", signal_type: "event", confidence: 0.9 });
-  await PostFeedback.create({ post_id: labelled.id, verdict: "good" });
-  assert.ok((await loadLabelled()).some((l) => l.post.id === labelled.id));
+  const { example } = await recordLabel({ post: labelled, verdict: "good" });
+  assert.ok((await loadExamples()).some((e) => e.uid === example.uid));
 
   const pending = await post({ status: "pending", candidates: {} });
   const seen = [];
@@ -59,7 +61,7 @@ test("a reviewed label reaches the enrich call as an example; the verdict record
   await w.runOnce();
 
   const input = seen.find((i) => i.text === pending.raw_text);
-  assert.ok(input.examples.some((e) => e.post_id === labelled.id && e.kind === "good"));
+  assert.ok(input.examples.some((e) => e.ref === example.uid && e.kind === "good"));
   const { hash } = await store.get();
   assert.equal(input.examplesHash, hash);
   const P = await Post.findByPk(pending.id);

@@ -1242,6 +1242,10 @@ PHASE 3.5  Reddit adapter · RSS adapter · URL media resolver
               |
               v
 PHASE 4 extraction        PHASE 5 digests + feedback
+              |
+              v
+PHASE 6    knowledge base -> sitemap/wpjson discovery -> headline triage
+           -> article fetch -> silent-source alert   (NEWS_INTAKE.md)
 ```
 
 The former phase 6 is retired — vision is phase 1.5. Tier 3 LLM adjudication of
@@ -1402,6 +1406,36 @@ TheFlow unimplemented.
 that 2.4 replaces. It is deliberately left until the migration exists rather than
 described ahead of it — which is why **2.4 is not done until DATA_MODEL.md
 matches the schema it leaves behind**.
+
+## 14. Phase 6 — news intake and the knowledge base
+
+Read the large news outlets and deliver only what matters — in the first place
+what moves markets — with the key facts extracted. The specification, with the
+2026-10-03 measurement of 31 outlets behind it, is
+[NEWS_INTAKE.md](NEWS_INTAKE.md). The rule it rests on: **triage on the
+headline first, fetch the article after** — a news sitemap gives 200–400
+articles a day per outlet, over 90% irrelevant.
+
+| # | Task | Effort |
+|---|---|---|
+| 14.1 | `knowledge_examples` — portable labelled examples, export/import, backfill from `post_feedback`; few-shot reads it | M |
+| 14.2 | Discovery through `sitemap` and `wpjson`, as settings of the existing feed poller | M |
+| 14.3 | `discovered_items` + triage: rules, then a batched LLM over headlines | L |
+| 14.4 | Article fetch for what passed triage (JSON-LD → `<p>`), plus sampled rejects | M |
+| 14.5 | Alert on silent sources; poll intervals tuned from real data | S |
+
+> **14.1 done (v4.52.0).** `src/module/theflow/knowledge/`: `snapshot.js`
+> (pure — post + label → row, `contentHash`), `exchange.js` (pure — the JSONL
+> format: header, validation, `content_hash` recomputed on import) and
+> `KnowledgeBase.js` (the only writer: `recordLabel`, `backfillFromFeedback`,
+> `exportKnowledge`, `importKnowledge`, `loadExamples`). Migration `015`
+> creates the table and backfills. `flow review` writes the feedback row and
+> the snapshot in one transaction; `FewShot.js` reads the snapshot, so a
+> requeue no longer changes what a label taught. CLI: `flow knowledge
+> stats|export|import|backfill`.
+
+Open before 14.3: what counts as market-moving, the outlet list, the share of
+sampled rejects (NEWS_INTAKE.md §5).
 
 ## Appendix A — `categories.json` v1, drafted from the real sources
 

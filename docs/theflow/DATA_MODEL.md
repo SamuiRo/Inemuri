@@ -146,6 +146,23 @@ Table and `PostFeedback` model land in migration `004-post-feedback`.
 Labels come from your reaction to a post in the channel (emoji, forward).
 They later become few-shot examples for the prompt.
 
+## knowledge_examples
+
+The knowledge base (NEWS_INTAKE.md §3): self-contained labelled examples. Each
+row carries a snapshot of what was labelled — text, classification, taxonomy
+version, source name — so labels survive pruning `posts` and move between
+instances through `flow knowledge export|import`. `post_feedback` stays the
+review event log; few-shot reads this table. The full field table and the
+exchange format are in [NEWS_INTAKE.md](NEWS_INTAKE.md) §3.2 and §3.5.
+
+Key points: `uid` (UUID, UNIQUE) is the identity across instances;
+`content_hash` groups labels of the same content (the latest wins); `level` is
+`post` · `headline` · `article`; `verdict` uses the `post_feedback` vocabulary;
+`post_id` (`SET NULL`) and `feedback_id` (UNIQUE) are local links that are never
+exported. Rows are immutable — `created_at` only.
+
+Model `KnowledgeExample`, table created in migration `015-knowledge-examples`.
+
 ## Migration
 
 The project now has a migration runner (`database/migrations/` plus
@@ -234,6 +251,12 @@ The Telegram message id lives on in `external_id` and `media_ref`; a Reddit
 fullname or an RSS guid could never have fit an `INTEGER NOT NULL` column.
 Migration `002` skips its `message_id` backfill when the column is absent, so
 a database bootstrapped from the current models still migrates.
+
+### `015-knowledge-examples`
+
+Creates `knowledge_examples` and backfills every `post_feedback` label that
+still has its post (`flow knowledge backfill` reruns it). Idempotent through
+the UNIQUE `feedback_id`.
 
 ### Fresh installs
 

@@ -7,11 +7,13 @@ import { buildEnrichPrompt } from "../src/services/ai/prompts/enrich.js";
 import { selectDigest, renderDigest, digestScore } from "../src/module/theflow/digest/Digest.js";
 import LLMGateway from "../src/services/ai/LLMGateway.js";
 
-const L = (id, verdict, topic, signal, note = null) => ({
-  verdict, note, post: { id, text_en: `post ${id} text`, topic, signal_type: signal },
+// Рядок бази знань; content_hash = id, тож та сама «id» — той самий зміст.
+const L = (id, verdict, topic, signal, reason = null) => ({
+  uid: `uid-${id}-${verdict}`, content_hash: `h${id}`, verdict, reason,
+  body: `post ${id} raw`, text_en: `post ${id} text`, topic, signal_type: signal,
 });
 
-test("pickExamples: latest label per post wins, good ones diverse by signal, wrong ones need a note", () => {
+test("pickExamples: latest label per content wins, good ones diverse by signal, wrong ones need a note", () => {
   const labelled = [
     L(1, "good", "steam", "promo_code"),
     L(2, "good", "steam", "promo_code"),
@@ -20,10 +22,10 @@ test("pickExamples: latest label per post wins, good ones diverse by signal, wro
     L(5, "wrong_topic", "steam", "event"),
     L(6, "noise", "steam", "event"),
     L(1, "wrong_topic", "steam", "promo_code", "older label, ignored"),
-    { verdict: "good", post: { id: 9, text_en: null, topic: "steam" } },
+    { uid: "u9", content_hash: "h9", verdict: "good", body: "", text_en: null, topic: "steam" },
   ];
   const ex = pickExamples(labelled, { maxGood: 3, maxWrong: 3 });
-  assert.deepEqual(ex.map((e) => [e.kind, e.post_id]), [["good", 1], ["good", 3], ["good", 2], ["wrong", 4]]);
+  assert.deepEqual(ex.map((e) => [e.kind, e.ref]), [["good", "uid-1-good"], ["good", "uid-3-good"], ["good", "uid-2-good"], ["wrong", "uid-4-wrong_topic"]]);
   assert.equal(ex[3].note, "should be other/opinion");
   assert.equal(pickExamples(labelled, { maxGood: 1, maxWrong: 0 }).length, 1);
   assert.equal(hashExamples([]), null);

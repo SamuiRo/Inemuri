@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.51.3`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.52.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -12,11 +12,14 @@ RSS/Atom sources through `src/sources/feeds/` (Reddit needs OAuth
 credentials in practice — see Next steps). Phase 4 (entity extraction) is
 built: enrich prompt version 2. Phase 5 is built apart from reactions: labels
 from `flow review` feed the enrich prompt as examples, and a scheduled digest
-goes to `digest_destinations` once that key is set. The delivery mechanism (§5.3–5.6) is
+goes to `digest_destinations` once that key is set. Phase 6 (news intake,
+[theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)) has started: step 1, the
+portable knowledge base `knowledge_examples`, is built — `flow review` writes
+to it and few-shot reads from it. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
-the final template exist. 14 migrations exist
-(`database/migrations/001`–`014`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 527 green `node --test` cases,
+the final template exist. 15 migrations exist
+(`database/migrations/001`–`015`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 538 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -111,6 +114,13 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
+- **News intake (Phase 6), step 2 next** — `sitemap` and `wpjson` discovery
+  (ROADMAP §14.2). Before step 3 (triage) the operator decides what counts as
+  market-moving, the outlet list and the share of sampled rejects
+  (NEWS_INTAKE.md §5). Labels now live in `knowledge_examples`;
+  `flow knowledge export --out kb.jsonl` before moving instances, `flow
+  knowledge import kb.jsonl` after.
+
 - **Labelling now pays off directly.** Every `flow review` label with `good`,
   or `wrong` plus a note naming the right answer, becomes an example in the
   enrich prompt within an hour. A few `wrong` labels with notes on esports
@@ -198,6 +208,17 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-10-03 — news intake spec, knowledge base
+
+Probed 31 news outlets (RSS length, news sitemap, WP JSON API, article page):
+about two thirds of RSS feeds carry only a teaser, nearly all outlets publish
+a news sitemap with titles, and the most market-relevant ones (Reuters,
+Bloomberg, WSJ, FT, AP) close their pages to an honest bot. That produced
+[theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md) and ROADMAP §14. Step 1 built:
+`knowledge_examples` (migration `015`), `src/module/theflow/knowledge/`,
+`flow knowledge stats|export|import|backfill`; `flow review` and few-shot moved
+onto it. The dev database had no labels yet, so the backfill copied nothing.
 
 ### 2026-09-30 — phase 5
 

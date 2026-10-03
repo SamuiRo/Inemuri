@@ -101,6 +101,7 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 | [theflow/LLM_GATEWAY.md](theflow/LLM_GATEWAY.md) | Provider contract, fallback matrix, quota accounting, priority classes |
 | [theflow/VISION.md](theflow/VISION.md) | Screenshot transcription, gates, unverifiable entities, image-borne injection |
 | [theflow/DELIVERY.md](theflow/DELIVERY.md) | How a flow post is rendered and kept current: full re-render, entity offsets, corrections, platform limits |
+| [theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md) | News outlets as sources: what they give (measured), headline triage, the portable knowledge base |
 | [theflow/ROADMAP.md](theflow/ROADMAP.md) | **The work plan.** Current state, per-phase task tables with files and effort, exit gates, sequencing |
 
 ## Phases

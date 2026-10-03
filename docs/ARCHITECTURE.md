@@ -288,7 +288,9 @@ listener does. Images of such posts are fetched lazily by
 `src/module/theflow/media/UrlMediaResolver.js`.
 
 **Feedback and digests (phase 5).** `src/module/theflow/FewShot.js` turns
-`post_feedback` labels into prompt examples for the enrich worker;
+the knowledge base (`knowledge_examples`, written by
+`src/module/theflow/knowledge/KnowledgeBase.js` on every `flow review` label)
+into prompt examples for the enrich worker;
 `src/module/theflow/digest/Digest.js` builds the scheduled digest, which
 `inemuri.js` registers on `CronScheduler` when `digest_destinations` is set.
 
@@ -332,5 +334,5 @@ enters TheFlow when its `flow.enabled` is set to `true` in `sources.json`.
 - `node scripts/estimate-volume.js` reads current vs baseline message ids to print messages/day per source (ROADMAP §2.1); one-off, needs a Telegram session.
 - `node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]` checks discordapp's setup on a server, shows or applies its provisioning plan, or exports the server as a config, from a terminal.
 - `node scripts/backfill-image-hash.js` fills `posts.image_hash` for rows with media (runs outside the ingest hot path).
-- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback`), `flow requeue` (return failed or untrusted posts to the enrich queue), `flow health` (the health check; exits 1 on a problem), `flow dedup` (deduplication report, backfill, reset, calibration pairs), `flow search` (keyword or semantic search over the corpus), `flow preview` (what delivery would send, without sending), and `flow digest` (the digest, without sending).
+- `src/cli.js` also provides helper commands for listing, toggling, and clearing sources, plus `flow stats` (corpus stats per source and total), `flow export` (sanitized JSONL sample), `flow review` (label enriched posts into `post_feedback` and the knowledge base), `flow knowledge` (knowledge base stats, JSONL export/import, backfill), `flow requeue` (return failed or untrusted posts to the enrich queue), `flow health` (the health check; exits 1 on a problem), `flow dedup` (deduplication report, backfill, reset, calibration pairs), `flow search` (keyword or semantic search over the corpus), `flow preview` (what delivery would send, without sending), and `flow digest` (the digest, without sending).
 - `npm test` runs the `node --test` suites under `test/` through `scripts/run-tests.js`, on a throwaway database (`SQLITE_STORAGE`), never on `database/pot.sqlite`.

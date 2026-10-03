@@ -15,6 +15,10 @@ import { collectStorage, assessStorage, storageLine } from "./module/theflow/Sto
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import {
+  recordLabel, backfillFromFeedback, exportKnowledge, importKnowledge, knowledgeStats,
+} from "./module/theflow/knowledge/KnowledgeBase.js";
+import { serialize as serializeKnowledge, parse as parseKnowledge } from "./module/theflow/knowledge/exchange.js";
+import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
   FLOW_DELIVERY, ROUTING, FLOW_DIGEST,
 } from "./config/app.config.js";
@@ -379,7 +383,7 @@ function truncateForReview(text, max = 400) {
 
 flow
   .command("review")
-  .description("Review enriched posts, write one-key labels to post_feedback")
+  .description("Review enriched posts, write one-key labels to post_feedback and the knowledge base")
   .option("--limit <n>", "max posts this session", "50")
   .option("--topic <t>", "only this topic")
   .action(async (options) => {
@@ -448,7 +452,7 @@ flow
           const n = await ask("note (optional): ");
           note = n && n.trim() ? n.trim() : null;
         }
-        await PostFeedback.create({ post_id: p.id, verdict, note });
+        await recordLabel({ post: p, verdict, note });
         written += 1;
         print(`recorded: ${verdict}`, "success");
       }
@@ -461,6 +465,78 @@ flow
       process.exit(1);
     }
   });
+
+// ── База знань (NEWS_INTAKE.md §3) ───────────────────────────────────
+
+/** Підключення, дія, відключення; помилка — повідомлення і код 1. */
+const withDatabase = (action) => async (...args) => {
+  try {
+    await database.connect();
+    await action(...args);
+    await database.disconnect();
+  } catch (error) {
+    print(`Error: ${error.message}`, "error");
+    process.exit(1);
+  }
+};
+
+const csv = (value) => (value ? String(value).split(",").map((s) => s.trim()).filter(Boolean) : undefined);
+
+const knowledge = flow
+  .command("knowledge")
+  .description("The knowledge base: labelled examples that move between instances (NEWS_INTAKE.md §3)");
+
+knowledge
+  .command("stats")
+  .description("Examples by level, verdict and origin")
+  .action(withDatabase(async () => {
+    const s = await knowledgeStats();
+    const line = (counts) => Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(" · ") || "—";
+    print(`Knowledge base: ${s.total} example(s)`, "system");
+    print(`  level:   ${line(s.level)}`);
+    print(`  verdict: ${line(s.verdict)}`);
+    print(`  origin:  ${line(s.origin)}`);
+  }));
+
+knowledge
+  .command("export")
+  .description("Write the knowledge base as JSONL (header line + one example per line)")
+  .option("--out <file>", "write to a file instead of stdout")
+  .option("--level <list>", "comma-separated levels: post,headline,article")
+  .option("--verdict <list>", "comma-separated verdicts: good,noise,wrong_topic,missed")
+  .action(withDatabase(async (options) => {
+    const rows = await exportKnowledge({ levels: csv(options.level), verdicts: csv(options.verdict) });
+    const out = serializeKnowledge(rows);
+    if (options.out) {
+      await fs.writeFile(options.out, out, "utf-8");
+      print(`Wrote ${rows.length} example(s) to ${options.out}`, "success");
+    } else {
+      process.stdout.write(out);
+    }
+  }));
+
+knowledge
+  .command("import <file>")
+  .description("Add examples from a JSONL export; existing uids are left as they are, so a repeat changes nothing")
+  .option("--dry-run", "validate and count, write nothing")
+  .action(withDatabase(async (file, options) => {
+    const { header, rows, errors } = parseKnowledge(await fs.readFile(file, "utf-8"));
+    for (const e of errors) print(`line ${e.line}: ${e.error} — skipped`, "warning");
+    const { created, existing } = await importKnowledge(rows, { dryRun: Boolean(options.dryRun) });
+    print(
+      `${options.dryRun ? "Would import" : "Imported"} ${created} example(s); ${existing} already present; ` +
+        `${errors.length} invalid line(s). Export of ${header.exported_at}, ${header.count} example(s).`,
+      created ? "success" : "info",
+    );
+  }));
+
+knowledge
+  .command("backfill")
+  .description("Copy post_feedback labels that are not in the knowledge base yet (migration 015 does this once)")
+  .action(withDatabase(async () => {
+    const { created, skipped } = await backfillFromFeedback();
+    print(`Backfilled ${created} label(s)${skipped ? `, ${skipped} skipped (no post or no text)` : ""}`, "success");
+  }));
 
 flow
   .command("requeue")

@@ -1,25 +1,26 @@
 import crypto from "crypto";
-import { Op } from "sequelize";
 
-import { Post, PostFeedback } from "../teapot/models/index.js";
+import { loadExamples } from "./knowledge/KnowledgeBase.js";
 
 /**
- * TheFlow — few-shot з міток оператора (ROADMAP §9, фаза 5).
+ * TheFlow — few-shot з бази знань (ROADMAP §9, фаза 5; NEWS_INTAKE.md §3.4).
  *
- * `flow review` пише мітки в post_feedback з першого дня shadow mode саме для
- * цього: розмічені пости стають прикладами в промпті enrich.
+ * Мітки `flow review` потрапляють у knowledge_examples разом зі знімком
+ * поста, і звідти стають прикладами в промпті enrich:
  *
- *   good         → «так правильно»: пост і його вердикт;
- *   wrong_topic  → «так було неправильно»: пост, хибний вердикт і примітка
- *                  рецензента (у ній зазвичай правильна відповідь).
+ *   good         → «так правильно»: текст і його класифікація;
+ *   wrong_topic  → «так було неправильно»: текст, хибна класифікація і
+ *                  причина від рецензента (у ній зазвичай правильна відповідь).
  *   noise        → не приклад класифікації, пропускається.
  *
- * Приклади — це text_en чужих каналів, тобто дані від джерела. Тому вони
+ * Знімок, а не join до posts: після `flow requeue` поточний topic поста може
+ * відрізнятися від того, на який ставили мітку, а знімок зберігає саме його.
+ *
+ * Приклади — це текст чужих каналів, тобто дані від джерела. Тому вони
  * йдуть у промпт окремим nonced-блоком як ДАНІ, не в системний промпт:
  * інакше колись позначений пост став би каналом ін'єкції в кожен виклик.
  *
- * Модуль не знає ні Telegram, ні Discord, ні gateway: лише posts і
- * post_feedback.
+ * Модуль не знає ні Telegram, ні Discord, ні gateway.
  */
 
 const SNIPPET = 280;
@@ -30,56 +31,56 @@ const snippet = (s, max = SNIPPET) => {
 };
 
 /**
- * Мітки → приклади. Чиста функція.
+ * Рядки бази знань → приклади. Чиста функція.
  *
- * @param {Array<{ verdict, note, created_at, post: { id, text_en, topic, signal_type } }>} labelled
+ * @param {Array<{ uid, content_hash, verdict, reason, body, text_en, topic, signal_type }>} rows
  *   Від найновіших до найстаріших.
  * @param {{ maxGood?: number, maxWrong?: number }} [opts]
- * @returns {Array<{ kind: "good"|"wrong", post_id, text, topic, signal_type, note: string|null }>}
+ * @returns {Array<{ kind: "good"|"wrong", ref: string, text, topic, signal_type, note: string|null }>}
  */
-export function pickExamples(labelled, { maxGood = 4, maxWrong = 3 } = {}) {
-  // Остання мітка поста вирішує: рецензент міг передумати.
+export function pickExamples(rows, { maxGood = 4, maxWrong = 3 } = {}) {
+  // Остання мітка змісту вирішує: рецензент міг передумати.
   const latest = new Map();
-  for (const l of labelled) {
-    if (!l?.post?.text_en || !l.post.topic) continue;
-    if (!latest.has(l.post.id)) latest.set(l.post.id, l);
+  for (const r of rows) {
+    if (!r?.topic || !(r.text_en || r.body)) continue;
+    if (!latest.has(r.content_hash)) latest.set(r.content_hash, r);
   }
   const list = [...latest.values()];
 
   // good: спершу по одному на сигнал (різноманіття), потім решта найновіших.
   const good = [];
   const bySignal = new Set();
-  const goods = list.filter((l) => l.verdict === "good");
-  for (const l of goods) {
+  const goods = list.filter((r) => r.verdict === "good");
+  for (const r of goods) {
     if (good.length >= maxGood) break;
-    if (bySignal.has(l.post.signal_type)) continue;
-    bySignal.add(l.post.signal_type);
-    good.push(l);
+    if (bySignal.has(r.signal_type)) continue;
+    bySignal.add(r.signal_type);
+    good.push(r);
   }
-  for (const l of goods) {
+  for (const r of goods) {
     if (good.length >= maxGood) break;
-    if (!good.includes(l)) good.push(l);
+    if (!good.includes(r)) good.push(r);
   }
 
-  // wrong_topic: лише з приміткою — без неї незрозуміло, що правильно.
-  const wrong = list.filter((l) => l.verdict === "wrong_topic" && l.note && l.note.trim()).slice(0, maxWrong);
+  // wrong_topic: лише з причиною — без неї незрозуміло, що правильно.
+  const wrong = list.filter((r) => r.verdict === "wrong_topic" && r.reason && r.reason.trim()).slice(0, maxWrong);
 
-  const shape = (l, kind) => ({
+  const shape = (r, kind) => ({
     kind,
-    post_id: l.post.id,
-    text: snippet(l.post.text_en),
-    topic: l.post.topic,
-    signal_type: l.post.signal_type,
-    note: kind === "wrong" ? snippet(l.note, 160) : null,
+    ref: r.uid,
+    text: snippet(r.text_en || r.body),
+    topic: r.topic,
+    signal_type: r.signal_type,
+    note: kind === "wrong" ? snippet(r.reason, 160) : null,
   });
-  return [...good.map((l) => shape(l, "good")), ...wrong.map((l) => shape(l, "wrong"))];
+  return [...good.map((r) => shape(r, "good")), ...wrong.map((r) => shape(r, "wrong"))];
 }
 
 /** Коротка ідентичність набору прикладів — у ключ кешу і в analysis.fewshot. */
 export function hashExamples(examples) {
   if (!examples?.length) return null;
   return crypto.createHash("sha1")
-    .update(JSON.stringify(examples.map((e) => [e.kind, e.post_id, e.topic, e.signal_type, e.note])))
+    .update(JSON.stringify(examples.map((e) => [e.kind, e.ref, e.topic, e.signal_type, e.note])))
     .digest("hex").slice(0, 12);
 }
 
@@ -87,30 +88,12 @@ export function hashExamples(examples) {
 // імпортує конвеєр); тут лише збирання прикладів із бази.
 export { buildExamplesBlock } from "../../services/ai/prompts/fewshot.js";
 
-/** Мітки з бази, найновіші першими. */
-export async function loadLabelled({ limit = 200 } = {}) {
-  const labels = await PostFeedback.findAll({
-    where: { verdict: ["good", "wrong_topic"], post_id: { [Op.ne]: null } },
-    order: [["created_at", "DESC"], ["id", "DESC"]],
-    limit,
-  });
-  if (!labels.length) return [];
-  const posts = await Post.findAll({
-    where: { id: [...new Set(labels.map((l) => l.post_id))] },
-    attributes: ["id", "text_en", "topic", "signal_type"],
-  });
-  const byId = new Map(posts.map((p) => [p.id, p.get({ plain: true })]));
-  return labels
-    .map((l) => ({ verdict: l.verdict, note: l.note, created_at: l.created_at, post: byId.get(l.post_id) }))
-    .filter((l) => l.post);
-}
-
 /**
  * Приклади з кешем: перечитуються з бази не частіше за refreshMs — нові мітки
  * з `flow review` підхоплюються без перезапуску.
  */
 export class FewShotStore {
-  constructor({ maxGood = 4, maxWrong = 3, refreshMs = 3_600_000, now = Date.now, load = loadLabelled } = {}) {
+  constructor({ maxGood = 4, maxWrong = 3, refreshMs = 3_600_000, now = Date.now, load = loadExamples } = {}) {
     this.opts = { maxGood, maxWrong };
     this.refreshMs = refreshMs;
     this.now = now;

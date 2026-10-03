@@ -26,8 +26,9 @@ enrichment, shadow mode, dormant without a provider key) and Phase 1.5
 (vision, off per source by default) are **implemented**, as are Phase 2's
 resolve stage and delivery mechanism (off until `FLOW_DELIVERY_ENABLED`),
 Phase 3's deduplication with the delta call, the §9.1 history search and
-Phase 3.5's Reddit and RSS sources, Phase 4's entity extraction and Phase 5's
-few-shot and digests; the rest is still specification — see
+Phase 3.5's Reddit and RSS sources, Phase 4's entity extraction, Phase 5's
+few-shot and digests and Phase 6's knowledge base (news intake,
+[docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)); the rest is still specification — see
 [docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
 per-task status).
@@ -149,4 +150,5 @@ node src/cli.js flow dedup     # dedup report; --run, --reset, --pairs n
 node src/cli.js flow search <words> [--semantic]  # corpus search (also /search)
 node src/cli.js flow preview   # what delivery would send, sends nothing
 node src/cli.js flow digest    # the scheduled digest, previewed
+node src/cli.js flow knowledge export|import|stats  # portable labels (NEWS_INTAKE.md)
 ```
