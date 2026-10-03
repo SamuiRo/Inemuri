@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.55.1`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.56.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -23,7 +23,7 @@ signals `research`, `report`. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
 the final template exist. 17 migrations exist
 (`database/migrations/001`–`017`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 567 green `node --test` cases,
+is clean on the dev database. `npm test` is 572 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -126,13 +126,18 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-- **News intake (Phase 6): the shadow week.** Triage is built (ROADMAP
-  §14.3, NEWS_INTAKE.md §6) and the taxonomy is v2. Next: add the agreed
-  outlets to the live `sources.json` with `"feed": { …, "triage": true }`,
-  run a week with delivery off, and label daily with `node src/cli.js flow
-  triage review`. Step 4 (article text) after that. The live profile is the
-  git-ignored `src/config/triage.json`; a fresh deployment copies
-  `triage.sample.json` and rewrites it.
+- **News intake (Phase 6): deploy, then the shadow week.** v4.55.1 is pushed;
+  the operator deploys (DEPLOYMENT.md, "Turning on news intake in shadow
+  mode"). The dev copy is configured and `flow preflight` says Ready: the ten
+  agreed outlets are in the git-ignored `sources.json` with triage on and
+  seeded; the profile `triage.json` and eight example posts are in place.
+  On the server the same files have to be copied — git carries none of them.
+  Then a week with delivery off and `flow triage review` daily; step 4
+  (article text) after that.
+- **Two preflight warnings stay for the operator to decide:** two pilot
+  flow sources run pure `listener` (they lose posts while the service is
+  down — `both` would fix it), and `LLM_FALLBACK=openrouter` has no key, so
+  when the Gemini quota runs out TheFlow waits for the reset.
 - **Taxonomy v2 does not re-enrich anything.** Existing verdicts keep
   `taxonomy_version = 1`. To re-classify the pilot under v2:
   `node src/cli.js flow requeue --status enriched` (costs quota). Labels now live in `knowledge_examples`;
@@ -226,6 +231,15 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-10-03 — ready for the shadow week
+
+Pushed to `origin` (v4.55.1, fast-forward). Triage now waits for a full batch
+or 20 minutes instead of calling the model on every tick — that alone would
+have spent the daily quota. `flow preflight` checks a deployment end to end;
+DEPLOYMENT.md lists every file git does not carry. The ten agreed outlets
+were checked live (all respond, fresh items), added to the local
+`sources.json` and seeded; the poller loads all ten with triage on.
 
 ### 2026-10-03 — taxonomy v2, deployment data out of git
 

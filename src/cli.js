@@ -20,6 +20,7 @@ import {
 import {
   collectTriageStats, reviewQueue, reviewVerdict, sourceNames,
 } from "./module/theflow/triage/report.js";
+import { collectPreflight, assessPreflight } from "./module/theflow/Preflight.js";
 import { serialize as serializeKnowledge, parse as parseKnowledge } from "./module/theflow/knowledge/exchange.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
@@ -627,6 +628,24 @@ triage
     }
     close();
     print(`\nDone — ${written} label(s) written to the knowledge base.`, "success");
+  }));
+
+flow
+  .command("preflight")
+  .description("Is this deployment configured and ready? Environment, migrations, keys, profile, sources, routing. Exit 1 on a blocker")
+  .action(withDatabase(async () => {
+    const report = assessPreflight(await collectPreflight());
+    const mark = { ok: ["✓", "success"], warn: ["!", "warning"], fail: ["✗", "error"] };
+    for (const item of report.items) {
+      const [sign, level] = mark[item.level];
+      print(`${sign} ${item.message}`, level);
+    }
+    const blockers = report.items.filter((i) => i.level === "fail").length;
+    const warnings = report.items.filter((i) => i.level === "warn").length;
+    print(report.ok
+      ? `Ready${warnings ? ` — ${warnings} warning(s) worth a look` : ""}.`
+      : `Not ready: ${blockers} blocker(s).`, report.ok ? "success" : "error");
+    process.exitCode = report.ok ? 0 : 1;
   }));
 
 flow

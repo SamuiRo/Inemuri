@@ -302,6 +302,11 @@ export const FLOW_TRIAGE = {
   profile: loadLocalConfig("triage", { version: 0, areas: {}, values: [], noise: [], deny_sections: [] }, CONFIG_WARNINGS),
   // Заголовків в одному LLM-виклику: ~50 — сотня викликів на добу на 20 медіа.
   batchSize: optionalNumber("FLOW_TRIAGE_BATCH", process.env.FLOW_TRIAGE_BATCH, 50),
+  // Неповний пакет чекає, поки найстаріший кандидат не пролежить стільки
+  // хвилин: новини приходять по кілька штук, і виклик на кожен тік з'їв би
+  // добову квоту (500 на flash-lite, спільну з enrich). 20 хв — ≤ 72 таких
+  // викликів на добу плюс по одному на кожні повні 50 заголовків.
+  maxWaitMin: optionalNumber("FLOW_TRIAGE_MAX_WAIT_MIN", process.env.FLOW_TRIAGE_MAX_WAIT_MIN, 20),
   maxAttempts: 3,
   // Частка відкинутих LLM, яку позначаємо на перегляд (`flow triage review`):
   // без негативів ніщо не скаже triage, що він дарма щось відкинув. 0..1.

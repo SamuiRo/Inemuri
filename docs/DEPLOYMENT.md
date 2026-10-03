@@ -37,6 +37,33 @@ table at its latest shape; `npm run migrate` then runs the idempotent
 migrations and just records them. On the current VPS database (pre-TheFlow)
 migration `001` **creates** the TheFlow schema.
 
+## What `git pull` does not bring
+
+The repository is public, so every piece of deployment data is git-ignored
+and has to be on the server by other means — copied over (`scp`), or edited
+there. A missing one falls back to its `*.sample.json` with a `[CONFIG]`
+warning, which is how a server quietly ends up running on example values.
+
+| File | Holds | Without it |
+|---|---|---|
+| `.env` | Telegram session, API keys (`GEMINI_API_KEY`), switches | Nothing starts, or TheFlow stays dormant |
+| `src/config/sources.json` | Every source: channels, filters, `flow`, news sources with `feed` | Seed has nothing real to import |
+| `src/config/routing.json` | `unsorted_destinations`, `health_destinations`, `digest_destinations` | No alerts; verdicts route to sample ids |
+| `src/config/triage.json` | The reader profile for headline triage | Triage judges against the sample profile |
+| `src/config/cronjob.config.json` | Cron job destinations | Cron jobs post nowhere |
+| `src/config/discordapp/servers/*.json`, `messages/**` | discordapp server configs and texts | `/provision` has nothing to apply |
+| A knowledge JSONL (`database/knowledge/*.jsonl`) | The operator's labelled examples | Triage and few-shot start without examples |
+
+After copying, `npm run seed` imports `sources.json` (it adds and updates,
+never deletes — a source that exists only in the database keeps running),
+and `node src/cli.js flow knowledge import <file>` loads the examples
+(repeating it changes nothing).
+
+**Check it all with one command:** `node src/cli.js flow preflight` —
+environment, migrations, keys, the triage profile, sources, routing,
+delivery state and the knowledge base. It exits 1 on a blocker, so run it
+before `pm2 start`.
+
 ## Every subsequent deploy
 
 ```bash
@@ -56,7 +83,11 @@ npm ci
 npm run migrate:status        # what is pending?
 npm run migrate               # applies pending, one backup per run
 
-# 5. Start and watch.
+# 5. Deployment data that changed (see "What git pull does not bring").
+npm run seed                  # if sources.json changed
+node src/cli.js flow preflight   # must say "Ready"
+
+# 6. Start and watch.
 pm2 start inemuri             # or: pm2 start ecosystem.config.cjs
 pm2 logs inemuri --lines 100
 ```
@@ -77,6 +108,31 @@ Two failure modes otherwise, both nasty:
 `npm run migrate` refuses to run under `NODE_ENV=development` (that path uses
 `sync({ force: true })` and recreates tables). Keep `NODE_ENV=production` in
 the environment and in `ecosystem.config.cjs`.
+
+## Turning on news intake in shadow mode
+
+The first deploy of TheFlow phase 6 (news sources with headline triage,
+v4.52–v4.56). On top of the steps above:
+
+1. `.env`: `GEMINI_API_KEY` set; `FLOW_DELIVERY_ENABLED` absent or `false` —
+   that *is* shadow mode. Triage knobs are in `.env.example`
+   (`FLOW_TRIAGE_*`); the defaults are meant to be kept.
+2. Copy `src/config/triage.json` and the news entries of `sources.json`
+   (each `"platform": "rss"`, `"feed": { …, "triage": true }`,
+   `"flow": { "enabled": true }`); `npm run seed`.
+3. `routing.json`: `health_destinations` set, so a stall or failure reaches
+   you; no `digest_destinations` while in shadow mode.
+4. Copy the knowledge JSONL; `node src/cli.js flow knowledge import <file>`.
+5. `node src/cli.js flow preflight` → Ready; `pm2 start inemuri`.
+6. In the log: `[FEEDS] polling N feed source(s)`, then a `baseline` line per
+   source (the first poll only records what exists — nothing old is
+   ingested), then from the next polls `[TRIAGE] … decided, … passed`.
+7. Daily: `node src/cli.js flow triage stats` and `flow triage review`.
+
+Quota: triage asks the model at most once per full batch of 50 headlines or
+once per 20 minutes for a partial one — roughly 90 calls a day for ten
+outlets, out of the 500 a day `gemini-3.5-flash-lite` allows, shared with
+enrich.
 
 ## Rollback
 
@@ -113,6 +169,8 @@ taken automatically at the start of each `npm run migrate` run.
 - [ ] database backed up off-box
 - [ ] `npm ci` (not `npm install`) — lockfile-exact
 - [ ] `npm run migrate:status` inspected, then `npm run migrate`
+- [ ] git-ignored configs copied or updated; `npm run seed` if sources changed
+- [ ] `node src/cli.js flow preflight` says Ready
 - [ ] `pm2 start inemuri`, logs clean
 - [ ] classic forwarding verified before any `flow.enabled` change
 - [ ] `pm2 save` if the process list changed

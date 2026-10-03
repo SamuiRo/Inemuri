@@ -110,7 +110,7 @@ test("the stage decides a batch: passes become posts, rejects are sampled, silen
       ? { index, relevant: true, area: "science", reason: "new trial" }
       : it.title.startsWith("Star") ? { index, relevant: false, area: null, reason: "celebrity" } : null)).filter(Boolean),
   }));
-  const stage = new TriageStage({
+  const stage = new TriageStage({ maxWaitMs: 0,
     gateway: gw, profile, random: () => 0, sampleRate: 0.05, maxAttempts: 2, log: quiet,
     promote: async (row) => { promoted.push(row.title); return poller.promote(row); },
   });
@@ -137,14 +137,14 @@ test("shed leaves the batch pending without spending attempts; a failed promotio
   const a = article("business", "Shares surge 40% on record results");
   await q.add(src, a);
 
-  const shed = new TriageStage({ gateway: fakeGateway(() => ({ shed: true })), profile, promote: async () => ({ id: 1 }), log: quiet });
+  const shed = new TriageStage({ maxWaitMs: 0, gateway: fakeGateway(() => ({ shed: true })), profile, promote: async () => ({ id: 1 }), log: quiet });
   assert.equal(await shed.runOnce(), 0);
   let row = await DiscoveredItem.findOne({ where: { source_id: src.id, external_id: a.id } });
   assert.deepEqual([row.status, row.attempts], ["pending", 0]);
 
   const poller = pollerFor();
   let fail = true;
-  const stage = new TriageStage({
+  const stage = new TriageStage({ maxWaitMs: 0,
     gateway: fakeGateway(() => ({ model_used: "fake", decisions: [{ index: 0, relevant: true, area: "markets", reason: "sharp move" }] })),
     profile, log: quiet,
     promote: async (r) => { if (fail) throw new Error("db locked"); return poller.promote(r); },
@@ -181,6 +181,26 @@ test("review shows passes and sampled rejects; a label lands in the knowledge ba
   const mine = stats.bySource.find((s) => s.source === "Triage News");
   assert.deepEqual([mine.total, mine.passed, mine.llmRejected], [3, 1, 2]);
   assert.equal(stats.reviewed.missed >= 1, true);
+});
+
+test("an incomplete batch waits for maxWait; a full one goes at once", async () => {
+  const q = new TriageQueue({ profile, log: quiet });
+  await q.add(src, article("science", "First"));
+  await q.add(src, article("science", "Second"));
+  const gw = fakeGateway((items) => ({ model_used: "fake", decisions: items.map((_, index) => ({ index, relevant: false, area: null, reason: "x" })) }));
+  let t = Date.now();
+  const stage = new TriageStage({ gateway: gw, profile, promote: async () => null, log: quiet, random: () => 1,
+    batchSize: 3, maxWaitMs: 20 * 60_000, now: () => t });
+
+  assert.equal(await stage.runOnce(), 0);
+  assert.equal(gw.calls, 0, "2 of 3, still young: wait");
+  t += 21 * 60_000;
+  assert.equal(await stage.runOnce(), 2, "the oldest waited long enough");
+
+  for (const title of ["A", "B", "C"]) await q.add(src, article("science", title));
+  t = Date.now();
+  assert.equal(await stage.runOnce(), 3, "a full batch does not wait");
+  assert.equal(gw.calls, 2);
 });
 
 test("sweep removes candidates older than the retention", async () => {

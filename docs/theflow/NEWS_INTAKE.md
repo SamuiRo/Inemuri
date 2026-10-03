@@ -319,7 +319,9 @@ true }` on a flow-enabled `rss` source (the seeder refuses triage without
 | Stats | `flow triage stats` | Outcome, per source pass rate, areas, rule reasons, what is left to review |
 
 Operational knobs (`FLOW_TRIAGE` in `app.config.js`): `FLOW_TRIAGE_BATCH`
-(50), `FLOW_TRIAGE_SAMPLE` (0.05), `FLOW_TRIAGE_RETENTION_DAYS` (14).
+(50), `FLOW_TRIAGE_MAX_WAIT_MIN` (20 — a partial batch waits this long, so
+trickling news does not cost a call per tick; ~90 calls a day for ten
+outlets), `FLOW_TRIAGE_SAMPLE` (0.05), `FLOW_TRIAGE_RETENTION_DAYS` (14).
 
 ### First live run (2026-10-03)
 

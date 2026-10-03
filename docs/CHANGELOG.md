@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.56.0] - 2026-10-03
+
+### Added
+- **`node src/cli.js flow preflight`** — is this deployment ready? Checks
+  `NODE_ENV`, pending migrations, Telegram credentials, the model key and
+  worker switch, missing local configs (a missing `triage.json` is a blocker
+  when triage sources exist), the triage profile, flow sources in pure
+  listener mode, delivery and digest in shadow mode, health alerts, and the
+  knowledge base. Exits 1 on a blocker.
+- DEPLOYMENT.md: "What `git pull` does not bring" (every git-ignored file a
+  server needs) and "Turning on news intake in shadow mode".
+- `.env.example` documents `FLOW_TRIAGE_*` and warns against
+  `NODE_ENV=development`.
+
+### Fixed
+- **Triage no longer calls the model on every tick.** A partial batch waits
+  until the oldest candidate is `FLOW_TRIAGE_MAX_WAIT_MIN` (20) minutes old;
+  a full batch of 50 goes at once. News arrives a few items at a time, so
+  the old behaviour would have made hundreds of tiny calls a day against a
+  500-a-day quota shared with enrich. Now about 90.
+
 ## [4.55.1] - 2026-10-03
 
 ### Changed

@@ -160,4 +160,5 @@ node src/cli.js flow preview   # what delivery would send, sends nothing
 node src/cli.js flow digest    # the scheduled digest, previewed
 node src/cli.js flow knowledge export|import|stats  # portable labels (NEWS_INTAKE.md)
 node src/cli.js flow triage stats|review           # headline triage of news sources
+node src/cli.js flow preflight # deployment ready? exit 1 on a blocker
 ```

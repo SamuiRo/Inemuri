@@ -15,6 +15,9 @@ import { shouldSample } from "./rules.js";
  * стає pending-постом і одразу збагачується. Без ключа провайдера воркера
  * немає — кандидати чекають, як і pending-пости (THEFLOW.md, інваріант).
  *
+ * Неповний пакет чекає до maxWaitMs від найстарішого кандидата — квота
+ * провайдера добова й спільна з enrich, а новини приходять по кілька штук.
+ *
  * Частка відкинутих моделлю (`sampleRate`) позначається `sampled` — на
  * перегляд у `flow triage review`; без негативів ніщо не скаже triage, що
  * він дарма щось відкинув.
@@ -28,7 +31,9 @@ export class TriageStage {
     batchSize = FLOW_TRIAGE.batchSize,
     maxAttempts = FLOW_TRIAGE.maxAttempts,
     sampleRate = FLOW_TRIAGE.sampleRate,
+    maxWaitMs = FLOW_TRIAGE.maxWaitMin * 60_000,
     random = Math.random,
+    now = Date.now,
     Model = DiscoveredItem,
     log = print,
   }) {
@@ -42,7 +47,9 @@ export class TriageStage {
     this.batchSize = batchSize;
     this.maxAttempts = maxAttempts;
     this.sampleRate = sampleRate;
+    this.maxWaitMs = maxWaitMs;
     this.random = random;
+    this.now = now;
     this.Model = Model;
     this.log = log;
   }
@@ -52,7 +59,7 @@ export class TriageStage {
     let advanced = await this._promoteLeftovers();
 
     const batch = await this.Model.nextPending(this.batchSize);
-    if (!batch.length) return advanced;
+    if (!batch.length || !this._batchDue(batch)) return advanced;
 
     const shots = this.examples ? await this.examples.get() : { examples: [], hash: null };
     let result;
@@ -90,6 +97,16 @@ export class TriageStage {
 
     this.log(`[TRIAGE] ${decided.size}/${batch.length} decided, ${passed} passed (${result.model_used})`, passed ? "success" : "info");
     return advanced;
+  }
+
+  /**
+   * Чи час питати модель: пакет повний, або найстаріший кандидат чекає вже
+   * maxWaitMs. Інакше — чекаємо, щоб не витрачати виклик на 1–2 заголовки.
+   */
+  _batchDue(batch) {
+    if (batch.length >= this.batchSize) return true;
+    const oldest = new Date(batch[0].createdAt).getTime();
+    return this.now() - oldest >= this.maxWaitMs;
   }
 
   /** Кандидати → вхід промпту: заголовок, анонс, ключові слова, розділ, назва джерела. */
