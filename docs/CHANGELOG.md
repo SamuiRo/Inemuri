@@ -7,6 +7,16 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.55.1] - 2026-10-03
+
+### Changed
+- The operator's real blacklist entries are no longer quoted in the
+  repository: ROADMAP §1.1 and appendix A describe the kinds of filters
+  instead of listing them, and the `giveaway_result` / `stream` signal
+  descriptions in `categories.json` use neutral phrasing (same meaning, so
+  the taxonomy stays at v2 — no verdict was made under v2 yet).
+  `triage.sample.json` no longer shares wording with the live profile.
+
 ## [4.55.0] - 2026-10-03
 
 ### Added

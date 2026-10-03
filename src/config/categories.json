@@ -114,11 +114,11 @@
       "dedup_window_hours": 48
     },
     "giveaway_result": {
-      "description": "Announcement of giveaway or contest winners (Победители, <filter>, Розыгрыш завершен, <filter>). Classified once, routed nowhere",
+      "description": "Announcement of giveaway or contest winners, in any language (\"the winners are…\", \"the giveaway is closed\", \"check if you won\"). Classified once, routed nowhere",
       "dedup_window_hours": 24
     },
     "stream": {
-      "description": "A livestream announcement or link (<filter>, twitch.tv). Classified once, routed nowhere",
+      "description": "A livestream announcement or a link to a live broadcast on a streaming platform. Classified once, routed nowhere",
       "dedup_window_hours": 24
     }
   }

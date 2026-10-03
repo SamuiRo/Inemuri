@@ -70,11 +70,10 @@ solve — and it means the phase 2 routing matrix has no channels to route into
 yet. Creating them is a prerequisite, not a detail.
 
 **c. The blacklists describe the taxonomy already.** Four sources carry
-hand-maintained blacklists, and their contents are consistent: giveaway results
-(`<filter>`, `<filter>`, `<filter>`, `<filter>`), contests
-and discounts (`<filter>`, `<filter>`, `<filter>`), streams (`<filter>`,
-`<filter>`), release announcements (`<filter>`,
-`<filter>`).
+hand-maintained blacklists, and their contents are consistent: they block
+giveaway-winner announcements, contests and discounts, stream announcements
+and stream links, and release announcements. (The lists themselves are
+deployment data and stay in the git-ignored `sources.json`.)
 
 These are not per-channel quirks — they are **signal types you do not want**,
 maintained by hand in four separate places. This is direct evidence for the
@@ -1516,8 +1515,8 @@ is already a large share of the incoming stream — it is currently mixed into t
 same firehose as giveaway spam.
 
 `giveaway_result` and `stream` earn their place differently: four sources
-maintain separate blacklists for exactly them (`<filter>`, `<filter>`,
-`<filter>`, `<filter>`, `<filter>`, `twitch.tv`). As signal types
+maintain separate blacklists for exactly them — winner announcements and
+stream announcements. As signal types
 they are classified once and routed nowhere, and those four hand-kept lists can
 shrink. That is the first concrete thing TheFlow gives back.
 
@@ -1533,7 +1532,7 @@ justifies a channel of its own before any other: it is the category where a
 missed post has a cost beyond annoyance.
 
 One tension to resolve at the phase 1 checkpoint: one crypto source blacklists
-`<filter>` / `<filter>`, while `tools` is *defined* as discounts and free offers.
+discount posts, while `tools` is *defined* as discounts and free offers.
 Discounts are noise on one source and signal on another. That is a per-source
 `flow.topics` restriction, not a category description problem — which is exactly
 what the field is for.
