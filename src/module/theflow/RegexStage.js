@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-import { PROMO_RE, isPromoLike, isShouty } from "../../shared/text.js";
+import { PROMO_RE, isPromoLike, isShouty, isTooShort } from "../../shared/text.js";
 
 /**
  * TheFlow — regex-стадія (перед AI).
@@ -57,14 +57,16 @@ export class RegexStage {
    *   blacklist тихо перестає ловити.
    * @param {{max_length: number, min_caps_ratio: number}|null} [input.rejectShouty]
    *   Скомпільований `filters.reject_shouty` джерела, або null — вимкнено.
+   * @param {number|null} [input.minLength] Скомпільований `filters.min_length`
+   *   джерела, або null — вимкнено.
    * @returns {{
-   *   status: 'ok'|'skipped_blacklist'|'skipped_empty'|'skipped_noise'|'skipped_shouty',
+   *   status: 'ok'|'skipped_blacklist'|'skipped_empty'|'skipped_noise'|'skipped_shouty'|'skipped_short',
    *   normalizedText: string,
    *   textHash: string|null,
    *   candidates: object
    * }}
    */
-  evaluate({ text, blacklist, caseSensitive = false, rejectShouty = null }) {
+  evaluate({ text, blacklist, caseSensitive = false, rejectShouty = null, minLength = null }) {
     const raw = typeof text === "string" ? text : "";
     const normalizedText = RegexStage.normalize(raw);
     const textHash = normalizedText ? RegexStage.hash(normalizedText) : null;
@@ -105,6 +107,12 @@ export class RegexStage {
     //    токени окремо — конфігурації тут довіряти мало).
     if (rejectShouty && isShouty(raw, rejectShouty)) {
       return { ...result, status: "skipped_shouty" };
+    }
+
+    // 5. Надто короткий — однорядковий анонс без змісту. Опційно, на джерело,
+    //    з тим самим захистом промокодів, що й у shouty.
+    if (minLength && isTooShort(raw, minLength)) {
+      return { ...result, status: "skipped_short" };
     }
 
     return { ...result, status: "ok" };

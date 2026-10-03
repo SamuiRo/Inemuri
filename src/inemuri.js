@@ -328,6 +328,9 @@ class Inemuri {
             if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
             return sources.get(post.source_id)?.getFlowConfig() ?? null;
           },
+          // Переклад постів не українською — через той самий gateway (одна
+          // черга й облік квоти). Без провайдера доставка шле оригінал.
+          translate: this.llmGateway ? (input) => this.llmGateway.translate(input) : null,
           dedupEnabled: DEDUP.enabled,
           maxAgeHours: FLOW_DELIVERY.maxAgeHours,
           batchSize: FLOW_DELIVERY.batchSize,

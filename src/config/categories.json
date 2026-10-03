@@ -1,13 +1,21 @@
 {
-  "version": 2,
-  "_comment": "TheFlow taxonomy v2 (v1 plus the news topics and signals, NEWS_INTAKE.md). Two closed axes: topic (what it is about) and signal (what kind of event). The model picks only from these lists; it never invents a label. dedup_window_hours lives on the signal axis (DEDUPLICATION.md): a promo_code is stale in hours, analysis in days, regardless of topic. A source may override with flow.dedup_window_hours. Routing targets are NOT here -- they are deployment-specific and live in routing.json (see routing.sample.json).",
+  "version": 3,
+  "_comment": "TheFlow taxonomy v3 (v2 plus `games`, `p2e` and the `meme` signal). Two closed axes: topic (what it is about) and signal (what kind of event). The model picks only from these lists; it never invents a label. dedup_window_hours lives on the signal axis (DEDUPLICATION.md): a promo_code is stale in hours, analysis in days, regardless of topic. A source may override with flow.dedup_window_hours. Routing targets are NOT here -- they are deployment-specific and live in routing.json (see routing.sample.json).",
   "topics": {
     "steam": {
-      "description": "Steam and game drops, sales, inventory, releases, patches",
+      "description": "The Steam platform and the CS2 item economy: Steam sales and store changes, CS2 cases, skins, stickers and market prices, Steam inventory and trading. A game's own news belongs to `games` even when it ships on Steam",
       "examples": [
         "Free case drop this weekend for CS2 players",
-        "Steam Summer Sale starts June 26",
-        "New Divine skin added to the market"
+        "Steam Autumn Sale runs until October 8",
+        "Sticker capsule prices fell 10% after the update"
+      ]
+    },
+    "games": {
+      "description": "Video games themselves: releases, delays, updates and patches, DLC, free access, events, new characters and banners, leaks, promo codes for in-game currency, studio and industry news. Includes gacha games (Genshin, Honkai: Star Rail, Zenless Zone Zero, Wuthering Waves, Arknights). Blockchain games where you earn tokens belong to `p2e`",
+      "examples": [
+        "Metro 2033 Redux gets a free next-gen update on October 22",
+        "New redeem code for 100 jades from today's livestream",
+        "Version 3.7 banners are live with a new 5-star character"
       ]
     },
     "airdrop": {
@@ -16,6 +24,14 @@
         "Complete these 3 testnet tasks before the snapshot",
         "Project X confirms retroactive airdrop for early users",
         "Allocation checker is live, claim opens Thursday"
+      ]
+    },
+    "p2e": {
+      "description": "Play-to-earn and GameFi: blockchain games where play earns tokens, NFTs or points toward a drop -- launches, seasons, farming in a game, whitelists and mints for game NFTs. A testnet or farming task that is not a game belongs to `airdrop`",
+      "examples": [
+        "New MMORPG on Monad launches its alpha with $MON farming",
+        "Season 2 of the dragon-breeding game doubles token rewards",
+        "Free mint for the game's genesis pass opens Thursday"
       ]
     },
     "crypto": {
@@ -119,6 +135,10 @@
     },
     "stream": {
       "description": "A livestream announcement or a link to a live broadcast on a streaming platform. Classified once, routed nowhere",
+      "dedup_window_hours": 24
+    },
+    "meme": {
+      "description": "A meme or joke: humour, a reaction picture or clip, irony about the market or a game, with no news or data the reader could act on. The topic is still what the joke is about (a crypto meme is `crypto` + `meme`)",
       "dedup_window_hours": 24
     }
   }

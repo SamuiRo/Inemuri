@@ -873,12 +873,15 @@ flow
   .option("--limit <n>", "how many waiting posts to preview", "3")
   .option("--ignore-age", "preview posts older than FLOW_DELIVERY_MAX_AGE_HOURS too")
   .option("--platform <p>", "only telegram or discord")
+  .option("--translate", "translate posts not in Ukrainian, as delivery would (one provider call each, saved to the post)")
   .action(async (options) => {
     try {
       await database.connect();
+      const gateway = options.translate ? new LLMGateway() : null;
       const stage = new FlowDelivery({
         route: async () => [],
         routing: ROUTING,
+        translate: gateway ? (input) => gateway.translate(input) : null,
         dedupEnabled: DEDUP.enabled,
         maxAgeHours: options.ignoreAge ? Number.MAX_SAFE_INTEGER / 3_600_000 : FLOW_DELIVERY.maxAgeHours,
       });

@@ -59,7 +59,7 @@ The central table. One row per incoming message.
 | `topic` | STRING | Axis 1 of the taxonomy. Closed enum from `categories.json` |
 | `signal_type` | STRING | Axis 2 of the taxonomy. Closed enum |
 | `confidence` | FLOAT | 0..1. Below threshold routes to `#unsorted` |
-| `analysis` | JSON | `entities` (project, tickers), `extracted` (promo_codes with reward / anchored expiry, links with role, amounts, event with anchored dates — each quoted item carries `source` and `verified`), `summary_uk`, `why_interesting`, `is_ad`, `discarded` and `unverified` from validation, `prompt_version` (2 since v4.50.0; absent = 1) |
+| `analysis` | JSON | `entities` (project, tickers), `extracted` (promo_codes with reward / anchored expiry, links with role, amounts, event with anchored dates — each quoted item carries `source` and `verified`), `summary_uk`, `why_interesting`, `is_ad`, `discarded` and `unverified` from validation, `prompt_version` (3 since v4.57.0, 2 since v4.50.0; absent = 1); `text_uk` and `text_uk_model` — the Ukrainian translation, written by delivery for a routed post not in Ukrainian (DELIVERY.md) |
 | `candidates` | JSON | What the regex stage found, kept for audit and re-runs |
 | `embedding` | BLOB | Float32Array as a BLOB, **normalized to unit length at write time** so cosine is a plain dot product. Little-endian; `buffer.length === embedding_dim * 4` |
 | `embedding_model` | STRING | Which model produced the vector, e.g. `gemini:text-embedding-004`. **Not** `model_used`, which is the enrichment model |
@@ -87,6 +87,8 @@ pending ---> enriched ---> routed
    +---> skipped_blacklist
    +---> skipped_empty
    +---> skipped_noise
+   +---> skipped_shouty            (short all-caps, per source)
+   +---> skipped_short             (shorter than filters.min_length, per source)
    +---> skipped_repost             (same text from the same source in the window)
    +---> failed                     (attempts exhausted; kept for review)
 ```

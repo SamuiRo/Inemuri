@@ -208,15 +208,15 @@ test("validateRouting — a correct config has no problems", () => {
   ]), CATEGORIES), []);
 });
 
-test("validateRouting — the spec's own example topics do not exist in v1", () => {
-  // Приклад у TAXONOMY.md використовує `games` і `market`. Скопійований
-  // routing.json мовчки не маршрутизував би нічого — валідація має це ловити.
+test("validateRouting — a topic that is not in the taxonomy is reported", () => {
+  // Приклад у TAXONOMY.md колись використовував `market`, якого немає (є
+  // `markets`). Скопійований routing.json мовчки не маршрутизував би нічого.
   const problems = validateRouting(routing([
     { when: { topic: "games" }, destinations: { telegram: ["-1"] } },
     { when: { topic: ["market", "crypto"] }, destinations: { telegram: ["-2"] } },
   ]), CATEGORIES);
-  assert.ok(problems.some((p) => p.includes('"games"')));
   assert.ok(problems.some((p) => p.includes('"market"')));
+  assert.equal(problems.some((p) => p.includes('"games"')), false, "games у таксономії з v3");
   assert.equal(problems.some((p) => p.includes('"crypto"')), false, "crypto у таксономії є");
 });
 
@@ -242,4 +242,17 @@ test("validateRouting — the shipped routing.sample.json is valid", async () =>
   const { loadLocalConfig } = await import("../src/config/localConfig.js");
   const sample = loadLocalConfig("routing.sample", null, []);
   assert.deepEqual(validateRouting(sample, CATEGORIES), []);
+});
+
+// ── реклама ───────────────────────────────────────────────────────────
+
+test("is_ad — an ad goes to #unsorted with reason ad, even when a rule matches", () => {
+  const rules = routing([{ when: { topic: "steam" }, destinations: { telegram: ["-100steam"] } }]);
+  const r = resolve({ post: post({ analysis: { is_ad: true } }), flow: FLOW, routing: rules });
+  assert.equal(r.outcome, "unsorted");
+  assert.equal(r.reason, R.AD);
+  assert.deepEqual(r.destinations, UNSORTED);
+  // is_ad false або відсутній — звичайна маршрутизація.
+  assert.equal(resolve({ post: post({ analysis: { is_ad: false } }), flow: FLOW, routing: rules }).outcome, "routed");
+  assert.equal(resolve({ post: post({ analysis: null }), flow: FLOW, routing: rules }).outcome, "routed");
 });

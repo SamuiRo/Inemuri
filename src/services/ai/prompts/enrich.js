@@ -27,8 +27,9 @@ export const ENRICH_CALL_SETTINGS = Object.freeze({
 
 // Версія промпту й схеми. Пишеться у кожен вердикт (analysis.prompt_version):
 // як model_used і taxonomy_version, вона відділяє зміну промпту від регресії
-// моделі. 2 — фаза 4: links, amounts, event, якорі дат.
-export const ENRICH_PROMPT_VERSION = 2;
+// моделі. 2 — фаза 4: links, amounts, event, якорі дат. 3 — уточнене is_ad
+// (нативна реклама, але не гайд із рефкою), таксономія v3 (games, p2e, meme).
+export const ENRICH_PROMPT_VERSION = 3;
 
 export { enrichResponseSchema };
 
@@ -63,7 +64,7 @@ export function buildEnrichSystemPrompt(taxonomy) {
     "- `extracted.links`: links from the text that matter, with `role` — claim (where to redeem or take part), source (original news), signup, docs, other. Skip channel self-promotion and social links.",
     "- `extracted.amounts`: money, percentages, quantities the post is about. `text` exact, `value` as a number, `unit` (USD, %, tokens...), `what` it refers to.",
     "- `extracted.event`: the dated thing the post is about (a drop, sale, snapshot, listing, deadline, match day) with `name`, ISO `starts_at` / `ends_at` (YYYY-MM-DD or YYYY-MM-DDTHH:MM with offset, if a time is stated), and `date_text` — the exact words giving the date. Resolve a year only from the text or the post's own context; null if there is no date.",
-    "- `is_ad`: true if the post is primarily advertising/promotion of a paid service.",
+    "- `is_ad`: true if the post's main purpose is to sell or push a product, shop, service, platform, course or partner the channel promotes — including native ads written as a personal recommendation (\"I switched to X, here is the link\"), sponsored launches and \"buy it cheap at our shop\" posts. A guide or news item that is useful on its own is NOT an ad just because its links carry a referral code or it ends with a one-line plug.",
     "- Respond with a single JSON object and nothing else.",
     "- If reviewed examples are given, they show how this deployment labels posts. Follow their pattern, but classify the new post on its own content.",
     "",

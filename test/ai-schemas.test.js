@@ -266,3 +266,4 @@ test("provenance — the caller's object is not mutated", () => {
   validateVerbatim(verdict, "SAVE20");
   assert.deepEqual(verdict.extracted.promo_codes, [{ code: "SAVE20" }]);
 });
+

@@ -8,6 +8,7 @@ import { FewShotStore } from "../src/module/theflow/FewShot.js";
 import { recordLabel, loadExamples } from "../src/module/theflow/knowledge/KnowledgeBase.js";
 import { EnrichWorker } from "../src/module/theflow/EnrichWorker.js";
 import { collectDigestRows, buildDigestMessage } from "../src/module/theflow/digest/Digest.js";
+import { ENRICH_PROMPT_VERSION } from "../src/services/ai/prompts/enrich.js";
 
 // Пише в SQLite — лише на одноразовій базі з `npm test` (test/support).
 const XID = `__p5_${process.pid}_`;
@@ -66,7 +67,7 @@ test("a reviewed label reaches the enrich call as an example; the verdict record
   assert.equal(input.examplesHash, hash);
   const P = await Post.findByPk(pending.id);
   assert.equal(P.analysis.fewshot, hash);
-  assert.equal(P.analysis.prompt_version, 2);
+  assert.equal(P.analysis.prompt_version, ENRICH_PROMPT_VERSION);
 });
 
 test("digest rows carry cluster size, source and link; a message is built for the period", async () => {

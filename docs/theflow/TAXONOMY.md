@@ -8,9 +8,10 @@
 > file is [`src/config/categories.json`](../../src/config/categories.json).
 >
 > Two things the illustrative JSON below gets differently from the shipped file:
-> the real topics are `steam / airdrop / crypto / tools / health / mind /
-> money / markets / other` (v2 added the four news topics and the `research`
-> and `report` signals — see Versioning), and
+> the real topics are `steam / games / airdrop / p2e / crypto / tools / health /
+> mind / money / markets / other` (v2 added the four news topics and the
+> `research` and `report` signals, v3 `games`, `p2e` and the `meme` signal —
+> see Versioning), and
 > `dedup_window_hours` lives on each **signal**, not on the topic — a
 > `promo_code` is stale in hours and `analysis` in days regardless of topic
 > ([DEDUPLICATION.md](DEDUPLICATION.md)). A source still overrides with
@@ -238,6 +239,17 @@ Collecting that feedback retroactively is expensive — it means going through
 history by hand. At the start it is nearly free.
 
 ## Versioning
+
+**v3 (2026-10-03).** The first gaming and GameFi channels had nowhere to go:
+gacha and general game news would have landed in `steam` or `other`. New
+topics `games` (the games themselves — releases, patches, events, banners,
+leaks, in-game promo codes, gacha included) and `p2e` (play-to-earn and
+GameFi: blockchain games that pay in tokens, NFTs or drop points, split out
+of `airdrop` and `crypto`). `steam` narrowed to the platform and the CS2
+item economy. New signal `meme` (24 h): a joke is a *kind* of post, so it
+lives on the signal axis and the topic still says what it is about — a
+later split into finance and gaming memes is a routing rule on
+`topic × meme`, not a new category. Memes are excluded from the digest.
 
 **v2 (2026-10-03).** News sources (NEWS_INTAKE.md) brought content v1 had no
 place for: topics `health`, `mind`, `money`, `markets`, and signals

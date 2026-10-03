@@ -222,7 +222,7 @@ Example:
 | `poll_interval_min` | Optional. How often to poll this source, in minutes. Omit it to use the global `POLLING_INTERVAL_MIN`. Ignored for `listener`. |
 | `extra_media_types` | Optional. Media types to download for this source in addition to the global `DOWNLOADABLE_MEDIA_TYPES`, e.g. `["audio"]`. Additive only. |
 | `text_replacements` | Preprocessing rules applied before filters. |
-| `filters` | Keyword/blacklist rules, plus the optional `reject_shouty` rule. |
+| `filters` | Keyword/blacklist rules, plus the optional `reject_shouty` and `min_length` rules. |
 | `destinations` | Target Telegram/Discord destination IDs. Ignored while the source is flow-enabled. |
 | `flow` | Optional. Puts the source through TheFlow instead of classic forwarding — see [below](#enabling-a-source-into-theflow). Absent means `{ "enabled": false }`. |
 
@@ -334,6 +334,22 @@ configuration alone is not relied on for that.
 
 A flow-enabled source records rejected posts as `skipped_shouty` rather than
 discarding them, so `flow stats` can show how much the rule is catching.
+
+### Dropping one-liners
+
+`filters.min_length` drops posts shorter than the given number of
+characters, counted after `text_replacements`, without links and with
+whitespace collapsed. It is for channels whose one-line posts are teasers
+rather than news (`Sifu вийде на iOS та Android 12 жовтня`):
+
+```json
+"filters": { "enabled": true, "keywords": [], "blacklist": [], "min_length": 60 }
+```
+
+Off by default, per source, and applied on both paths. Like `reject_shouty`,
+it never drops a post containing a promo-like token — `Перший промокод
+MECHANISMCITY` is 29 characters and the whole point of the channel. A flow
+source records such posts as `skipped_short`.
 
 ### Enabling a source into TheFlow
 

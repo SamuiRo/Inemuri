@@ -290,6 +290,7 @@ export class FeedPoller {
         blacklist: filter?.blacklist ?? null,
         caseSensitive: filter?.caseSensitive ?? false,
         rejectShouty: filter?.rejectShouty ?? null,
+        minLength: filter?.minLength ?? null,
       });
       if (created) this.log(`[THEFLOW] ${source.channel_name} ${item.id} → posts#${post.id} [${status}]`, status === "pending" ? "success" : "debug");
       return post;

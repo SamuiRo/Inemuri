@@ -371,8 +371,9 @@ export const FLOW_DIGEST = {
   hours: optionalNumber("FLOW_DIGEST_HOURS", process.env.FLOW_DIGEST_HOURS, 24),
   perTopic: optionalNumber("FLOW_DIGEST_PER_TOPIC", process.env.FLOW_DIGEST_PER_TOPIC, 5),
   // Сигнали, що «класифікуються і нікуди не йдуть» (TAXONOMY.md) — у
-  // дайджест теж не йдуть.
-  excludeSignals: ["giveaway_result", "stream"],
+  // дайджест теж не йдуть. meme маршрутизується у свій канал, але «найцікавіше
+  // за добу» — не про жарти.
+  excludeSignals: ["giveaway_result", "stream", "meme"],
 };
 
 // Зберігання корпусу (ROADMAP §13.9): нічого не видаляється, але після цієї

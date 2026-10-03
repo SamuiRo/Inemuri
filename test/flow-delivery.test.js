@@ -175,3 +175,55 @@ test("no destinations anywhere → skipped with the reason, nothing lost silentl
   assert.equal(P.delivery.skipped, "no_destinations");
   assert.equal(P.delivery.reason, "topic_other");
 });
+
+// ── переклад ──────────────────────────────────────────────────────────
+
+test("a routed post not in Ukrainian goes out translated; the translation is saved and reused", async () => {
+  const p = await post({ lang: "ru", raw_text: "Новый промокод SAVE20", analysis: { summary_uk: "Код" } });
+  const { route, sent } = fakeRouter();
+  const calls = [];
+  const d = stage({ route, translate: async (input) => { calls.push(input); return { text_uk: "Новий промокод SAVE20", model_used: "tm" }; } });
+
+  assert.equal(await d.runOnce(), 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].text, "Новый промокод SAVE20");
+  const tg = sent.find((m) => m.source.destinations.telegram);
+  assert.match(tg.rawText, /Новий промокод SAVE20/);
+  assert.doesNotMatch(tg.rawText, /Новый/);
+  const P = await Post.findByPk(p.id);
+  assert.equal(P.analysis.text_uk, "Новий промокод SAVE20");
+  assert.equal(P.analysis.text_uk_model, "tm");
+  assert.equal(P.analysis.summary_uk, "Код", "решта analysis не губиться");
+
+  // Збережений переклад не замовляється вдруге (preview, повторна спроба).
+  const saved = await post({ lang: "ru", analysis: { text_uk: "Вже перекладено" } });
+  const plan = await d.plan(saved);
+  assert.equal(calls.length, 1);
+  assert.match(plan.messages.find((m) => m.platform === "telegram").rendered.body, /Вже перекладено/);
+});
+
+test("no translation for Ukrainian posts, for #unsorted, or without a translator", async () => {
+  const calls = [];
+  const translate = async (input) => { calls.push(input); return { text_uk: "x", model_used: "tm" }; };
+  const uk = await post({ lang: "uk" });
+  const low = await post({ lang: "ru", confidence: 0.1 });
+  await stage({ translate }).plan(uk);
+  await stage({ translate }).plan(low);
+  assert.equal(calls.length, 0, "український і #unsorted не перекладаються");
+  const ru = await post({ lang: "ru" });
+  const plan = await stage().plan(ru);
+  assert.ok(plan.messages.length > 0, "без перекладача — оригінал");
+});
+
+test("a failed or shed translation does not stop delivery: the original goes out", async () => {
+  for (const translate of [async () => ({ shed: true }), async () => { throw new Error("bad_response"); }]) {
+    const p = await post({ lang: "ru", raw_text: "Оригинал поста" });
+    const { route, sent } = fakeRouter();
+    await stage({ route, translate }).deliver(p);
+    assert.match(sent[0].rawText, /Оригинал поста/);
+    const P = await Post.findByPk(p.id);
+    assert.equal(P.status, "routed");
+    assert.equal(P.analysis?.text_uk ?? null, null);
+    await cleanup();
+  }
+});

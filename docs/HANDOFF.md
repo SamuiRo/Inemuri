@@ -6,8 +6,8 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.56.1`, pushed up to `v4.55.1`; `v4.56.0`–`v4.56.1` are committed locally. 17
-migrations; `npm test` is 572 green `node --test` cases on a throwaway
+`v4.57.0`, pushed up to `v4.55.1`; `v4.56.0`–`v4.57.0` are committed locally. 17
+migrations; `npm test` is 587 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
 
@@ -16,12 +16,16 @@ tests on every push.
 | Classic forwarding | Telegram → Telegram/Discord, unchanged; must keep working through every deploy |
 | TheFlow phases 0–5, 1.5 | Built, run on real data in shadow mode ([THEFLOW.md](THEFLOW.md)). Delivery built and **off** until the destination channels exist |
 | Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Ready for the shadow week** |
-| Taxonomy | `categories.json` v2: + `health`, `mind`, `money`, `markets`; `research`, `report` |
+| Taxonomy | `categories.json` v3: v2 (`health`, `mind`, `money`, `markets`; `research`, `report`) + `games`, `p2e`; `meme` |
+| Delivery extras | Ads (`is_ad`) → `#unsorted`; routed posts not in Ukrainian are translated (`translate()`, only for what is sent); `filters.min_length` |
 | discordapp | Complete and in production ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); one piece not run live: `/export-chats` to Telegram |
 
-**Dev copy.** Configured and `flow preflight` says Ready: 25 active sources,
-13 flow-enabled (3 Telegram pilot sources + the 10 agreed news outlets with
-triage), `triage.json` profile v1, 8 operator examples in the knowledge base,
+**Dev copy.** 18 Telegram channels from the operator's list
+(`devtest/Sources/`, git-ignored: INFO/POSTS/screenshot per channel) are in
+`sources.json` and seeded with per-channel filters, all flow-enabled — 15
+new, 3 updated pilots. Three of the new ones were DB-only classic sources: their classic destinations, `polling`
+mode and old filters were kept and merged. Before that: 10 news outlets with
+triage, `triage.json` profile v1, 8 operator examples in the knowledge base,
 `health_destinations` set, delivery off. Corpus: 102 `enriched`, 115
 `pending` (pilot posts waiting for the next run).
 
@@ -50,6 +54,12 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
 
 ## Next steps
 
+0. **Start the service** — the 18 channels and the v3 prompt load on start.
+   Watch `flow stats` per source for a day: the filters were checked
+   offline against the operator's good/bad examples
+   (`devtest/Sources/FILTERS.proposed.json`), not against live traffic.
+   Re-enrichment of old verdicts under v3 is a separate decision
+   (`flow requeue --status enriched`, quota cost).
 1. **Deploy and run the shadow week** (operator). Push `v4.56.0` first — it
    carries the triage batching fix. On the server: copy the ignored configs,
    `npm run seed`, `flow knowledge import`, `flow preflight` → Ready, start.
@@ -81,6 +91,10 @@ instances, `flow knowledge import kb.jsonl` after. Reddit needs
 
 ## Open questions
 
+- `sources.json` does not list every source in the database: nine classic
+  sources exist only in `pot.sqlite` (`node src/cli.js list` shows them). `npm run seed`
+  leaves them alone, but `seed:fresh` would delete them — add them to the
+  file before ever running it.
 - Why has one polling pilot source's checkpoint not advanced since
   2026-05-01 — dead channel, or broken polling? (ROADMAP §1.2, §11)
 - The VPS app-root path, to finish `ecosystem.config.cjs` (`cwd`).
@@ -94,6 +108,21 @@ retired documents that describe a design never built — do not cite them.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-03 — the first 18 Telegram channels
+
+The operator collected 18 gaming, Steam and crypto channels with good and
+bad examples. Proposed filters were run through the real `MessageFilter`
+and `RegexStage` on the exported posts: footers stripped, giveaways, shop
+ads, fundraisers and review links blacklisted, none of the good examples
+cut. Roughly half of the bad examples are "not interesting", not spam —
+that is calibration, not regex. Operator decisions: `games`, `p2e`, `meme`
+(v3); `is_ad` → `#unsorted`; `min_length` on two channels (60); every
+post not in Ukrainian translated; art posts kept; one channel's own blog
+links cut for now.
+Seeding overwrote the classic destinations of three DB-only sources; they
+were restored from `database/backups/pot.sqlite.pre-news-seed-2026-10-03`
+the same session, nothing was sent in between (the service was down).
 
 ### 2026-10-03 — documentation brought up to date
 

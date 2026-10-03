@@ -49,9 +49,11 @@ export class FlowIngest {
    *   те саме значення, з яким MessageFilter зібрав Set.
    * @param {object|null} [args.rejectShouty] Скомпільований reject_shouty
    *   джерела, або null — вимкнено.
+   * @param {number|null} [args.minLength] Скомпільований filters.min_length
+   *   джерела, або null — вимкнено.
    * @returns {Promise<{ created: boolean, post: object, status: string }>}
    */
-  async ingest({ source, messageData, text, blacklist, caseSensitive = false, rejectShouty = null }) {
+  async ingest({ source, messageData, text, blacklist, caseSensitive = false, rejectShouty = null, minLength = null }) {
     const channelId = String(messageData.channelId);
     const platform = messageData.platform ?? "telegram";
     const title = messageData.title ?? null;
@@ -60,7 +62,7 @@ export class FlowIngest {
     //    того, що перевіряється: пост-посилання з Reddit має лише заголовок,
     //    і без нього став би skipped_empty. raw_text нижче — лише тіло.
     const stageText = [title, text].filter((s) => s && String(s).trim() !== "").join("\n\n");
-    const stage = this._regex.evaluate({ text: stageText, blacklist, caseSensitive, rejectShouty });
+    const stage = this._regex.evaluate({ text: stageText, blacklist, caseSensitive, rejectShouty, minLength });
 
     // 2. skipped_repost — точний хеш-збіг у вікні останніх N годин, лише в
     //    межах ЦЬОГО джерела (ROADMAP §6.1, варіант 1). Канал, що повторює

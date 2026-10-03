@@ -165,7 +165,7 @@ worker are all built — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3 for th
 full breakdown per task. Verdicts are written to `posts`; the resolve stage
 and delivery exist (phase 2) but delivery stays off in shadow mode, and the
 worker itself does not start without a primary provider API key in `.env`.
-`categories.json` is at v2 (news topics and signals, TAXONOMY.md).
+`categories.json` is at v3 (news topics and signals; `games`, `p2e`, `meme` — TAXONOMY.md).
 
 The provider decisions that used to block this phase are settled (§3.1):
 Gemini is primary for text, embeddings and vision, with OpenRouter as a
@@ -262,7 +262,7 @@ channels get `vision.enabled`.
 
 | Question | State |
 |---|---|
-| Display language | English as canonical is settled. If posts should be read in Ukrainian, the same enrichment call can return both `text_en` and `summary_uk` — a few extra output tokens, no additional request |
+| Display language | English as canonical is settled. Enrichment returns a one-line `summary_uk`; a post not in Ukrainian is **delivered in Ukrainian** through a separate `translate()` call made only for routed posts (v4.57.0, DELIVERY.md «Translation») — inside the enrichment call the model translated half a post or nothing |
 | Quota against real volume | ~~Verify provider RPD before phase 1~~ **Measured (v4.30.0).** Free-tier limits are per model: the complete/vision model allows RPD 500 / RPM 15, the embedding model RPD 1000 / RPM 100. A text post costs one complete call plus one embedding, a screenshot post two complete calls — roughly 250–500 posts a day. As predicted, the daily limit binds first, and it resets on Pacific midnight |
 | Similarity thresholds | Can only be tuned on real data. This is the direct argument for phase 0 |
 | Deduplication window | Differs per category: a promo code is current for hours, market analysis for days |

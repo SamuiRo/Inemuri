@@ -403,3 +403,19 @@ export function validateEnrichResponse(obj, { taxonomy, rawText, textOcr = "" })
   const { value, discarded, unverified } = validateVerbatim(obj, rawText, textOcr);
   return { ok: true, errors: [], value, discarded, unverified };
 }
+
+// Літери, яких немає в українській абетці. Модель часом перекладає перший
+// рядок і лишає решту мовою джерела — такий «переклад» гірший за оригінал
+// (виміряно на живому виклику: GameFi-пост, перекладений на один рядок).
+const NOT_UKRAINIAN = /[ыэъё]/giu;
+
+/**
+ * Чи `text_uk` справді український. Порожній/null — так (нема що відкидати).
+ * Поріг 3, а не 1: одиничне «ё» буває в назві чи цитаті, яку правильно
+ * лишити як є. URL не рахуються.
+ */
+export function isUkrainianTranslation(textUk) {
+  if (typeof textUk !== "string" || textUk.trim() === "") return true;
+  const plain = textUk.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return (plain.match(NOT_UKRAINIAN) ?? []).length < 3;
+}

@@ -90,6 +90,8 @@ export class FlowDelivery {
    *   resolveMedia?: (post: object, opts: object) => Promise<object[]>,
    *   routing: object,
    *   flowFor?: (post: object) => Promise<object|null>,
+   *   translate?: ((input: { text: string, title: string|null }) => Promise<{ text_uk: string, model_used?: string }|{ shed: true }>)|null,
+   *     Переклад поста не українською (LLMGateway.translate). null — без перекладу.
    *   dedupEnabled?: boolean,
    *   maxAgeHours?: number,
    *   batchSize?: number,
@@ -101,7 +103,7 @@ export class FlowDelivery {
    */
   constructor({
     route, sendTo = async () => null, edit = async () => { throw new Error("edit not wired"); },
-    resolveMedia = async () => [], routing, flowFor = async () => null,
+    resolveMedia = async () => [], routing, flowFor = async () => null, translate = null,
     dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
     intervalMs = 15_000, now = Date.now, log = () => {},
   }) {
@@ -111,6 +113,7 @@ export class FlowDelivery {
     this.resolveMedia = resolveMedia;
     this.routing = routing;
     this.flowFor = flowFor;
+    this.translate = translate;
     this.dedupEnabled = dedupEnabled;
     this.maxAgeHours = maxAgeHours;
     this.batchSize = batchSize;
@@ -221,6 +224,31 @@ export class FlowDelivery {
   }
 
   /**
+   * Пост не українською → переклад у analysis.text_uk (render бере його за
+   * тіло). Один раз на пост: збережений переклад перевикористовують і
+   * повторні спроби, і перерендер кластера. Будь-яка невдача — shed, помилка,
+   * переклад із залишками мови джерела — не зупиняє доставку: піде оригінал.
+   */
+  async _ensureTranslation(post) {
+    if (!this.translate) return;
+    const lang = post.lang;
+    if (!lang || lang === "uk") return;
+    if (typeof post.analysis?.text_uk === "string" && post.analysis.text_uk.trim()) return;
+    const text = post.raw_text ?? "";
+    if (!String(text).trim()) return;
+    try {
+      const r = await this.translate({ text, title: post.title ?? null });
+      if (!r || r.shed || typeof r.text_uk !== "string") {
+        this.log(`[DELIVERY] posts#${post.id} translation deferred (${r?.reason ?? "shed"}) — original goes out`, "debug");
+        return;
+      }
+      await post.update({ analysis: { ...(post.analysis ?? {}), text_uk: r.text_uk, text_uk_model: r.model_used ?? null } });
+    } catch (error) {
+      this.log(`[DELIVERY] posts#${post.id} translation failed (${error.message}) — original goes out`, "warning");
+    }
+  }
+
+  /**
    * Що і куди пішло б — без медіа й без відправки. Використовують deliver()
    * і `flow preview`.
    */
@@ -239,6 +267,9 @@ export class FlowDelivery {
     }
 
     const resolved = await this._resolve(post);
+    // Переклад — лише для того, що йде в тематичний канал: #unsorted читає
+    // оператор, і оригінал там корисніший.
+    if (resolved.outcome === "routed") await this._ensureTranslation(post);
     const messages = [];
     for (const platform of PLATFORMS) {
       const ids = resolved.destinations[platform];
@@ -414,6 +445,8 @@ export class FlowDelivery {
     const resolved = canonical.delivery?.outcome
       ? { outcome: canonical.delivery.outcome, reason: canonical.delivery.reason }
       : await this._resolve(canonical);
+    // Новий канонічний пост (заміна канонічного) міг ще не мати перекладу.
+    if (resolved.outcome === "routed") await this._ensureTranslation(canonical);
 
     const corrections = triggers.filter((t) => t.adds?.relation === "corrects" || t.adds?.relation === "denies");
     const additions = triggers.filter((t) => t.adds?.relation === "adds");

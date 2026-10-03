@@ -8,17 +8,18 @@ import { validateStructural } from "../src/services/ai/schemas.js";
 // enrich schema and the resolve stage both read it at runtime.
 
 test("categories.json — version, closed axes, dedup windows on signals", () => {
-  assert.equal(CATEGORIES.version, 2);
+  assert.equal(CATEGORIES.version, 3);
 
   const topics = Object.keys(CATEGORIES.topics);
-  assert.deepEqual(topics.sort(), ["airdrop", "crypto", "health", "markets", "mind", "money", "other", "steam", "tools"].sort());
+  assert.deepEqual(topics.sort(), ["airdrop", "crypto", "games", "health", "markets", "mind", "money", "other", "p2e", "steam", "tools"].sort());
   assert.equal(Object.keys(CATEGORIES.topics).at(-1), "other", "other stays last: the fallback reads last in the prompt");
   for (const [name, t] of Object.entries(CATEGORIES.topics)) {
     assert.equal(typeof t.description, "string", `${name}.description`);
   }
 
   const signals = Object.keys(CATEGORIES.signals);
-  assert.equal(signals.length, 13);
+  assert.equal(signals.length, 14);
+  assert.ok(signals.includes("meme"), "meme — сигнал, не тема: тема лишається тим, про що жарт");
   assert.ok(signals.includes("research") && signals.includes("report"));
   assert.ok(signals.includes("security"));
   assert.ok(signals.includes("giveaway_result"));

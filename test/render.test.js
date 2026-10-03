@@ -168,3 +168,22 @@ test("phase 4 — the event line sits under the lead; a date from an image says 
   assert.match(eventLine(withEvent({ name: "X", starts_at: "2026-10-05", verified: false })), /unverified/);
   assert.equal(eventLine(withEvent({ name: "No date", starts_at: null, ends_at: null })), null);
 });
+
+test("text_uk — a non-Ukrainian post is delivered in translation, without the original's entities", () => {
+  const p = post({ analysis: { summary_uk: "Код діє", text_uk: "Код SAVE20 діє сьогодні (переклад)" } });
+  const tg = render({ post: p, source: "C", resolved: routed, platform: "telegram" });
+  assert.ok(tg.body.includes("Код SAVE20 діє сьогодні (переклад)"));
+  assert.ok(!tg.body.includes("Code SAVE20 works today"));
+  assert.deepEqual(tg.entities, [], "entities оригіналу індексують інший рядок");
+  const dc = render({ post: p, source: "C", resolved: routed, platform: "discord" });
+  assert.ok(dc.description.includes("(переклад)"));
+  assert.ok(!dc.description.includes("**SAVE20**"));
+});
+
+test("text_uk — absent or blank keeps the original body and entities", () => {
+  for (const text_uk of [null, undefined, "   "]) {
+    const r = render({ post: post({ analysis: { summary_uk: "x", text_uk } }), source: "C", resolved: routed, platform: "telegram" });
+    assert.ok(r.body.includes("Code SAVE20 works today"));
+    assert.equal(r.entities.length, 1);
+  }
+});

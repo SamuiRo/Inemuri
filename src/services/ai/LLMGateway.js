@@ -16,10 +16,11 @@ import {
 } from "../../config/app.config.js";
 import { TokenBucket, CircuitBreaker, TtlCache } from "./internal.js";
 import { validateEnrichResponse } from "./schemas.js";
-import { buildEnrichPrompt } from "./prompts/enrich.js";
+import { buildEnrichPrompt, ENRICH_PROMPT_VERSION } from "./prompts/enrich.js";
 import { buildVisionPrompt, validateVisionResponse } from "./prompts/vision.js";
 import { buildDeltaPrompt, validateDeltaResponse } from "./prompts/delta.js";
 import { buildTriagePrompt, validateTriageResponse } from "./prompts/triage.js";
+import { buildTranslatePrompt, validateTranslateResponse } from "./prompts/translate.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
@@ -154,6 +155,39 @@ export class LLMGateway {
       throw err;
     }
     const result = { ...checked.value, model_used: run.model };
+    this.cache.set(key, result);
+    return result;
+  }
+
+  /**
+   * Переклад українською для доставки (prompts/translate.js). Окремий виклик,
+   * не поле enrich, і лише для поста, що справді йде в канал. Пріоритет
+   * `normal`: під тиском квоти поступається enrich — shed, і доставка бере
+   * оригінал.
+   *
+   * @param {{ text: string, title?: string|null }} input  raw_text поста.
+   * @returns {Promise<{ text_uk: string, model_used: string }|{ shed: true }>}
+   */
+  async translate(input, { priority = "normal" } = {}) {
+    return this._enqueue(priority, () => this._translate(input, priority));
+  }
+
+  async _translate(input, priority) {
+    // Ключ — точний текст, не _norm: регістр промокоду в перекладі має збігтися з джерелом.
+    const key = "translate:" + this._hash(JSON.stringify({ t: String(input.text ?? ""), h: String(input.title ?? "") }));
+    const hit = this.cache.get(key);
+    if (hit) return { ...hit, cached: true };
+
+    const run = await this._runComplete(buildTranslatePrompt({ text: input.text, title: input.title }), priority, {});
+    if (run.shed) return run;
+
+    const checked = validateTranslateResponse(run.parsed);
+    if (!checked.ok) {
+      const err = new Error(`translate: invalid response — ${checked.errors.join("; ")}`);
+      err.kind = "bad_response";
+      throw err;
+    }
+    const result = { text_uk: checked.value, model_used: run.model };
     this.cache.set(key, result);
     return result;
   }
@@ -322,6 +356,8 @@ export class LLMGateway {
       o: this._norm(input.textOcr),
       c: input.candidates ?? {},
       v: taxonomy?.version ?? null,
+      // Інший промпт (нові поля, інші правила) — кешований вердикт не підходить.
+      pv: ENRICH_PROMPT_VERSION,
     }));
     const hit = this.cache.get(key);
     if (hit) return { ...hit, cached: true };

@@ -1,4 +1,4 @@
-import { compileShouty, isShouty } from "../../shared/text.js";
+import { compileMinLength, compileShouty, isShouty, isTooShort } from "../../shared/text.js";
 
 /**
  * Ефективний фільтр повідомлень з кешуванням
@@ -81,7 +81,10 @@ class MessageFilter {
         : null,
       // Короткий крик (ритуальні пости капсом). null = вимкнено.
       // Опційно і на джерело: глобально таке правило зарізало б промокоди.
-      rejectShouty: compileShouty(filters.reject_shouty)
+      rejectShouty: compileShouty(filters.reject_shouty),
+      // Мінімальна довжина (без посилань). null = вимкнено. Промокоди
+      // виключені в isTooShort().
+      minLength: compileMinLength(filters.min_length)
     };
 
     // Кешуємо
@@ -194,6 +197,11 @@ class MessageFilter {
     // Перед keywords: якщо whitelist порожній, keywords пропускають усе, і
     // правило просто не мало б куди спрацювати.
     if (compiledFilter.rejectShouty && isShouty(processedText, compiledFilter.rejectShouty)) {
+      return false;
+    }
+
+    // ПРІОРИТЕТ 2.5: Надто короткий пост (filters.min_length).
+    if (compiledFilter.minLength && isTooShort(processedText, compiledFilter.minLength)) {
       return false;
     }
 

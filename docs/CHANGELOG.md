@@ -7,6 +7,40 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.57.0] - 2026-10-03
+
+### Added
+- **Taxonomy v3.** Topics `games` (the games themselves, gacha included:
+  releases, patches, events, banners, leaks, in-game promo codes) and `p2e`
+  (play-to-earn and GameFi), signal `meme`. `steam` narrowed to the platform
+  and the CS2 item economy. A meme keeps its topic, so splitting finance and
+  gaming memes later is a routing rule, not a category. Memes stay out of the
+  digest. Driven by the first 18 gaming, Steam and crypto Telegram channels,
+  six of which had no topic to land in.
+- **Ads go to `#unsorted`.** `analysis.is_ad: true` resolves to `#unsorted`
+  with reason `ad` before any routing rule; the model set the flag before, but
+  only the digest read it. The enrich prompt (version 3) now defines an ad as
+  content whose purpose is to push a product, shop, service or partner —
+  native "I switched to X" posts included — and says a useful guide is not an
+  ad because of a referral link. Checked live: two native ads came back
+  `is_ad: true`, a farming guide full of referral links `false`.
+- **Translation for delivery.** A routed post not in Ukrainian goes out in
+  Ukrainian: `LLMGateway.translate()` (`prompts/translate.js`), called by
+  `FlowDelivery` only for posts it is about to send, stored in
+  `analysis.text_uk` and reused. A translation still containing `ы э ъ ё`
+  fails validation and the original is sent; so does a shed or an error.
+  `flow preview --translate` shows it. Putting the translation into the
+  enrich call was tried first and measured live: the model translated one
+  line of a long post and left the rest in Russian, or returned nothing. As a
+  separate call it translated 2 and 4 KB posts completely.
+- **`filters.min_length`** — per-source minimum length (characters without
+  links), on both paths; promo-like tokens are exempt. A flow source records
+  such posts as `skipped_short`. In `SourceBuilder.html` too.
+
+### Changed
+- The enrich cache key includes the prompt version, so a prompt change never
+  returns a verdict cached under the old one.
+
 ## [4.56.1] - 2026-10-03
 
 ### Changed

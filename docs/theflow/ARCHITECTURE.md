@@ -53,6 +53,8 @@ model and to give the model something to anchor on. Three distinct jobs:
 | Source blacklist (existing mechanism) | `skipped_blacklist` |
 | Empty, or shorter than N characters after replacements | `skipped_empty` |
 | Emoji only, link only, or service text | `skipped_noise` |
+| Short all-caps post (`filters.reject_shouty`, per source) | `skipped_shouty` |
+| Shorter than `filters.min_length` without links (per source; promo codes exempt) | `skipped_short` |
 | Exact hash match against the last N hours | `skipped_repost` |
 
 Note that the keyword **whitelist** is disabled for TheFlow sources. Channels

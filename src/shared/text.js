@@ -101,3 +101,32 @@ export function compileShouty(raw) {
   }
   return opts;
 }
+
+/**
+ * Чи коротший текст за поріг джерела (`filters.min_length`).
+ *
+ * Для каналів, де однорядкові пости — анонси без змісту («Sifu вийде на iOS
+ * 12 жовтня»), а не новина. Рахуються символи без посилань і з одним
+ * пробілом між словами: голе посилання не робить пост змістовним.
+ *
+ * **Промокоди виключені явно**, як і в isShouty: «Перший промокод
+ * MECHANISMCITY» — 29 символів і саме той пост, заради якого канал читають.
+ *
+ * @param {string} text
+ * @param {number|null} minLength  Скомпільований поріг або null — вимкнено.
+ * @returns {boolean}
+ */
+export function isTooShort(text, minLength) {
+  if (!Number.isFinite(minLength) || minLength <= 0) return false;
+  const s = String(text ?? "");
+  const len = s.replace(/\bhttps?:\/\/\S+/gi, " ").replace(/\s+/g, " ").trim().length;
+  if (len >= minLength) return false;
+  return !hasPromoLike(s);
+}
+
+/** Нормалізує `filters.min_length` у ціле число > 0 або null (вимкнено). */
+export function compileMinLength(raw) {
+  const n = Number(raw);
+  if (raw == null || raw === "" || !Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}

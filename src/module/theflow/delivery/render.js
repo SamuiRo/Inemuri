@@ -28,7 +28,7 @@ export const LIMITS = {
 // ── Шаблон (чернетка; остаточні формулювання — за оператором) ─────────────
 export const TEMPLATE = {
   topicEmoji: {
-    steam: "🎮", airdrop: "🪂", crypto: "💹", tools: "🧰",
+    steam: "🎮", games: "🕹️", airdrop: "🪂", p2e: "⚔️", crypto: "💹", tools: "🧰",
     health: "🩺", mind: "🧠", money: "💰", markets: "📈", other: "📦",
   },
   // Колір бічної смуги embed за сигналом. security — червоний: це та
@@ -37,7 +37,7 @@ export const TEMPLATE = {
     security: 0xe03131, outage: 0xf08c00, promo_code: 0x2f9e44, freebie: 0x2f9e44,
     launch: 0x1971c2, event: 0x1971c2, patch: 0x5f3dc4, analysis: 0x0c8599,
     research: 0x0c8599, report: 0x1971c2,
-    opinion: 0x868e96, giveaway_result: 0x868e96, stream: 0x868e96,
+    opinion: 0x868e96, giveaway_result: 0x868e96, stream: 0x868e96, meme: 0xe8590c,
   },
   defaultColor: 0x5865f2,
   header: ({ source, topic, signal, emoji }) =>
@@ -221,6 +221,12 @@ export function render({ post, cluster = null, members = [], source = null, reso
     }));
   }
 
+  // Пост не українською — тіло перекладом (analysis.text_uk). Переклад —
+  // plain text: entities оригіналу індексують інший рядок і не переносяться;
+  // URL у перекладі лишаються як є, оригінал — за посиланням нижче.
+  const uk = post.analysis?.text_uk;
+  const translated = typeof uk === "string" && uk.trim() ? uk.trim() : null;
+
   if (platform === "telegram") {
     // Тіло — raw_text з оригінальними entities (DELIVERY.md: «delivered as
     // written»). Заголовок іде в слот source.name адаптера: header + "\n" +
@@ -228,8 +234,8 @@ export function render({ post, cluster = null, members = [], source = null, reso
     const max = LIMITS.telegram - header.length - 1;
     const body = composeBody({
       before,
-      original: post.raw_text ?? "",
-      originalEntities: Array.isArray(post.entities) ? post.entities : [],
+      original: translated ?? post.raw_text ?? "",
+      originalEntities: translated ? [] : Array.isArray(post.entities) ? post.entities : [],
       after,
       max,
     });
@@ -238,7 +244,7 @@ export function render({ post, cluster = null, members = [], source = null, reso
 
   // Discord: markdown (text_md), без entities; заголовок — embed.author,
   // осі — footer, колір — за сигналом, лінк — url заголовка.
-  const body = composeBody({ before, original: post.text_md ?? post.raw_text ?? "", after, max: LIMITS.discord });
+  const body = composeBody({ before, original: translated ?? post.text_md ?? post.raw_text ?? "", after, max: LIMITS.discord });
   return {
     platform,
     author: header,

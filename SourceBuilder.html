@@ -596,6 +596,14 @@ function buildCardBody(src) {
           <b>Промокоди виключені окремо</b>, тож голий код капсом виживе.
           Довгий пост, що починається капсом, теж не підпадає.
         </div>` : ''}
+        <div class="field-row">
+          <div class="field-group">
+            <label>Min length (символів без посилань, порожньо = вимкнено)</label>
+            <input type="text" inputmode="numeric" placeholder="напр. 60"
+                   value="${src.filters?.min_length ?? ''}"
+                   oninput="setMinLength(${id},this.value)">
+          </div>
+        </div>
         <div>
           <label style="margin-bottom:6px;display:block">Keywords (whitelist)</label>
           <div class="tags-area" id="kw-${id}">
@@ -925,6 +933,18 @@ function toggleShouty(id) {
   refreshCard(id);
 }
 
+/** filters.min_length. Порожньо — вимкнено; сміття не пишемо. Промокоди виключені на сервері. */
+function setMinLength(id, raw) {
+  const src = getSrc(id);
+  if (!src.filters) src.filters = { keywords: [], blacklist: [], enabled: true, case_sensitive: false };
+  const text = String(raw).trim();
+  if (text === '') { src.filters.min_length = null; updateOutput(); return; }
+  const n = Number(text);
+  if (!Number.isFinite(n) || n <= 0) return;
+  src.filters.min_length = Math.round(n);
+  updateOutput();
+}
+
 /** Поріг reject_shouty. Порожньо/сміття — не пишемо, щоб не зламати правило. */
 function setShouty(id, field, raw) {
   const src = getSrc(id);
@@ -1165,6 +1185,11 @@ function buildJSON() {
     if (clean.filters && !clean.filters.reject_shouty) {
       clean.filters = { ...clean.filters };
       delete clean.filters.reject_shouty;
+    }
+    // filters.min_length: null = вимкнено, у файл не пишемо
+    if (clean.filters && !clean.filters.min_length) {
+      clean.filters = { ...clean.filters };
+      delete clean.filters.min_length;
     }
     // extra_media_types: null = лише глобальні, у файл не пишемо
     if (!Array.isArray(clean.extra_media_types) || clean.extra_media_types.length === 0) {

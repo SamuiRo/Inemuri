@@ -17,6 +17,10 @@
  * впала після всіх спроб, впевненість нижче порогу, тема `other`, або жодне
  * правило не збіглось. **Ніщо не зникає безшумно.**
  *
+ * Реклама (`analysis.is_ad`) — теж unsorted, з причиною `ad`: прихована
+ * реклама в тематичному каналі коштує довіри до каналу, а в #unsorted її видно
+ * і за нею можна дописати blacklist джерела.
+ *
  * Одну діру специфікація лишає: що з постом, чия тема не входить у
  * `flow.topics` джерела. Рішення тут — теж unsorted, з окремою причиною. Не
  * відкидати: інакше джерело з обмеженими топіками стало б місцем, де пости
@@ -35,6 +39,7 @@ const RESOLVABLE = new Set(["enriched", "failed"]);
 export const RESOLVE_REASONS = Object.freeze({
   MATCHED_RULE: "matched_rule",
   MODEL_FAILED: "model_failed",
+  AD: "ad",
   LOW_CONFIDENCE: "low_confidence",
   TOPIC_OTHER: "topic_other",
   TOPIC_NOT_IN_SOURCE: "topic_not_in_source",
@@ -77,7 +82,7 @@ export function matchesWhen(when, verdict) {
 
 /**
  * @param {object} args
- * @param {{status: string, topic?: string, signal_type?: string, confidence?: number}} args.post
+ * @param {{status: string, topic?: string, signal_type?: string, confidence?: number, analysis?: {is_ad?: boolean}}} args.post
  * @param {{topics?: string[]|null, min_confidence?: number}} args.flow
  *   Результат `source.getFlowConfig()`.
  * @param {{routing?: object[], unsorted_destinations?: object}} args.routing
@@ -108,6 +113,10 @@ export function resolve({ post, flow = {}, routing = {} }) {
   });
 
   if (post.status === "failed") return unsorted(RESOLVE_REASONS.MODEL_FAILED);
+
+  // Реклама — до будь-якого правила: тема в неї справжня (crypto, tools), і
+  // правило маршрутизувало б її в тематичний канал.
+  if (post.analysis?.is_ad === true) return unsorted(RESOLVE_REASONS.AD);
 
   // Крок 4 специфікації — перевіряється першим, бо діє «незалежно від того,
   // що збіглося». Невизначена впевненість трактується як нульова: краще в

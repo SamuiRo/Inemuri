@@ -114,6 +114,15 @@ representation.
 `summary_uk` is optional, for reading in Ukrainian. It costs a few extra output
 tokens and **no additional request**.
 
+A full Ukrainian translation is **not** part of `enrich()`. It was tried
+(v4.57.0, measured live): next to `text_en`, the classification and the
+extraction, the model translated the first line of a long post and left the
+rest in Russian, or returned nothing. `translate({ text, title })` is a
+separate call with one job (`prompts/translate.js`), made by delivery only
+for posts that are actually sent. A translation that still contains letters
+Ukrainian does not have (`ы э ъ ё`, three or more outside URLs) fails
+validation, and delivery sends the original.
+
 ## Required call settings
 
 | Parameter | Value | Reason |
@@ -187,6 +196,7 @@ quota".
 | Deduplication | `embed` | `critical` | phase 3 |
 | Vision stage | `vision` | `normal` | phase 1.5 |
 | Digests | `enrich` | `low` | phase 5 |
+| Delivery | `translate` | `normal` | v4.57.0 — only routed posts not in Ukrainian |
 | History search | `embed` | `low` | phase 5 — ROADMAP §9.1 |
 | AI-assisted screening | `enrich` | `low` | **unspecified** — ROADMAP §13.8 |
 

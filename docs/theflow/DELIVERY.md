@@ -115,6 +115,8 @@ Whatever the final wording, these are fixed by other documents:
 |---|---|---|
 | Body | `text_md` with its original entities, delivered as written. `raw_text` is the plain text those offsets index | this document |
 | Lead | `summary_uk` when the enrichment produced one — one line, above the body | THEFLOW.md open questions |
+| Translation | A routed post not in Ukrainian goes out with `analysis.text_uk` as its body (plain text, no entities); on any failure the original | this document |
+| Ads | `analysis.is_ad: true` resolves to `#unsorted` with reason `ad`, whatever the rules say | ResolveStage.js |
 | Axes | `topic` and `signal_type` are visible, so a mis-route is obvious at a glance | TAXONOMY.md |
 | Unverified OCR | Any entity carrying `verified: false` is marked as unverified. It is never presented indistinguishably from a verified one | VISION.md |
 | Cluster size | `members_count > 0` renders the "also reported by N" line | DATA_MODEL.md |
@@ -153,6 +155,28 @@ Whatever the final wording, these are fixed by other documents:
   length would not fit, the original is cut, not the addition — so the
   "reply instead of edit when too long" rule from DEDUPLICATION.md is not
   needed.
+
+## Translation (v4.57.0)
+
+The readers are Ukrainian; most source channels are not. A post the model
+found not to be in Ukrainian (`lang` ≠ `uk`) and that resolves to a topic
+channel is translated before rendering: `FlowDelivery._ensureTranslation()`
+calls `LLMGateway.translate()` once, stores the result in
+`analysis.text_uk` (and the model in `text_uk_model`), and `render()` uses
+it as the body. Retries, `flow preview` and cluster re-renders reuse it.
+
+- **Only routed posts.** `#unsorted` is read by the operator, for whom the
+  original is more useful; and enrichment sees every post while delivery
+  sends a fraction — translating at ingest would spend quota on posts
+  nobody reads.
+- **Never blocks delivery.** Shed, an error, or a translation left partly in
+  the source language — the original goes out, and the next render tries
+  again only if nothing was stored.
+- **Plain text.** The original's entities index a different string, so the
+  translated body carries none; links stay in the text as URLs and the
+  original is one link away.
+- `node src/cli.js flow preview --translate` shows what delivery would send,
+  translating as it would (one provider call per post, saved).
 
 ## Testing
 
