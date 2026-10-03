@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "description": "EXAMPLE headline triage profile (docs/theflow/NEWS_INTAKE.md §5). Copy to triage.json (git-ignored) and describe your own reader: what they want (areas), what makes an item worth it (values), what is noise, and which site sections to drop without asking the model. Bump the version when you change it.",
+  "areas": {
+    "science": "Science and research: a new study, trial or dataset and what it found — medicine, physics, climate, space. A concrete finding, ideally with numbers.",
+    "technology": "Technology: notable launches, how products and platforms change, security incidents that affect many users.",
+    "markets": "Big market news only: large swings of well-known companies, bankruptcies, central-bank decisions, major economic data. Everyday price moves are not news."
+  },
+  "values": [
+    "a concrete new finding or development, ideally with numbers",
+    "an opinion piece only when it rests on evidence (a study, an experiment, data); plain opinion is noise"
+  ],
+  "noise": [
+    "sport, sports betting and picks",
+    "celebrities, gossip, entertainment and TV",
+    "local crime and accidents",
+    "shopping, deals, coupons, promo codes",
+    "real-estate listings, ticket sales"
+  ],
+  "deny_sections": [
+    "sports",
+    "betting",
+    "shopping",
+    "ticket-sales",
+    "real-estate",
+    "horoscopes"
+  ]
+}

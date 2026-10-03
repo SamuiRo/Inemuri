@@ -88,17 +88,15 @@
     {
       "platform": "rss",
       "channel_id": "https://nypost.com/news-sitemap.xml",
-      "channel_name": "NYPost (news sitemap example)",
+      "channel_name": "NYPost (news sitemap + triage example)",
       "is_active": false,
       "poll_interval_min": 5,
       "feed": {
-        "discovery": "sitemap"
+        "discovery": "sitemap",
+        "triage": true
       },
-      "filters": {
-        "enabled": true,
-        "keywords": [],
-        "blacklist": ["betting", "sports picks"],
-        "case_sensitive": false
+      "flow": {
+        "enabled": true
       }
     },
     {

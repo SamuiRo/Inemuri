@@ -19,13 +19,14 @@ import { validateEnrichResponse } from "./schemas.js";
 import { buildEnrichPrompt } from "./prompts/enrich.js";
 import { buildVisionPrompt, validateVisionResponse } from "./prompts/vision.js";
 import { buildDeltaPrompt, validateDeltaResponse } from "./prompts/delta.js";
+import { buildTriagePrompt, validateTriageResponse } from "./prompts/triage.js";
 import { GeminiProvider } from "./providers/GeminiProvider.js";
 import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
 /**
  * TheFlow — LLM gateway (ROADMAP §3.5, LLM_GATEWAY.md).
  *
- * The pipeline sees only enrich() / embed() / vision(). Everything else —
+ * The pipeline sees only enrich() / embed() / vision() / delta() / triage(). Everything else —
  * provider selection, RPM token buckets, the persistent RPD ledger, per-
  * provider circuit breakers, a TTL cache, a priority queue with a concurrency
  * cap, the fallback matrix, tiering, and priority shedding — lives here.
@@ -153,6 +154,46 @@ export class LLMGateway {
       throw err;
     }
     const result = { ...checked.value, model_used: run.model };
+    this.cache.set(key, result);
+    return result;
+  }
+
+  /**
+   * Triage заголовків новин пакетом (NEWS_INTAKE.md §2.3). Пріоритет
+   * `normal`: заголовки можуть почекати, під тиском квоти поступаються
+   * enrich — shed, і стадія спробує пізніше.
+   *
+   * @param {{ items: object[], profile: object, examples?: object[], examplesHash?: string|null }} input
+   * @returns {Promise<{ decisions: Array<{ index, relevant, area, reason }>, model_used }|{ shed: true }>}
+   *   decisions — лише для кандидатів, на які модель коректно відповіла.
+   */
+  async triage(input, { priority = "normal" } = {}) {
+    return this._enqueue(priority, () => this._triage(input, priority));
+  }
+
+  async _triage(input, priority) {
+    const key = "triage:" + this._hash(JSON.stringify({
+      i: input.items.map((it) => [this._norm(it.title), this._norm(it.teaser), it.section ?? null]),
+      p: input.profile?.version ?? null,
+      x: input.examplesHash ?? null,
+    }));
+    const hit = this.cache.get(key);
+    if (hit) return { ...hit, cached: true };
+
+    const prompt = buildTriagePrompt({ items: input.items, profile: input.profile, examples: input.examples });
+    const run = await this._runComplete(prompt, priority, {});
+    if (run.shed) return run;
+
+    const checked = validateTriageResponse(run.parsed, {
+      count: input.items.length,
+      areas: Object.keys(input.profile?.areas ?? {}),
+    });
+    if (!checked.ok) {
+      const err = new Error(`triage: invalid response — ${checked.errors.join("; ")}`);
+      err.kind = "bad_response";
+      throw err;
+    }
+    const result = { decisions: checked.value, model_used: run.model };
     this.cache.set(key, result);
     return result;
   }

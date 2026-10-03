@@ -7,6 +7,67 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.55.0] - 2026-10-03
+
+### Added
+- **Taxonomy v2** (`categories.json` `version: 2`). Topics `health`, `mind`,
+  `money`, `markets` for news sources; signals `research` (a study and what
+  it found, 72 h dedup window) and `report` (a development that already
+  happened — results, a share move, a central-bank decision, 48 h). `crypto`
+  and `money` now point stocks and macro to `markets`. Delivery render and
+  the digest know the new values. Existing verdicts keep
+  `taxonomy_version = 1`; nothing is re-enriched automatically
+  (TAXONOMY.md, Versioning).
+- `src/config/triage.sample.json` — a neutral example reader profile.
+
+### Changed
+- **The triage profile is deployment data now.** `src/config/triage.json`
+  is git-ignored and read through `localConfig` (falling back to the sample
+  with a `[CONFIG]` warning), like `sources.json`. Tests run on the sample.
+  Upgrading: keep your existing `triage.json` — it is simply no longer
+  tracked.
+- NEWS_INTAKE.md §5 describes the profile's shape and the design lessons,
+  not one reader's interests; taxonomy and test examples are neutral.
+  CLAUDE.md records the rule: the repository is public, deployment data
+  stays out of git.
+
+## [4.54.0] - 2026-10-03
+
+### Added
+- **Headline triage for news sources (ROADMAP §14.3).** An `rss` source with
+  `"feed": { "triage": true }` (and TheFlow on) no longer turns every article
+  into a post. New articles wait in `discovered_items` (migration `017`);
+  sections listed in `src/config/triage.json` (`deny_sections`: sports,
+  betting, shopping…) are dropped at once, the rest is judged by the model
+  in batches of ~50 headlines against the reader's profile in the same file
+  — health, mind, money stories, markets in both directions — and only what
+  passes becomes a post, enriched in the same tick. 5% of the model's
+  rejects are kept for review (`FLOW_TRIAGE_SAMPLE`).
+- `node src/cli.js flow triage stats` — outcomes, pass rate per source,
+  areas, rule reasons. `flow triage review` — "would you want to read
+  it?" on passes and sampled rejects; answers become `headline` examples in
+  the knowledge base (`missed` when the model was wrong to reject) and
+  steer the next triage calls.
+- `gateway.triage()` with its own prompt, schema and validation; examples
+  come from the knowledge base.
+- `SourceBuilder.html`: a triage toggle for `rss` sources.
+
+### Changed
+- `FewShotStore` takes its loader and picker as options, so few-shot and
+  triage share one cache mechanism.
+- Live: 252 of 596 NYPost headlines dropped by rule, 50 judged in one call
+  (~5.7 s), 3–4 passed.
+
+## [4.53.1] - 2026-10-03
+
+### Changed
+- NEWS_INTAKE.md §5: the interest profile is decided — health, mind, money
+  and business stories, and markets under strict calibration (materiality
+  rules, corroboration, a daily cap, a shadow week). The section deny-list
+  stays narrow (a wanted example sits in NYPost `/lifestyle/`); section
+  feeds are preferred; PsyPost is a full-text feed; taxonomy v2 is needed
+  before step 4. Documentation only.
+
 ## [4.53.0] - 2026-10-03
 
 ### Added

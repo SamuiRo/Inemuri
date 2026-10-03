@@ -24,7 +24,7 @@ import { TEMPLATE } from "../delivery/render.js";
 
 const SIGNAL_WEIGHT = {
   security: 5, outage: 3, promo_code: 3, freebie: 3,
-  launch: 2, event: 2, patch: 2, analysis: 2, opinion: 0,
+  launch: 2, event: 2, patch: 2, analysis: 2, research: 2, report: 2, opinion: 0,
 };
 const LIMIT = 3_900; // з запасом під 4096 обох платформ
 

@@ -41,6 +41,7 @@ export class EnrichWorker {
     dedup = null,
     delta = null,
     fewShot = null,
+    triage = null,
   } = {}) {
     if (!gateway) throw new Error("EnrichWorker: a gateway is required");
     if (vision && typeof flowFor !== "function") {
@@ -55,6 +56,9 @@ export class EnrichWorker {
     this.delta = delta;
     // Few-shot з міток оператора (фаза 5): { get() → { examples, hash } }.
     this.fewShot = fewShot;
+    // Triage заголовків новин (§14.3) — до збагачення: пропущене стає
+    // pending-постом і збагачується в цьому ж тіку.
+    this.triage = triage;
     this.gateway = gateway;
     this.taxonomy = taxonomy;
     this.tickMs = tickMs;
@@ -88,8 +92,15 @@ export class EnrichWorker {
   async _tick() {
     if (this._stopped) return;
     let advanced = 0;
+    if (this.triage) {
+      try {
+        advanced += await this.triage.runOnce();
+      } catch (error) {
+        print(`[TRIAGE] tick error: ${error.message}`, "error");
+      }
+    }
     try {
-      advanced = await this.runOnce();
+      advanced += await this.runOnce();
     } catch (error) {
       print(`[ENRICH] tick error: ${error.message}`, "error");
       console.error(error);

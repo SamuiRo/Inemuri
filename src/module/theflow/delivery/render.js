@@ -27,12 +27,16 @@ export const LIMITS = {
 
 // ── Шаблон (чернетка; остаточні формулювання — за оператором) ─────────────
 export const TEMPLATE = {
-  topicEmoji: { steam: "🎮", airdrop: "🪂", crypto: "💹", tools: "🧰", other: "📦" },
+  topicEmoji: {
+    steam: "🎮", airdrop: "🪂", crypto: "💹", tools: "🧰",
+    health: "🩺", mind: "🧠", money: "💰", markets: "📈", other: "📦",
+  },
   // Колір бічної смуги embed за сигналом. security — червоний: це та
   // категорія, де пропущений пост коштує більше за незручність.
   signalColor: {
     security: 0xe03131, outage: 0xf08c00, promo_code: 0x2f9e44, freebie: 0x2f9e44,
     launch: 0x1971c2, event: 0x1971c2, patch: 0x5f3dc4, analysis: 0x0c8599,
+    research: 0x0c8599, report: 0x1971c2,
     opinion: 0x868e96, giveaway_result: 0x868e96, stream: 0x868e96,
   },
   defaultColor: 0x5865f2,

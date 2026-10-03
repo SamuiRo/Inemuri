@@ -2,7 +2,7 @@ import { Op } from "sequelize";
 
 import database from "../../teapot/sqlite/sqlite_db.js";
 import { Post, PostFeedback, Source, KnowledgeExample } from "../../teapot/models/index.js";
-import { snapshotFromPost } from "./snapshot.js";
+import { snapshotFromPost, snapshotFromCandidate } from "./snapshot.js";
 
 /**
  * База знань TheFlow — операції над knowledge_examples (NEWS_INTAKE.md §3).
@@ -40,6 +40,27 @@ export async function recordLabel({ post, verdict, note = null }) {
     });
     const example = snapshot ? await KnowledgeExample.create(snapshot, { transaction }) : null;
     return { feedback, example };
+  });
+}
+
+/**
+ * Мітка з `flow triage review` на кандидата triage: знімок рівня `headline`
+ * і позначка на самому кандидаті — однією транзакцією, щоб він не прийшов на
+ * перегляд удруге.
+ *
+ * @param {{ row: object, verdict: string, note?: string|null }} label row — discovered_items.
+ * @returns {Promise<object|null>} приклад; null — у кандидата немає тексту.
+ */
+export async function recordHeadlineLabel({ row, verdict, note = null }) {
+  return database.sequelize.transaction(async (transaction) => {
+    const snapshot = snapshotFromCandidate(row, {
+      verdict,
+      reason: note,
+      sourceName: await sourceNameOf(row.source_id, transaction),
+    });
+    const example = snapshot ? await KnowledgeExample.create(snapshot, { transaction }) : null;
+    await row.update({ review_verdict: verdict }, { transaction });
+    return example;
   });
 }
 
@@ -150,7 +171,7 @@ export async function knowledgeStats() {
 export async function loadExamples({ levels = ["post"], verdicts = ["good", "wrong_topic"], limit = 200 } = {}) {
   const rows = await KnowledgeExample.findAll({
     where: { level: levels, verdict: verdicts },
-    attributes: ["uid", "content_hash", "verdict", "reason", "body", "text_en", "topic", "signal_type", "created_at"],
+    attributes: ["uid", "content_hash", "verdict", "reason", "title", "body", "text_en", "topic", "signal_type", "created_at"],
     order: [["created_at", "DESC"], ["id", "DESC"]],
     limit,
   });

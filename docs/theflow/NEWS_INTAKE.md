@@ -92,9 +92,9 @@ real posts, and the storage budget is spent on signal.
 ### 2.3 Triage
 
 Cheap by construction: 6k headlines a day in batches of 50 is about 120 calls a
-day. Rules run first and cost nothing — a section deny-list (`/sports/`,
-`/betting/`, `/lifestyle/`, `/newsletters/`…) and an allow-list of entities
-(tickers, central banks, commodities). The LLM sees only what the rules did not
+day. Rules run first and cost nothing — a narrow section deny-list (`/sports/`,
+`/betting/`, `/shopping/`…; what stays off it is in §5) and an allow-list of
+entities (tickers, central banks, commodities). The LLM sees only what the rules did not
 decide. Examples for the triage prompt come from the knowledge base at
 `level: headline`.
 
@@ -203,7 +203,7 @@ The file is JSONL. The first line is a header, every following line one example:
 |---|---|---|
 | 1 | `knowledge_examples` + export/import + backfill from `post_feedback`; few-shot reads it — **done (v4.52.0)** | minor |
 | 2 | Discovery through `sitemap` and `wpjson` as settings of the existing poller — **done (v4.53.0)** | minor |
-| 3 | `discovered_items` + triage (rules + batched LLM over headlines) | minor |
+| 3 | `discovered_items` + triage (rules + batched LLM over headlines) — **done (v4.54.0)** | minor |
 | 4 | Article fetch (JSON-LD → `<p>`) for what passed triage, plus the sampled rejects | minor |
 | 5 | Alert on silent sources, poll intervals tuned from real data | patch |
 
@@ -229,9 +229,111 @@ feed.
 - **Until step 3 every new article is ingested.** Candidates go straight to
   `posts` (or forwarding), not to `discovered_items` — that table is step 3.
 
-## 5. Open before step 3
+## 5. What is valuable — the interest profile
 
-- **What counts as market-moving** — US equities, crypto, commodities, macro
-  (Fed, CPI), geopolitics? This sets the rules and the triage prompt.
-- **The outlet list** — the groups above, or others.
-- **The share of sampled rejects** — 5% to start.
+The profile is one reader's interests, which makes it deployment data, not
+code: it lives in `src/config/triage.json`, **git-ignored** like
+`sources.json`. The repository carries `src/config/triage.sample.json` — the
+same shape with a neutral example — and a fresh clone falls back to it with a
+`[CONFIG]` warning. The shape:
+
+| Key | What it holds |
+|---|---|
+| `areas` | What the reader wants, one description per area — the triage prompt's core |
+| `values` | What makes an item worth it inside an area (a concrete finding, evidence behind an opinion…) |
+| `noise` | What the reader never wants |
+| `deny_sections` | Site sections dropped by rule, before any model call |
+| `version` | Bumped on every edit; recorded on each decision (`profile_version`) |
+
+The operator's own example posts go into the knowledge base as
+`origin: manual` from a git-ignored JSONL (`flow knowledge import`, §3.5) —
+they are third-party text and personal taste, so they never enter the
+repository either. Areas of the profile line up with the taxonomy topics
+(`categories.json` v2), but nothing requires it.
+
+### Lessons the first profile taught the design
+
+- **Valuable usually means a concrete finding** — a study, data, a number —
+  that is practical or goes against the usual view. Honest limits ("64
+  people") are a plus. An opinion piece counts only when it rests on
+  evidence, which a headline cannot show: that check belongs to the
+  full-text verdict.
+- **The section deny-list must stay narrow.** NYPost's sitemap over two days:
+  `sports` 192, `betting` 30, `shopping` 15, `real-estate` 9, `ticket-sales` 4
+  — 43% of everything, safely dropped by rule. But a wanted article can sit in
+  an unexpected section such as `/lifestyle/`, so sections are dropped by rule
+  only when nothing in them can match the profile; the rest goes to the model.
+- **Section feeds before whole-site discovery.** Many outlets publish a feed
+  per section (`nypost.com/health/feed/`, `/business/feed/`). For an interest
+  that lives in one section, the section feed is a publisher-side filter for
+  free — about 5 articles a day instead of 300 to triage.
+- **PsyPost** is group A: its RSS carries the full text (`content:encoded`,
+  ~10k characters), and its WordPress API is open.
+- **Two stages, different strictness.** Headline triage is generous — a
+  missed article is gone for good, a false pass costs one fetch. The verdict
+  after the full text (enrich) is strict.
+- **The taxonomy needed a v2** — done in v4.55.0: topics `health`, `mind`,
+  `money`, `markets`, signals `research` and `report` (TAXONOMY.md,
+  Versioning).
+
+### Markets: calibrating so it does not spam
+
+The operator's own caveat — market news must not flood the stream. The plan:
+
+1. **Materiality rules, not a score.** Pass only defined event kinds, in
+   **both directions** (operator, 2026-10-03: a surge matters as much as a
+   crash): a sharp move of a widely known company, record results, guidance
+   raised or cut, bankruptcy or default, a large layoff, a CEO exit, a fraud
+   probe, a central-bank decision, CPI or jobs data. "Shares rose 2%" is never
+   news.
+2. **Corroboration.** A market story in one outlet waits; in two or more
+   (a dedup cluster of size ≥ 2) it passes. Wire headlines from the closed
+   outlets (§1) count as corroboration.
+3. **A daily cap** for the market area; above it, the digest instead of the
+   stream.
+4. **Shadow first.** For a week triage verdicts are logged, not delivered;
+   `flow review` labels them, and the thresholds are set from those labels,
+   as deduplication's were.
+
+## 6. Step 3 as built
+
+Decided 2026-10-03: 5% sampled rejects, taxonomy v2 topics `health`, `mind`,
+`money`, `markets` (to be refined later), and the outlet list — NYPost
+(sections `health`, `business`, `lifestyle` as feeds, or the sitemap with the
+deny-list), PsyPost, Fox Business, Business Insider, CNBC, The Guardian, The
+Hill, Reuters (headlines).
+
+**Turning it on for a source:** `"feed": { "discovery": "sitemap", "triage":
+true }` on a flow-enabled `rss` source (the seeder refuses triage without
+`flow.enabled`). Every new article of such a source goes to
+`discovered_items` instead of `posts`.
+
+| Part | Where | What |
+|---|---|---|
+| Profile | `src/config/triage.json` | Areas, values, noise, `deny_sections` (§5). Git-ignored; `triage.sample.json` is the tracked example. Edit the text and bump `version` |
+| Queue (ingest side) | `triage/TriageQueue.js` | A new article → a row; a deny-listed section is rejected at once (`decided_by: rule`). No network |
+| Stage (worker side) | `triage/TriageStage.js` | Runs first in the enrich worker's tick: ~50 pending headlines → `gateway.triage()` → `passed` / `rejected`; a pass becomes a post through the feed poller (`promote`) and is enriched in the same tick |
+| Prompt | `services/ai/prompts/triage.js` | Profile in the system prompt; headlines and examples as nonced data; closed `area` enum; an entry the model skipped stays pending, three misses → `failed` |
+| Examples | `triage/examples.js` | From the knowledge base, levels `headline` and `post`: `good` / `missed` = wanted, `noise` = not |
+| Review | `flow triage review` | Passes and sampled rejects; "would you want to read it?" → a `headline` label: `good`, `missed` (the model was wrong to reject), `noise` |
+| Stats | `flow triage stats` | Outcome, per source pass rate, areas, rule reasons, what is left to review |
+
+Operational knobs (`FLOW_TRIAGE` in `app.config.js`): `FLOW_TRIAGE_BATCH`
+(50), `FLOW_TRIAGE_SAMPLE` (0.05), `FLOW_TRIAGE_RETENTION_DAYS` (14).
+
+### First live run (2026-10-03)
+
+The NYPost news sitemap, 596 items: **252 dropped by rule** (sports, betting,
+shopping, real estate) at no cost; the next 50 sent in one call to
+`gemini-3.5-flash-lite` — schema accepted, 50/50 decided, ~5.7 s. **3–4 of 50
+passed** (an FDA outbreak source, a $1M diamond find, an AI-policy opinion);
+the rest were rejected with sensible reasons (crime, politics, accidents).
+After the run the profile gained `values` (§5) — an opinion counts only when
+it rests on evidence — but from a headline the model cannot see the evidence,
+so such a piece may still pass; the full-text verdict (step 4) is the strict
+one. Calibration is the shadow week's job, not two calls'.
+
+## 7. Still open
+
+- **The shadow week** — `flow triage review` daily, then thresholds and the
+  market cap (§5).

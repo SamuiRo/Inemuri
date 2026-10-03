@@ -15,8 +15,11 @@ import { collectStorage, assessStorage, storageLine } from "./module/theflow/Sto
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import {
-  recordLabel, backfillFromFeedback, exportKnowledge, importKnowledge, knowledgeStats,
+  recordLabel, recordHeadlineLabel, backfillFromFeedback, exportKnowledge, importKnowledge, knowledgeStats,
 } from "./module/theflow/knowledge/KnowledgeBase.js";
+import {
+  collectTriageStats, reviewQueue, reviewVerdict, sourceNames,
+} from "./module/theflow/triage/report.js";
 import { serialize as serializeKnowledge, parse as parseKnowledge } from "./module/theflow/knowledge/exchange.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
@@ -536,6 +539,94 @@ knowledge
   .action(withDatabase(async () => {
     const { created, skipped } = await backfillFromFeedback();
     print(`Backfilled ${created} label(s)${skipped ? `, ${skipped} skipped (no post or no text)` : ""}`, "success");
+  }));
+
+// ── Triage заголовків новин (NEWS_INTAKE.md §2.3) ────────────────────
+
+/** Питання в термінал по рядку; null — кінець вводу (зручно для `< answers.txt`). */
+function createAsker() {
+  const rl = readline.createInterface({ input: process.stdin });
+  const lines = rl[Symbol.asyncIterator]();
+  return {
+    ask: async (q) => {
+      process.stdout.write(q);
+      const { value, done } = await lines.next();
+      return done ? null : value;
+    },
+    close: () => rl.close(),
+  };
+}
+
+const triage = flow
+  .command("triage")
+  .description("Headline triage of news sources (NEWS_INTAKE.md §2.3)");
+
+triage
+  .command("stats")
+  .description("What triage decided: by outcome, source, area, rule")
+  .option("--days <n>", "window in days", "7")
+  .action(withDatabase(async (options) => {
+    const days = Math.max(1, Number(options.days) || 7);
+    const s = await collectTriageStats({ days });
+    const line = (counts) => Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(" · ") || "—";
+    print(`Triage, last ${days} day(s): ${s.total} candidate(s)`, "system");
+    print(`  outcome: ${line(s.byOutcome)}`);
+    print(`  passed by area: ${line(s.areas)}`);
+    print(`  rejected by rule: ${line(s.ruleReasons)}`);
+    for (const src of s.bySource) {
+      const share = src.total ? Math.round((src.passed / src.total) * 100) : 0;
+      print(`  ${src.source}: ${src.total} · passed ${src.passed} (${share}%) · rule ${src.rule} · model rejected ${src.llmRejected}`);
+    }
+    print(`  to review: ${s.toReview} · reviewed: ${line(s.reviewed)}`, s.toReview ? "info" : "success");
+  }));
+
+triage
+  .command("review")
+  .description("Label what triage passed and the sampled rejects; labels go to the knowledge base")
+  .option("--limit <n>", "max candidates this session", "50")
+  .action(withDatabase(async (options) => {
+    const queue = await reviewQueue({ limit: Math.max(1, Number(options.limit) || 50) });
+    if (!queue.length) {
+      print("Nothing to review.", "success");
+      return;
+    }
+    const names = await sourceNames(queue);
+    print(`${queue.length} candidate(s). Would you want to read it? [y]es  [n]o  [s]kip  [q]uit`, "system");
+
+    const { ask, close } = createAsker();
+    let written = 0;
+    for (const row of queue) {
+      const decision = row.status === "passed" ? `PASSED ${row.area ?? ""}`.trim() : "REJECTED (sampled)";
+      const where = [names.get(row.source_id), row.section].filter(Boolean).join(" · ");
+      print("", "info");
+      print(`#${row.id}  ${decision}  (${where})`, "system");
+      print(`title : ${truncateForReview(row.title, 300)}`);
+      if (row.teaser) print(`teaser: ${truncateForReview(row.teaser, 300)}`);
+      print(`model : ${row.reason ?? "—"}`);
+
+      const raw = await ask("> ");
+      if (raw === null) break;
+      const key = raw.trim().toLowerCase();
+      if (key === "q") break;
+      if (key === "s" || key === "") continue;
+      if (key !== "y" && key !== "n") {
+        print("unknown key — skipped", "warning");
+        continue;
+      }
+
+      const verdict = reviewVerdict(key === "y", row);
+      // Причина потрібна, коли оператор не згоден з моделлю: саме вона вчить.
+      let note = null;
+      if (verdict !== "good" && !(verdict === "noise" && row.status === "rejected")) {
+        const n = await ask("why (optional): ");
+        note = n && n.trim() ? n.trim() : null;
+      }
+      await recordHeadlineLabel({ row, verdict, note });
+      written += 1;
+      print(`recorded: ${verdict}`, "success");
+    }
+    close();
+    print(`\nDone — ${written} label(s) written to the knowledge base.`, "success");
   }));
 
 flow

@@ -45,13 +45,15 @@ function normalizeExtraMediaTypes(raw) {
 }
 
 /**
- * Налаштування стрічки (NEWS_INTAKE.md §2.1). Лише для rss; типовий спосіб
- * (rss) не зберігається — NULL означає те саме.
+ * Налаштування стрічки (NEWS_INTAKE.md §2.1–2.2). Лише для rss; типові
+ * значення (discovery rss, без triage) не зберігаються — NULL означає те саме.
  */
 function normalizeFeed(platform, feed) {
   if (platform !== "rss" || !feed || typeof feed !== "object") return null;
-  const discovery = feed.discovery ?? "rss";
-  return discovery === "rss" ? null : { discovery };
+  const out = {};
+  if (feed.discovery && feed.discovery !== "rss") out.discovery = feed.discovery;
+  if (feed.triage === true) out.triage = true;
+  return Object.keys(out).length ? out : null;
 }
 
 function mergeFlow(flow) {
@@ -85,6 +87,10 @@ class SourceSeeder {
     const discovery = source.feed?.discovery;
     if (discovery !== undefined && !DISCOVERY_KINDS.includes(discovery)) {
       throw new Error(`source "${source.channel_name}": feed.discovery must be one of ${DISCOVERY_KINDS.join(" / ")}`);
+    }
+    // Triage пропускає статті в TheFlow — без нього пропускати нікуди.
+    if (source.feed?.triage === true && source.flow?.enabled !== true) {
+      throw new Error(`source "${source.channel_name}": feed.triage needs flow.enabled`);
     }
 
     if (source.mode && !VALID_MODES.includes(source.mode)) {

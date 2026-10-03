@@ -5,7 +5,9 @@ import { print } from "../../shared/utils.js";
 import { FEEDS } from "../../config/app.config.js";
 import { fetchFeed, feedThrottle, RedditAuth } from "./http.js";
 import { selectNew } from "./parsers.js";
-import { strategyFor } from "./discovery.js";
+import { strategyFor, usesTriage } from "./discovery.js";
+import TriageQueue from "../../module/theflow/triage/TriageQueue.js";
+import { toItem } from "../../module/theflow/triage/candidates.js";
 
 export const FEED_PLATFORMS = ["reddit", "rss"];
 const MIN = 60_000;
@@ -73,7 +75,7 @@ export class FeedPoller {
    */
   constructor({
     eventBus, fetch = fetchFeed, throttle = feedThrottle, flowIngest = new FlowIngest(),
-    config = FEEDS, redditAuth = null, now = Date.now, log = print,
+    triage = new TriageQueue(), config = FEEDS, redditAuth = null, now = Date.now, log = print,
   }) {
     this.eventBus = eventBus;
     this.fetch = fetch;
@@ -84,6 +86,7 @@ export class FeedPoller {
       : null);
     this._warnedForbidden = new Set();
     this.flowIngest = flowIngest;
+    this.triage = triage;
     this.config = config;
     this.now = now;
     this.log = log;
@@ -244,7 +247,36 @@ export class FeedPoller {
     return res.status !== 304;
   }
 
+  /**
+   * Новий елемент: джерело з triage — у чергу triage (NEWS_INTAKE.md §2.2),
+   * решта — одразу далі (ingestItem).
+   */
   async handleItem(source, item) {
+    if (usesTriage(source)) return this.triage.add(source, item);
+    return this.ingestItem(source, item);
+  }
+
+  /**
+   * Кандидат, пропущений triage, → пост (TriageStage викликає через
+   * ін'єкцію). Той самий шлях, яким пройшов би елемент без triage.
+   *
+   * @param {object} row discovered_items
+   * @returns {Promise<object>} створений (або вже наявний) пост.
+   */
+  async promote(row) {
+    const source = await Source.findByPk(row.source_id);
+    if (!source) throw new Error("source no longer exists");
+    if (!source.isFlowEnabled()) throw new Error(`source "${source.channel_name}" is no longer flow-enabled`);
+    return this.ingestItem(source, toItem(row));
+  }
+
+  /**
+   * Елемент → replacements → FlowIngest (flow-джерело) або фільтр і
+   * `message.received` (класичний форвардинг).
+   *
+   * @returns {Promise<object|null>} пост flow-джерела; null — класичний шлях.
+   */
+  async ingestItem(source, item) {
     const messageData = toFeedMessageData(source, item);
     const replacements = messageFilter.getCompiledReplacements(source);
     const filter = messageFilter.getCompiledFilter(source);
@@ -260,11 +292,11 @@ export class FeedPoller {
         rejectShouty: filter?.rejectShouty ?? null,
       });
       if (created) this.log(`[THEFLOW] ${source.channel_name} ${item.id} → posts#${post.id} [${status}]`, status === "pending" ? "success" : "debug");
-      return;
+      return post;
     }
 
     const plain = messageFilter.preprocessText(replacements, messageData.rawText);
-    if (!messageFilter.checkMessageFast(null, filter, plain)) return;
+    if (!messageFilter.checkMessageFast(null, filter, plain)) return null;
     this.eventBus.emit("message.received", {
       ...messageData,
       rawText: plain,
@@ -274,6 +306,7 @@ export class FeedPoller {
       text: plain === messageData.rawText ? messageData.text : plain,
       source: { id: source.id, name: source.channel_name, destinations: source.getAllDestinations() },
     });
+    return null;
   }
 }
 

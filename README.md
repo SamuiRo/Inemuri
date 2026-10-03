@@ -282,10 +282,19 @@ filters, and feed TheFlow or classic forwarding just like a Telegram source.
   no text. `wpjson` — `channel_id` is the root of a WordPress site; the
   WordPress REST API gives the title and the excerpt. Without `feed`, or
   with `"discovery": "rss"`, the source is a plain RSS/Atom feed.
-  Until headline triage lands (ROADMAP §14.3) every new article of such a
-  source is ingested — a large outlet publishes 200–400 a day, so keep
-  `filters.blacklist` (it also matches the URL, e.g. `betting`) or TheFlow off
-  for now.
+  A large outlet publishes 200–400 articles a day; turn on **headline
+  triage** for it: `"feed": { "discovery": "sitemap", "triage": true }` on a
+  source with `"flow": { "enabled": true }`. New articles then wait in
+  `discovered_items`; sections listed in the triage profile
+  (`deny_sections`: sports, betting, shopping…) are dropped at once, the rest
+  is judged by the model in batches of ~50 headlines against the reader
+  profile, and only what passes becomes a post. The profile is
+  `src/config/triage.json` — your own interests, so it is git-ignored: copy
+  `triage.sample.json` and describe what you want to read.
+  `node src/cli.js flow triage stats` shows what it decided,
+  `flow triage review` labels its decisions into the knowledge base.
+  Triage runs inside the enrich worker, so without a provider key the
+  articles simply wait.
 - **Reddit needs OAuth credentials in practice.** Reddit refuses many
   unauthenticated clients (403). Create a "script" app at
   reddit.com/prefs/apps and set `REDDIT_CLIENT_ID` and

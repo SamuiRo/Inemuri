@@ -27,7 +27,7 @@ enrichment, shadow mode, dormant without a provider key) and Phase 1.5
 resolve stage and delivery mechanism (off until `FLOW_DELIVERY_ENABLED`),
 Phase 3's deduplication with the delta call, the §9.1 history search and
 Phase 3.5's Reddit and RSS sources, Phase 4's entity extraction, Phase 5's
-few-shot and digests and Phase 6's knowledge base and sitemap/WordPress discovery (news intake,
+few-shot and digests and Phase 6's knowledge base, sitemap/WordPress discovery and headline triage (news intake,
 [docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)); the rest is still specification — see
 [docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
@@ -128,6 +128,14 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   the enrich worker, and discordapp. CI runs them on push and PR.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
+- **The repository is public.** Deployment data never goes into git:
+  `src/config/{sources,routing,cronjob.config,triage}.json`, discordapp server
+  configs and texts, channel lists and ids, filters and blacklists, the
+  operator's interest profile and example posts (those live in the knowledge
+  base, imported from a git-ignored JSONL under `database/`). Each has a
+  tracked `*.sample.*` with neutral content; tests, docs and
+  `categories.json` examples use neutral or public material. Public outlets
+  (NYPost, PsyPost, Reuters) are fine as examples.
 
 ## Commands
 
@@ -151,4 +159,5 @@ node src/cli.js flow search <words> [--semantic]  # corpus search (also /search)
 node src/cli.js flow preview   # what delivery would send, sends nothing
 node src/cli.js flow digest    # the scheduled digest, previewed
 node src/cli.js flow knowledge export|import|stats  # portable labels (NEWS_INTAKE.md)
+node src/cli.js flow triage stats|review           # headline triage of news sources
 ```

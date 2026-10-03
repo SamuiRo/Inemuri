@@ -89,6 +89,15 @@ export function positiveNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
  * Задане, але невалідне значення попереджає в обох випадках: оператор щось
  * налаштовував, і це не застосувалось.
  */
+/** Частка 0..1; порожньо — дефолт, поза межами — попередження і дефолт. */
+export function fraction(name, raw, fallback, sink = CONFIG_WARNINGS) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return fallback;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0 && n <= 1) return n;
+  sink.push(`${name}=${JSON.stringify(raw)} is not a fraction 0..1 — using ${fallback}`);
+  return fallback;
+}
+
 export function optionalNumber(name, raw, fallback, sink = CONFIG_WARNINGS) {
   if (raw === undefined || raw === null || String(raw).trim() === "") return fallback;
   return positiveNumber(name, raw, fallback, sink);
@@ -283,6 +292,22 @@ export const FLOW_DELIVERY = {
   intervalMs: 15_000,
   batchSize: 5,
   maxAttempts: 3,
+};
+
+// Triage заголовків новинних джерел (NEWS_INTAKE.md §2.3, ROADMAP §14.3).
+// Профіль інтересів — triage.json: інтереси конкретного читача, тож він
+// git-ignored, як sources.json; у репозиторії лише triage.sample.json. Тут —
+// лише робочі ручки. Працює для джерел із `feed.triage: true`.
+export const FLOW_TRIAGE = {
+  profile: loadLocalConfig("triage", { version: 0, areas: {}, values: [], noise: [], deny_sections: [] }, CONFIG_WARNINGS),
+  // Заголовків в одному LLM-виклику: ~50 — сотня викликів на добу на 20 медіа.
+  batchSize: optionalNumber("FLOW_TRIAGE_BATCH", process.env.FLOW_TRIAGE_BATCH, 50),
+  maxAttempts: 3,
+  // Частка відкинутих LLM, яку позначаємо на перегляд (`flow triage review`):
+  // без негативів ніщо не скаже triage, що він дарма щось відкинув. 0..1.
+  sampleRate: fraction("FLOW_TRIAGE_SAMPLE", process.env.FLOW_TRIAGE_SAMPLE, 0.05),
+  // discovered_items — лише заголовки, тримаємо коротко.
+  retentionDays: optionalNumber("FLOW_TRIAGE_RETENTION_DAYS", process.env.FLOW_TRIAGE_RETENTION_DAYS, 14),
 };
 
 // Стрічки: Reddit і RSS/Atom (ROADMAP §7, src/sources/feeds/). Лише

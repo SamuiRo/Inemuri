@@ -5,6 +5,8 @@
 /src/config/sources.json
 /src/config/cronjob.config.json
 /src/config/routing.json
+# The headline-triage profile is one reader's interests; the sample stays tracked.
+/src/config/triage.json
 # Superseded documentation kept on disk for reference only — see
 # docs/.archive/README.md for why each file was retired.
 /docs/.archive/

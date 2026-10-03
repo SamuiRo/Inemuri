@@ -6,7 +6,8 @@ import {
 /**
  * Як знаходити нові елементи джерела-стрічки (NEWS_INTAKE.md §2.1). Чистий.
  *
- * Одна платформа `rss` на всі новинні сайти; спосіб задає `source.feed.discovery`:
+ * Одна платформа `rss` на всі новинні сайти; спосіб задає `source.feed.discovery`
+ * (а `source.feed.triage` — чи йдуть нові статті через triage, usesTriage):
  *   rss      — RSS 2.0 / Atom (типово), channel_id — URL стрічки;
  *   sitemap  — news sitemap або його індекс, channel_id — URL sitemap-а;
  *   wpjson   — WordPress REST API, channel_id — корінь сайту.
@@ -64,6 +65,15 @@ export function discoveryOf(source) {
   if (source.platform !== "rss") return null;
   const kind = feedConfigOf(source).discovery ?? "rss";
   return DISCOVERY_KINDS.includes(kind) ? kind : null;
+}
+
+/**
+ * Чи йдуть нові статті джерела через triage (NEWS_INTAKE.md §2.2):
+ * `feed.triage: true` на flow-джерелі. Без TheFlow triage не має куди
+ * пропускати — такий конфіг сідер відхиляє.
+ */
+export function usesTriage(source) {
+  return source.platform === "rss" && feedConfigOf(source).triage === true && source.isFlowEnabled?.() === true;
 }
 
 /** Стратегія джерела, або null. */

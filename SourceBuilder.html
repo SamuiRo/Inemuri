@@ -526,6 +526,19 @@ function buildCardBody(src) {
         <label>Discovery info</label>
         <span style="font-size:0.72rem;color:var(--text3);line-height:1.5">${DISCOVERY_HINTS[discoveryOf(src)]}</span>
       </div>
+    </div>
+    <div class="field-row">
+      <div class="field-group">
+        <label>Triage заголовків</label>
+        <div class="toggle-row">
+          <div class="toggle ${src.feed?.triage ? 'on' : ''}" onclick="toggleTriage(${id})"></div>
+          <span class="toggle-label">${src.feed?.triage ? 'On' : 'Off'}</span>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Triage info</label>
+        <span style="font-size:0.72rem;color:var(--text3);line-height:1.5">Нові статті спершу оцінює модель за заголовком (triage.json); у TheFlow іде лише цікаве. Потрібен увімкнений TheFlow.</span>
+      </div>
     </div>` : ''}
     <div class="field-row">
       <div class="field-group">
@@ -822,8 +835,9 @@ function setField(id, field, value) {
   updateOutput();
 }
 
-// Як rss-джерело шукає нові статті (docs/theflow/NEWS_INTAKE.md §2.1).
-// Типовий rss у файл не пишемо — відсутній `feed` означає те саме.
+// Як rss-джерело шукає нові статті і чи йдуть вони через triage
+// (docs/theflow/NEWS_INTAKE.md §2.1–2.3). Типові значення у файл не пишемо —
+// відсутній `feed` означає те саме.
 const DISCOVERY_KINDS = ['rss', 'sitemap', 'wpjson'];
 const DISCOVERY_HINTS = {
   rss: 'channel_id — URL стрічки RSS/Atom.',
@@ -835,12 +849,30 @@ function discoveryOf(src) {
   return src.feed?.discovery ?? 'rss';
 }
 
-function setDiscovery(id, value) {
+/** Змінити одне поле `feed`; порожній `feed` (усе типове) прибирається. */
+function setFeedField(id, key, value) {
   const src = getSrc(id);
   if (!src) return;
-  if (value === 'rss') delete src.feed;
-  else src.feed = { discovery: value };
+  const feed = { ...(src.feed ?? {}) };
+  if (value === undefined) delete feed[key];
+  else feed[key] = value;
+  if (Object.keys(feed).length) src.feed = feed;
+  else delete src.feed;
   refreshCard(id);
+}
+
+function setDiscovery(id, value) {
+  setFeedField(id, 'discovery', value === 'rss' ? undefined : value);
+}
+
+// Triage заголовків (NEWS_INTAKE.md §2.3): лише разом із TheFlow, тож
+// вмикання triage вмикає й flow.enabled.
+function toggleTriage(id) {
+  const src = getSrc(id);
+  if (!src) return;
+  const on = !src.feed?.triage;
+  if (on) src.flow = { ...flowOf(src), enabled: true };
+  setFeedField(id, 'triage', on ? true : undefined);
 }
 
 /**

@@ -21,10 +21,12 @@ import DeltaStage from "./module/theflow/dedup/DeltaStage.js";
 import HistorySearch from "./module/theflow/search/HistorySearch.js";
 import FlowDelivery from "./module/theflow/delivery/FlowDelivery.js";
 import FewShotStore from "./module/theflow/FewShot.js";
+import TriageStage from "./module/theflow/triage/TriageStage.js";
+import { createTriageExamples } from "./module/theflow/triage/examples.js";
 import { collectStorage, assessStorage } from "./module/theflow/Storage.js";
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import mediaResolver from "./module/theflow/media/index.js";
-import { Source, VisionCache } from "./module/teapot/models/index.js";
+import { Source, VisionCache, DiscoveredItem } from "./module/teapot/models/index.js";
 import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
 import {
   VISION_CACHE_TTL_HOURS,
@@ -36,6 +38,7 @@ import {
   DEDUP,
   FLOW_DELIVERY,
   FLOW_FEWSHOT,
+  FLOW_TRIAGE,
   FLOW_DIGEST,
   LLM_PRIMARY,
   LLM_PROVIDERS,
@@ -228,7 +231,14 @@ class Inemuri {
         const delta = DEDUP.enabled ? new DeltaStage({ gateway, log: print }) : null;
         // Few-shot з міток `flow review` (фаза 5); без міток — порожньо.
         const fewShot = FLOW_FEWSHOT.enabled ? new FewShotStore(FLOW_FEWSHOT) : null;
-        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup, delta, fewShot });
+        // Triage заголовків новин (§14.3): пропущене стає постом через опитувач
+        // стрічок — тим самим шляхом, що й елемент без triage.
+        const triage = new TriageStage({
+          gateway,
+          promote: (row) => this.feedPoller.promote(row),
+          examples: FLOW_FEWSHOT.enabled ? createTriageExamples({ refreshMs: FLOW_FEWSHOT.refreshMs }) : null,
+        });
+        this.enrichWorker = new EnrichWorker({ gateway, vision, flowFor, dedup, delta, fewShot, triage });
         this.enrichWorker.start();
 
         // Прибирання кешу vision: на старті й далі кожні 6 год. unref() — щоб
@@ -240,6 +250,15 @@ class Inemuri {
         sweepVisionCache();
         this.visionSweepTimer = setInterval(sweepVisionCache, 6 * 3_600_000);
         this.visionSweepTimer.unref();
+
+        // Кандидати triage — лише заголовки, живуть FLOW_TRIAGE.retentionDays.
+        const sweepDiscovered = () =>
+          DiscoveredItem.sweep({ retentionDays: FLOW_TRIAGE.retentionDays })
+            .then((n) => n && print(`[TRIAGE] swept ${n} old candidate(s)`, "debug"))
+            .catch((error) => print(`[TRIAGE] sweep failed: ${error.message}`, "warning"));
+        sweepDiscovered();
+        this.triageSweepTimer = setInterval(sweepDiscovered, 6 * 3_600_000);
+        this.triageSweepTimer.unref();
       } else {
         print(
           `TheFlow enrichment worker inactive (${
@@ -370,6 +389,10 @@ class Inemuri {
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);
         this.visionSweepTimer = null;
+      }
+      if (this.triageSweepTimer) {
+        clearInterval(this.triageSweepTimer);
+        this.triageSweepTimer = null;
       }
 
       // Зупиняємо cron scheduler

@@ -163,6 +163,27 @@ exported. Rows are immutable — `created_at` only.
 
 Model `KnowledgeExample`, table created in migration `015-knowledge-examples`.
 
+## discovered_items
+
+Candidates of news sources with `feed.triage: true` (NEWS_INTAKE.md §2.2,
+§6): every new article lands here, only what triage passes becomes a post.
+Short-lived — swept after `FLOW_TRIAGE_RETENTION_DAYS` (14).
+
+| Field | Purpose |
+|---|---|
+| `source_id`, `external_id` | Identity, UNIQUE together — a repeat of the same item is a no-op |
+| `url`, `title`, `teaser`, `author`, `keywords`, `image_urls`, `published_at` | The feed item as the parser gave it; a pass becomes a post exactly like this |
+| `section` | First path segment of the URL (`business`, `health`, `sports`) |
+| `status` | `pending` → `passed` · `rejected` · `failed` (no answer after `maxAttempts`) |
+| `decided_by`, `reason`, `area` | `rule` (`section:sports`) or `llm` (short reason, area of the profile) |
+| `profile_version`, `model_used` | Which `triage.json` and which model decided — for calibration |
+| `sampled` | A model reject flagged for review |
+| `post_id` | The post a pass became (`SET NULL`); null on a pass = promotion failed, retried |
+| `review_verdict` | The operator's label from `flow triage review`; null = not reviewed |
+| `attempts`, `last_error` | Failures of the triage call or of promotion |
+
+Model `DiscoveredItem`, table created in migration `017-discovered-items`.
+
 ## Migration
 
 The project now has a migration runner (`database/migrations/` plus
@@ -263,6 +284,10 @@ the UNIQUE `feedback_id`.
 Adds `sources.feed` JSON NULL — `{ "discovery": "rss" | "sitemap" |
 "wpjson" }`, how an `rss` source finds new articles (NEWS_INTAKE.md §2.1).
 NULL is a plain RSS/Atom feed, so existing sources need no backfill.
+
+### `017-discovered-items`
+
+Creates `discovered_items` (above). Idempotent.
 
 ### Fresh installs
 

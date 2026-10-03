@@ -37,6 +37,44 @@ function sourceText(post) {
 }
 
 /**
+ * Кандидат triage (discovered_items) і мітка → рядок рівня `headline`:
+ * те, що бачив triage, — заголовок і анонс, без статті.
+ *
+ * @param {object} row discovered_items
+ * @param {{ verdict: string, reason?: string|null, sourceName?: string|null, createdAt?: Date }} label
+ * @returns {object|null} null — немає ні заголовка, ні анонсу.
+ */
+export function snapshotFromCandidate(row, { verdict, reason = null, sourceName = null, createdAt = new Date() }) {
+  const title = String(row.title ?? "").trim() || null;
+  const body = String(row.teaser ?? "").trim() || title;
+  if (!body) return null;
+
+  const level = "headline";
+  return {
+    uid: crypto.randomUUID(),
+    content_hash: contentHash({ level, title, body }),
+    level,
+    verdict,
+    reason: reason && String(reason).trim() ? String(reason).trim() : null,
+    title,
+    body,
+    text_en: null,
+    url: row.url ?? null,
+    source_name: sourceName,
+    platform: "rss",
+    published_at: row.published_at ?? null,
+    topic: null,
+    signal_type: null,
+    extracted: null,
+    taxonomy_version: null,
+    origin: "review",
+    post_id: row.post_id ?? null,
+    feedback_id: null,
+    created_at: createdAt,
+  };
+}
+
+/**
  * Пост і мітка → значення рядка knowledge_examples (без id).
  *
  * @param {object} post Рядок posts (plain або модель).

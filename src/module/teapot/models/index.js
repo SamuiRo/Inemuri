@@ -7,5 +7,6 @@ import ProviderQuota from "./ProviderQuota.js";
 import VisionCache from "./VisionCache.js";
 import DiscordResource from "./DiscordResource.js";
 import KnowledgeExample from "./KnowledgeExample.js";
+import DiscoveredItem from "./DiscoveredItem.js";
 
-export { Source, SourceState, Post, Cluster, PostFeedback, ProviderQuota, VisionCache, DiscordResource, KnowledgeExample };
+export { Source, SourceState, Post, Cluster, PostFeedback, ProviderQuota, VisionCache, DiscordResource, KnowledgeExample, DiscoveredItem };

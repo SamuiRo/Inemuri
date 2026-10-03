@@ -91,10 +91,15 @@ export { buildExamplesBlock } from "../../services/ai/prompts/fewshot.js";
 /**
  * Приклади з кешем: перечитуються з бази не частіше за refreshMs — нові мітки
  * з `flow review` підхоплюються без перезапуску.
+ *
+ * `load` і `pick` замінні: той самий кеш дає приклади й triage
+ * (triage/examples.js) — з іншого зрізу бази знань і з іншим відбором.
+ * Решта опцій (maxGood, maxWrong…) іде в `pick`.
  */
 export class FewShotStore {
-  constructor({ maxGood = 4, maxWrong = 3, refreshMs = 3_600_000, now = Date.now, load = loadExamples } = {}) {
-    this.opts = { maxGood, maxWrong };
+  constructor({ refreshMs = 3_600_000, now = Date.now, load = loadExamples, pick = pickExamples, ...pickOptions } = {}) {
+    this.pick = pick;
+    this.opts = pickOptions;
     this.refreshMs = refreshMs;
     this.now = now;
     this.load = load;
@@ -107,7 +112,7 @@ export class FewShotStore {
   async get() {
     if (this.now() - this._loadedAt >= this.refreshMs) {
       try {
-        this._examples = pickExamples(await this.load(), this.opts);
+        this._examples = this.pick(await this.load(), this.opts);
         this._hash = hashExamples(this._examples);
       } catch {
         // Без прикладів збагачення працює як раніше — це не привід падати.

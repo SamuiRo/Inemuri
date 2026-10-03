@@ -7,8 +7,10 @@
 > exchange hacks — is in [ROADMAP.md](ROADMAP.md) appendix A, and the shipped
 > file is [`src/config/categories.json`](../../src/config/categories.json).
 >
-> Two things the illustrative JSON below gets differently from the shipped v1:
-> the real topics are `steam / airdrop / crypto / tools / other`, and
+> Two things the illustrative JSON below gets differently from the shipped file:
+> the real topics are `steam / airdrop / crypto / tools / health / mind /
+> money / markets / other` (v2 added the four news topics and the `research`
+> and `report` signals — see Versioning), and
 > `dedup_window_hours` lives on each **signal**, not on the topic — a
 > `promo_code` is stale in hours and `analysis` in days regardless of topic
 > ([DEDUPLICATION.md](DEDUPLICATION.md)). A source still overrides with
@@ -236,6 +238,14 @@ Collecting that feedback retroactively is expensive — it means going through
 history by hand. At the start it is nearly free.
 
 ## Versioning
+
+**v2 (2026-10-03).** News sources (NEWS_INTAKE.md) brought content v1 had no
+place for: topics `health`, `mind`, `money`, `markets`, and signals
+`research` (a study and what it found, 72 h) and `report` (a development that
+already happened — results, a share move, a central-bank decision, 48 h).
+`crypto` now says that stocks and macro belong to `markets`, `money` that
+market moves do. Verdicts made under v1 keep `taxonomy_version = 1`; nothing
+is re-enriched automatically.
 
 `categories.json` carries a `version` field. It is incremented whenever a
 category description or the set of axes changes, and the value is written into

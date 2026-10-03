@@ -1447,8 +1447,21 @@ articles a day per outlet, over 90% irrelevant.
 > gzip (`.xml.gz`) under the same size cap. Checked live against NYPost,
 > Reuters, NYT, Fox, The Hill and TechCrunch — NEWS_INTAKE.md §4.
 
-Open before 14.3: what counts as market-moving, the outlet list, the share of
-sampled rejects (NEWS_INTAKE.md §5).
+> **14.3 done (v4.54.0).** `discovered_items` (migration `017`) holds every
+> new article of a source with `feed.triage: true`; `src/module/theflow/triage/`:
+> `TriageQueue` (ingest side — rows, the `deny_sections` rule, no network),
+> `TriageStage` (first in the enrich worker's tick — batches of ~50 headlines
+> to `gateway.triage()`, passes promoted to posts through the feed poller,
+> 5% of model rejects sampled for review), `examples.js` (from the knowledge
+> base), `report.js` (`flow triage stats|review`; review writes `headline`
+> labels). The profile is `src/config/triage.json`, git-ignored since
+> v4.55.0 (`triage.sample.json` is tracked). Live: 252 of 596 NYPost
+> headlines dropped by rule, 50 judged in one call, 3–4 passed
+> (NEWS_INTAKE.md §6).
+
+Decided 2026-10-03: the interest profile (NEWS_INTAKE.md §5), the outlet
+list, 5% sampled rejects, taxonomy v2 (shipped in v4.55.0). Open: the shadow
+week (§7), then 14.4.
 
 ## Appendix A — `categories.json` v1, drafted from the real sources
 

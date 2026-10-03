@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.53.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.55.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -16,11 +16,14 @@ goes to `digest_destinations` once that key is set. Phase 6 (news intake,
 [theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)) has started: step 1, the
 portable knowledge base `knowledge_examples`, is built — `flow review` writes
 to it and few-shot reads from it; step 2, discovery through news sitemaps and
-the WordPress API (`sources.feed.discovery`), is built. The delivery mechanism (§5.3–5.6) is
+the WordPress API (`sources.feed.discovery`), is built; step 3, headline
+triage (`feed.triage`, the git-ignored `src/config/triage.json`), is built.
+`categories.json` is at **v2**: topics `health`, `mind`, `money`, `markets`,
+signals `research`, `report`. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
-the final template exist. 16 migrations exist
-(`database/migrations/001`–`016`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 550 green `node --test` cases,
+the final template exist. 17 migrations exist
+(`database/migrations/001`–`017`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 567 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -101,12 +104,20 @@ Deployment-specific config is git-ignored and read through
 |---|---|---|
 | `sources.json` | `sources.sample.json` | Per-source channels, filters, replacements, `flow`, `poll_interval_min` |
 | `routing.json` | `routing.sample.json` | `unsorted_destinations` and the phase 2 `routing` rules |
+| `triage.json` | `triage.sample.json` | The headline-triage reader profile: areas, values, noise, `deny_sections` (NEWS_INTAKE.md §5) |
 | `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
 | `discordapp/servers/<name>.json` | `discordapp/servers/example.sample.json` | discordapp server configs (read per command, no fallback) |
 | `discordapp/messages/*.md` | `discordapp/messages/*.sample.md` | Texts of provisioned messages |
 
 `categories.json` is **tracked** and holds taxonomy only — topics, signals,
-dedup windows. No channel ids live in it.
+dedup windows. No channel ids live in it, and its examples are neutral, not
+taken from the operator's channels.
+
+**What never goes into git** (the repository is public): channel lists and
+ids, filters and blacklists, routing, the triage profile, server configs and
+texts, the operator's own example posts (they live in the knowledge base,
+imported from a git-ignored JSONL). Public outlets — NYPost, PsyPost,
+Reuters — are fine as examples in samples and docs.
 
 A missing local file falls back to its sample with a `[CONFIG]` warning; a
 **malformed** one throws instead, because silently running on sample
@@ -115,12 +126,16 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-- **News intake (Phase 6), step 3 next** — headline triage (ROADMAP §14.3).
-  It waits on the operator: what counts as market-moving, the outlet list and
-  the share of sampled rejects (NEWS_INTAKE.md §5). A news site can already
-  be added (`"feed": { "discovery": "sitemap" }`, README § Feed sources), but
-  until triage every new article is ingested — keep TheFlow off or a
-  blacklist on for a large outlet. Labels now live in `knowledge_examples`;
+- **News intake (Phase 6): the shadow week.** Triage is built (ROADMAP
+  §14.3, NEWS_INTAKE.md §6) and the taxonomy is v2. Next: add the agreed
+  outlets to the live `sources.json` with `"feed": { …, "triage": true }`,
+  run a week with delivery off, and label daily with `node src/cli.js flow
+  triage review`. Step 4 (article text) after that. The live profile is the
+  git-ignored `src/config/triage.json`; a fresh deployment copies
+  `triage.sample.json` and rewrites it.
+- **Taxonomy v2 does not re-enrich anything.** Existing verdicts keep
+  `taxonomy_version = 1`. To re-classify the pilot under v2:
+  `node src/cli.js flow requeue --status enriched` (costs quota). Labels now live in `knowledge_examples`;
   `flow knowledge export --out kb.jsonl` before moving instances, `flow
   knowledge import kb.jsonl` after.
 
@@ -211,6 +226,25 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-10-03 — taxonomy v2, deployment data out of git
+
+`categories.json` v2: topics `health`, `mind`, `money`, `markets`, signals
+`research`, `report`; render and digest know them. The repository is public,
+so the triage profile became deployment data: `triage.json` is git-ignored
+and loaded through `localConfig` with `triage.sample.json` (neutral) as the
+fallback; tests use the sample; docs and taxonomy examples no longer retell
+the operator's example posts. The rule is in CLAUDE.md. Nothing was pushed
+before this — the local branch was 90 commits ahead of `origin`.
+
+### 2026-10-03 — news intake step 3
+
+Headline triage: `discovered_items` (migration `017`), `src/module/theflow/triage/`,
+`gateway.triage()`, `src/config/triage.json`, `flow triage stats|review`,
+a triage toggle in `SourceBuilder.html`. The operator's interest profile and
+eight example posts are in place; markets count in both directions. Live on
+NYPost: 252 of 596 headlines dropped by rule, 50 judged in one call, 3–4
+passed.
 
 ### 2026-10-03 — news intake step 2
 
