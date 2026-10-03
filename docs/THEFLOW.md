@@ -1,12 +1,15 @@
 # TheFlow
 
-> **Status:** Phase 0 (persistence without AI) is implemented. Phase 1 (LLM
-> gateway and enrichment, shadow mode) is implemented but **dormant** — it
-> only runs once a primary provider API key is configured. Phase 1.5 and
-> phases 2–5 are still specification only. This file is the entry point;
-> detailed specs and the per-task status live in `docs/theflow/`, in
-> particular [ROADMAP.md](theflow/ROADMAP.md) §2–3 and
-> [CHANGELOG.md](CHANGELOG.md).
+> **Status (v4.56.0):** phases 0–5 and 1.5 are built and have run on real
+> data in shadow mode; phase 6 (news intake) has steps 1–3 built — the
+> knowledge base, sitemap/WordPress discovery and headline triage. Delivery is
+> built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the destination
+> channels exist. Open: deduplication threshold calibration (§6.8), phase 6
+> steps 4–5 (article text, silent-source alerts), reactions (§5.7, deferred).
+> Without a primary provider key the worker does not start and flow sources
+> only accumulate `pending` posts. This file is the entry point; per-task
+> status lives in [theflow/ROADMAP.md](theflow/ROADMAP.md), the version record
+> in [CHANGELOG.md](CHANGELOG.md).
 
 ## What TheFlow is
 
@@ -109,10 +112,11 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 Each phase is useful on its own and does not require the next one.
 
 > The ordered task breakdown, with files, effort and exit gates, lives in
-> [theflow/ROADMAP.md](theflow/ROADMAP.md). Two phases were added there after this
-> list was written — **0.5 (foundation: migrations, schema generalization)** and
-> **3.5 (Reddit and news adapters)** — and **vision moved from phase 6 to phase
-> 1.5**, straight after the gateway. The former phase 6 is retired.
+> [theflow/ROADMAP.md](theflow/ROADMAP.md). Phases added there after this list
+> was written: **0.5 (foundation: migrations, schema generalization)**, **3.5
+> (Reddit and news adapters)** and **6 (news intake, §14)**; **vision moved to
+> phase 1.5**, straight after the gateway. The phase numbered 6 here
+> originally (vision) is retired — today's phase 6 is news intake.
 
 ### Phase 0 — persistence without AI ✅ implemented
 
@@ -158,9 +162,10 @@ outbound network calls" invariant. `has_media` is recorded at ingest;
 `LLMGateway` (provider registry, RPM/RPD limits, cache, circuit breaker,
 priority queue, fallback matrix), `categories.json` v1, and the enrichment
 worker are all built — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3 for the
-full breakdown per task. Verdicts are written to `posts`, but **routing
-ignores them**, and the worker itself does not start without a primary
-provider API key in `.env`.
+full breakdown per task. Verdicts are written to `posts`; the resolve stage
+and delivery exist (phase 2) but delivery stays off in shadow mode, and the
+worker itself does not start without a primary provider API key in `.env`.
+`categories.json` is at v2 (news topics and signals, TAXONOMY.md).
 
 The provider decisions that used to block this phase are settled (§3.1):
 Gemini is primary for text, embeddings and vision, with OpenRouter as a
@@ -172,33 +177,45 @@ Exit gate: a week of comparing verdicts against your own judgment
 (`node src/cli.js flow review` writes the labels) before enabling enforcement.
 Without it there is no basis for trusting the classification.
 
-### Phase 2 — content-based routing
+### Phase 2 — content-based routing ✅ built, delivery off
 
 The resolve stage, lazy media download, the `#unsorted` channel. Classic
-forwarding keeps running in parallel.
+forwarding keeps running in parallel. Built (v4.24–v4.47): resolve, the
+render template, delivery records, `flow preview`. Delivery waits for the
+destination channels (ROADMAP §5.1) and stays off until then.
 
 This is where TheFlow first becomes useful day to day.
 
-### Phase 3 — deduplication, tiers 1 and 2
+### Phase 3 — deduplication, tiers 1 and 2 ✅ built, thresholds open
 
 Exact entity matching, then embeddings with a per-category window. The `linked`
-mechanism for posts that arrive late.
+mechanism for posts that arrive late. Built (v4.45, v4.48), with the delta
+call that edits a delivered message; the HIGH/LOW thresholds wait for
+cross-source posts to calibrate on (§6.8).
 
 Removes the main pain: duplicate spam.
 
-### Phase 4 — entity extraction
+### Phase 4 — entity extraction ✅ built
 
-Promo codes and events into structured JSON: regex candidates confirmed by the
-model, validated against the original text.
+Promo codes, links, amounts and events into structured JSON: regex candidates
+confirmed by the model, every value anchored to the original text (v4.50).
 
-Requires phases 1 through 3 to be settled, otherwise extraction runs over
-unsorted noise.
+### Phase 5 — digests and feedback ✅ built, reactions deferred
 
-### Phase 5 — digests and feedback
+Built on the existing `CronScheduler`. Labels from `flow review` become
+few-shot examples (v4.51), now stored in the portable knowledge base
+(phase 6). The scheduled digest goes to `digest_destinations`. Reaction
+capture (§5.7) is optional and deferred.
 
-Built on the existing `CronScheduler`, which already emits synthetic messages
-onto the same bus. Reactions to posts write labels into the database, which
-later become few-shot examples.
+### Phase 6 — news intake 🔶 steps 1–3 built
+
+Large news outlets as sources, delivering only what matters to the reader —
+[theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md). Built: the knowledge base
+(`knowledge_examples`, portable through `flow knowledge export|import`),
+discovery through news sitemaps and the WordPress API, and headline triage
+(`discovered_items`, a reader profile in the git-ignored `triage.json`,
+`flow triage stats|review`). Next: the shadow week, then article text for
+what passed (step 4).
 
 ### Phase 1.5 — vision for screenshots (was phase 6) ✅ implemented
 
@@ -228,8 +245,11 @@ channels get `vision.enabled`.
 ## Out of scope
 
 - **Scraping Twitter / X.** Twitter is a consumer of the output (material to
-  publish), not a source. Reddit and open news feeds **are** planned as sources —
-  see [theflow/ROADMAP.md](theflow/ROADMAP.md) §7.
+  publish), not a source. Reddit and news sites **are** sources (ROADMAP §7,
+  §14).
+- **Scraping pages that refuse an honest bot.** Paywalls, 401/403 and
+  CAPTCHAs are never worked around; such outlets give headlines only
+  (NEWS_INTAKE.md §1).
 - **Publishing anywhere externally.** TheFlow delivers to your own channels;
   what happens next is your decision.
 - **Replacing classic forwarding.** Both modes coexist permanently.
@@ -248,7 +268,7 @@ channels get `vision.enabled`.
 | Deduplication window | Differs per category: a promo code is current for hours, market analysis for days |
 | Moving to a paid tier | Free tiers are fine while tuning. Thanks to the gateway, switching later is an adapter swap rather than a pipeline rewrite |
 | Vision provider | ~~May be a third provider~~ **Decided (v4.25.0–v4.30.0).** The same Gemini model serves complete and vision, so both draw on one budget, as the provider itself counts them. The capability seam stays: a separate vision provider is a config change, not a code change |
-| AI-assisted screening | Raised, not specified: cheap AI triage of the incoming stream, potentially covering classic sources too. It is a gateway consumer like any other and runs worker-side — ingestion makes no outbound calls. See [theflow/ROADMAP.md](theflow/ROADMAP.md) §13.8 |
+| AI-assisted screening | **Built for news sources (v4.54–v4.56):** headline triage in batches, worker-side, against a reader profile ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). Extending it to classic sources stays open (ROADMAP §13.8) |
 
 The **engineering** open questions — batch claiming, embedding identity, the
 delivery template, retention, stall detection — are tracked separately in

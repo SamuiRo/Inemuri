@@ -7,6 +7,19 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.56.1] - 2026-10-03
+
+### Changed
+- Documentation brought up to date. THEFLOW.md, README, ARCHITECTURE and
+  CLAUDE.md described phases 2–5 as specification and phase 1 as dormant;
+  they now carry the real status — phases 0–5 and 1.5 built, phase 6 steps
+  1–3 — and README has a per-phase status table and a complete docs index.
+- HANDOFF.md rewritten as a short current picture (443 → 132 lines); the
+  session-by-session record moved to the new `docs/SESSION_LOG.md`. The two
+  `flow preflight` warnings (pilot sources in listener mode, a fallback
+  provider without a key) are recorded as accepted by the operator.
+  Documentation only.
+
 ## [4.56.0] - 2026-10-03
 
 ### Added

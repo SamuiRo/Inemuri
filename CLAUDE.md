@@ -21,17 +21,14 @@ what shipped and why.
 
 **TheFlow is a subsystem of Inemuri**, not a separate product or a peer system.
 It is the part responsible for producing a stream of validated, categorized,
-deduplicated posts. Phase 0 (persistence), Phase 1 (LLM gateway and
-enrichment, shadow mode, dormant without a provider key) and Phase 1.5
-(vision, off per source by default) are **implemented**, as are Phase 2's
-resolve stage and delivery mechanism (off until `FLOW_DELIVERY_ENABLED`),
-Phase 3's deduplication with the delta call, the §9.1 history search and
-Phase 3.5's Reddit and RSS sources, Phase 4's entity extraction, Phase 5's
-few-shot and digests and Phase 6's knowledge base, sitemap/WordPress discovery and headline triage (news intake,
-[docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)); the rest is still specification — see
-[docs/THEFLOW.md](docs/THEFLOW.md)
-and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact
-per-task status).
+deduplicated posts. Phases 0–5 and 1.5 are **built** and have run on real data
+in shadow mode (the worker starts only with a provider key; delivery is off
+until `FLOW_DELIVERY_ENABLED`). Phase 6, news intake
+([docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)), has steps 1–3:
+the knowledge base, sitemap/WordPress discovery and headline triage. Still
+open: dedup threshold calibration, phase 6 steps 4–5, reactions (deferred).
+Per-phase status is in [docs/THEFLOW.md](docs/THEFLOW.md), per task in
+`docs/theflow/ROADMAP.md`.
 
 Never describe TheFlow as standing alongside or on top of Inemuri; it is inside it.
 

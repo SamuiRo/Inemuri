@@ -244,33 +244,32 @@ canonical-language normalization, categorization, entity extraction,
 cross-channel event deduplication, and content-based routing on top of the same
 ingestion pipeline.
 
-**Phase 0 (persistence without AI) is implemented**: the `flow` column,
-`posts` / `clusters` tables, the deterministic regex stage
-(`src/module/theflow/RegexStage.js`), and stage-1 ingest
-(`src/module/theflow/FlowIngest.js`) wired into
-`TelegramSourceListener._filterAndProcess()`. No AI calls yet. Phase 0.5 is
-done; phases 2 through 5 are specification apart from the resolve stage
-(`src/module/theflow/ResolveStage.js`), which is built and waiting on the
-destination channels — [THEFLOW.md](THEFLOW.md) and `docs/theflow/`.
+**Status (v4.56.0).** Phases 0–5 and 1.5 are built; phase 6 (news intake)
+has steps 1–3. Per-phase state is in [THEFLOW.md](THEFLOW.md), per task in
+[theflow/ROADMAP.md](theflow/ROADMAP.md). The parts and where they live:
 
-**Phase 1 (LLM gateway + enrichment, shadow mode) is implemented but dormant.**
-`src/services/ai/` (the gateway, providers, schema and prompt) and
-`src/module/theflow/EnrichWorker.js` are wired into `src/inemuri.js` behind
-`ENRICH_WORKER_ENABLED` and a primary-provider API key — with no key set the
-worker never starts, and `pending` posts simply accumulate. When it runs, it
-drains `pending` → `enriched` (writing `topic` / `signal_type` / `confidence`
-/ `analysis` / `model_used` / `taxonomy_version` / `embedding`), and nothing
-reads the verdicts — in phase 1 shadow mode is structural, not a flag: the
-routing consumer that would act on a verdict does not exist until phase 2.
-The provider decisions and the free-tier limits behind them are settled
-(ROADMAP §3.1).
+**Ingest (phase 0).** The `flow` column, `posts` / `clusters` tables, the
+deterministic regex stage (`src/module/theflow/RegexStage.js`) and stage-1
+ingest (`src/module/theflow/FlowIngest.js`), called from
+`TelegramSourceListener._filterAndProcess()` and `FeedPoller`. No outbound
+network calls — the invariant every later stage respects.
+
+**Enrichment (phase 1).** `src/services/ai/` (the gateway, providers, schemas
+and prompts) and `src/module/theflow/EnrichWorker.js`, wired into
+`src/inemuri.js` behind `ENRICH_WORKER_ENABLED` and a primary-provider API
+key — with no key the worker never starts and `pending` posts accumulate. One
+tick runs triage (phase 6), vision, enrich, deduplication and the delta call,
+in that order, as a chained `setTimeout` that cannot overlap itself. Verdicts
+(`topic` / `signal_type` / `confidence` / `analysis` / `embedding`) are read
+by resolve and delivery, which stay off in shadow mode.
 
 **Deduplication (phase 3, tiers 1–2).** `src/module/theflow/dedup/` runs in
 the enrich worker's tick after enrichment: `DedupCore.js` is pure (keys,
 cosine, richness, `decide()`), `DedupStage.js` reads and writes `posts` and
 `clusters` only. Each post gets a cluster, a `link_role` and a `posts.dedup`
-decision log; a duplicate that adds nothing becomes `suppressed`. The delta
-call and appends to delivered messages (ROADMAP §6.6) wait for delivery.
+decision log; a duplicate that adds nothing becomes `suppressed`.
+`DeltaStage.js` asks what a later post adds and edits the delivered message
+(ROADMAP §6.6).
 
 **Delivery (phase 2).** `src/module/theflow/delivery/` — `render.js` (pure,
 DELIVERY.md) and `FlowDelivery.js`, which sends through the unchanged

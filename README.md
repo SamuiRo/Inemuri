@@ -683,32 +683,24 @@ firehose into a stream of validated posts — translating them to a canonical
 language, categorizing them, extracting structured entities, deduplicating
 events across channels, and routing by content instead of by source.
 
-**Phase 0 (persistence without AI) is implemented.** A `flow` column on each
-source (default `{ enabled: false }`), the `posts` / `clusters` tables, a
-deterministic regex stage, and stage-1 ingest. No AI calls yet. Enable it per
-source as described in
-[Enabling a source into TheFlow](#enabling-a-source-into-theflow), then
-`npm run migrate` once. Classic forwarding is unchanged and stays
-available per source; sources without `flow.enabled` behave exactly as before.
+**Status (v4.56.0).** Every phase up to 5, and vision (1.5), is built and has
+run on real data in shadow mode:
 
-**Phase 1 (LLM gateway and enrichment, shadow mode) is implemented but
-dormant.** The provider layer, `LLMGateway`, `categories.json` v1, and the
-enrichment worker all exist and are wired into `src/inemuri.js` — but the
-worker only starts once a primary provider API key is set in `.env`; without
-one, `pending` posts simply accumulate and nothing else changes. Even running,
-routing still ignores its verdicts (`LLM_SHADOW_MODE`). The provider
-decisions and their measured free-tier limits are settled — see
-[docs/theflow/ROADMAP.md](docs/theflow/ROADMAP.md) §3.
+| Phase | What it does | State |
+|---|---|---|
+| 0 | `flow` flag per source, `posts` table, regex stage, ingest | Built |
+| 1 | LLM gateway and enrichment: canonical English, topic, signal, confidence | Built; starts only with a provider key in `.env` |
+| 1.5 | Screenshots transcribed (`flow.vision.enabled`, off by default) | Built |
+| 2 | Resolve, render, delivery to your channels | Built, **off** (`FLOW_DELIVERY_ENABLED=false`) until the channels exist |
+| 3 | Deduplication across sources, edits to delivered messages | Built; thresholds still to calibrate |
+| 3.5 | Reddit, RSS/Atom, news sitemaps, WordPress API as sources | Built (Reddit needs OAuth credentials) |
+| 4 | Entity extraction: codes, links, amounts, events | Built |
+| 5 | Few-shot from your labels, scheduled digest, history search | Built; reactions deferred |
+| 6 | News intake: knowledge base, headline triage | Steps 1–3 built — [NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md) |
 
-**Phase 1.5 (vision) is implemented.** Screenshots on a source with
-`flow.vision.enabled` are transcribed into `posts.text_ocr` between ingest and
-enrichment — photos and image documents alike, deduplicated by perceptual hash
-so a repost of the same image costs no second call. Off on every source by
-default.
-
-Phase 2's resolve stage is built and waiting on destination channels; the rest
-of phases 2–5 (content routing, deduplication, entity extraction, digests) is
-still specification.
+Sources without `flow.enabled` behave exactly as before; enable it per source
+as described in [Enabling a source into TheFlow](#enabling-a-source-into-theflow).
+`node src/cli.js flow preflight` tells whether a deployment is configured.
 
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped
 - [docs/THEFLOW.md](docs/THEFLOW.md): concept, layering, decisions, phases, current status
@@ -718,12 +710,14 @@ still specification.
 - [docs/HANDOFF.md](docs/HANDOFF.md): current state and next steps — start here
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped and why
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): project structure and runtime architecture
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): pm2 deploy and schema-migration procedure
-- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow specification (Phase 0 and Phase 1 implemented, later phases specified)
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): deploy and migration procedure, what git does not bring, `flow preflight`
+- [docs/THEFLOW.md](docs/THEFLOW.md): TheFlow — concept, decisions, phases and their status; specs in `docs/theflow/`
+- [docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md): news outlets as sources, headline triage, the knowledge base
+- [docs/DISCORDAPP.md](docs/DISCORDAPP.md): discordapp — Discord server management, design and contracts
+- [docs/PROVISIONING.md](docs/PROVISIONING.md): running a Discord server from config with discordapp
 - [docs/text_replacements.md](docs/text_replacements.md): preprocessing and regex replacement rules
 - [docs/media.md](docs/media.md): media pipeline and Discord embed behavior
-- [docs/HANDOFF.md](docs/HANDOFF.md): current state and next steps
-- [docs/CHANGELOG.md](docs/CHANGELOG.md): per-version record of what shipped and why
+- [docs/SESSION_LOG.md](docs/SESSION_LOG.md): the full session-by-session record behind HANDOFF
 
 ## License
 
