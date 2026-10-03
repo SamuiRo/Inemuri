@@ -7,6 +7,13 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.57.1] - 2026-10-03
+
+### Changed
+- `CLAUDE.md`: the operator makes every commit and push. An assistant leaves
+  its changes uncommitted (version bump and CHANGELOG included) and ends with
+  the commit message to use.
+
 ## [4.57.0] - 2026-10-03
 
 ### Added

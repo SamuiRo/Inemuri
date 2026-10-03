@@ -74,8 +74,11 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 
 ## Commits
 
-- **Commit freely, never push.** Pushing is the user's decision.
-- Always bump the version in the same commit as the change.
+- **Never commit, never push.** The operator does both. Make the changes,
+  including the version bump and the CHANGELOG entry, leave them
+  uncommitted, and end the work with the commit message to use, in the style
+  below. Never force-push or reset anything on the remote.
+- Always bump the version in the same change it describes.
 - The default branch is `master`.
 
 ## Code conventions

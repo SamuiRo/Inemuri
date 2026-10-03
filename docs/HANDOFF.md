@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.57.0`, pushed up to `v4.55.1`; `v4.56.0`–`v4.57.0` are committed locally. 17
+`v4.57.1`; pushed up to `v4.57.0`. 17
 migrations; `npm test` is 587 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
