@@ -282,7 +282,9 @@ replies for a correction, through the adapters' `editMessageData()`.
 
 **Feed sources (phase 3.5).** `src/sources/feeds/` — `FeedPoller.js` polls
 `reddit` and `rss` sources on their own schedule through `http.js` (per-host
-throttle, conditional GET, Reddit OAuth) and `parsers.js` (pure), and hands
+throttle, conditional GET, gzip bodies, Reddit OAuth), `discovery.js` (how a
+source finds new items: RSS/Atom, news sitemap, WordPress API — set by
+`sources.feed.discovery`) and `parsers.js` (pure), and hands
 each new item to `FlowIngest` or to `message.received`, as the Telegram
 listener does. Images of such posts are fetched lazily by
 `src/module/theflow/media/UrlMediaResolver.js`.

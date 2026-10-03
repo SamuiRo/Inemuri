@@ -226,7 +226,7 @@ Example:
 | `destinations` | Target Telegram/Discord destination IDs. Ignored while the source is flow-enabled. |
 | `flow` | Optional. Puts the source through TheFlow instead of classic forwarding — see [below](#enabling-a-source-into-theflow). Absent means `{ "enabled": false }`. |
 
-### Feed sources: RSS, Atom and Reddit
+### Feed sources: RSS, Atom, news sitemaps, WordPress and Reddit
 
 Besides Telegram channels, a source can be a news feed or a subreddit. They
 are polled (never listened to), go through the same text replacements and
@@ -263,6 +263,29 @@ filters, and feed TheFlow or classic forwarding just like a Telegram source.
 - Requests are polite: a descriptive User-Agent (`FEED_USER_AGENT`), at least
   7 s between Reddit requests and 2 s between requests to any other host,
   conditional GET, Retry-After respected.
+- **News sites without a useful feed** stay `"platform": "rss"` and set
+  `feed.discovery` (docs/theflow/NEWS_INTAKE.md):
+
+  ```json
+  {
+    "platform": "rss",
+    "channel_id": "https://nypost.com/news-sitemap.xml",
+    "channel_name": "NYPost",
+    "poll_interval_min": 5,
+    "feed": { "discovery": "sitemap" }
+  }
+  ```
+
+  `sitemap` — `channel_id` is a news sitemap (find it in the site's
+  `robots.txt`, `Sitemap:` lines) or an index of sitemaps, whose freshest
+  child is read; `.xml.gz` works. Items carry the title, date and keywords,
+  no text. `wpjson` — `channel_id` is the root of a WordPress site; the
+  WordPress REST API gives the title and the excerpt. Without `feed`, or
+  with `"discovery": "rss"`, the source is a plain RSS/Atom feed.
+  Until headline triage lands (ROADMAP §14.3) every new article of such a
+  source is ingested — a large outlet publishes 200–400 a day, so keep
+  `filters.blacklist` (it also matches the URL, e.g. `betting`) or TheFlow off
+  for now.
 - **Reddit needs OAuth credentials in practice.** Reddit refuses many
   unauthenticated clients (403). Create a "script" app at
   reddit.com/prefs/apps and set `REDDIT_CLIENT_ID` and

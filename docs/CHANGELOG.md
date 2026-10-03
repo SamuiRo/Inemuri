@@ -7,6 +7,27 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.53.0] - 2026-10-03
+
+### Added
+- **News sitemaps and the WordPress API as ways to find articles (ROADMAP
+  §14.2).** An `rss` source sets `"feed": { "discovery": "sitemap" }` or
+  `"wpjson"` (migration `016` adds `sources.feed`; without it the source is a
+  plain RSS/Atom feed, as before). `sitemap` reads a news sitemap or an index
+  of them — the freshest child — with titles, dates and keywords; a site
+  without the news extension gets its title from the URL slug. `wpjson`
+  reads `/wp-json/wp/v2/posts`: title and excerpt. This reaches outlets with
+  no useful RSS, Reuters among them. Checked live on six outlets.
+- `.xml.gz` sitemaps are unpacked (NYT, WaPo), under the same size cap.
+- `SourceBuilder.html` has a discovery selector for `rss` sources.
+
+### Changed
+- `src/sources/feeds/discovery.js` holds one strategy per way of finding
+  items (URL, Accept, parser); `FeedPoller` no longer branches on platform.
+- The feed cursor records which URL its ETag belongs to (`cursor.url`), so an
+  unchanged sitemap index cannot hide a new child behind a 304. Existing
+  cursors keep working.
+
 ## [4.52.0] - 2026-10-03
 
 ### Added

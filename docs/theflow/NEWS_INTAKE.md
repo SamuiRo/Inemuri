@@ -202,13 +202,32 @@ The file is JSONL. The first line is a header, every following line one example:
 | Step | What | Version |
 |---|---|---|
 | 1 | `knowledge_examples` + export/import + backfill from `post_feedback`; few-shot reads it — **done (v4.52.0)** | minor |
-| 2 | Discovery through `sitemap` and `wpjson` as settings of the existing poller | minor |
+| 2 | Discovery through `sitemap` and `wpjson` as settings of the existing poller — **done (v4.53.0)** | minor |
 | 3 | `discovered_items` + triage (rules + batched LLM over headlines) | minor |
 | 4 | Article fetch (JSON-LD → `<p>`) for what passed triage, plus the sampled rejects | minor |
 | 5 | Alert on silent sources, poll intervals tuned from real data | patch |
 
 Step 1 comes first: it changes nothing visible, and without it triage would have
 nothing to learn from.
+
+### What step 2 found live (2026-10-03)
+
+The built parsers against the real endpoints: NYPost's news sitemap 599
+items, Reuters through its sitemap index 50 (the first child is the
+freshest), NYT's `.xml.gz` 714, Fox 243 (no news extension, so titles come
+from the URL slug), The Hill and TechCrunch through the WordPress API 25
+each, NYPost's WordPress API 401 — the poller backs off as for any closed
+feed.
+
+- **Not every endpoint sends an ETag.** NYPost's sitemap and both WordPress
+  APIs do not, so each poll downloads the whole response — a few hundred KB
+  for a large sitemap. At 5 minutes that is tens of MB a day per outlet;
+  step 5 widens intervals from real numbers.
+- **The URL carries the section** (`/betting/`, `/sports/`), and the classic
+  `filters.blacklist` already matches it. Until triage exists that is the
+  cheap interim filter.
+- **Until step 3 every new article is ingested.** Candidates go straight to
+  `posts` (or forwarding), not to `discovered_items` — that table is step 3.
 
 ## 5. Open before step 3
 

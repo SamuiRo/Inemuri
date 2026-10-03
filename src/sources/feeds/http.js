@@ -1,3 +1,5 @@
+import zlib from "node:zlib";
+
 import axios from "axios";
 
 import { FEEDS } from "../../config/app.config.js";
@@ -73,6 +75,22 @@ export function retryAfterMs(value, now = Date.now()) {
 }
 
 /**
+ * Тіло відповіді → текст. Файл `.xml.gz` (sitemap-и NYT, WaPo) приходить
+ * сирим gzip-ом, а не з Content-Encoding, — його видно за сигнатурою 1f 8b.
+ * Розпаковане обмежене тією ж стелею: gzip-бомба — помилка опитування, а не
+ * гігабайт у пам'яті.
+ */
+export function decodeBody(data, maxBytes = Infinity) {
+  if (data == null) return "";
+  if (typeof data === "string") return data;
+  let buf = Buffer.from(data instanceof ArrayBuffer ? new Uint8Array(data) : data);
+  if (buf[0] === 0x1f && buf[1] === 0x8b) {
+    buf = zlib.gunzipSync(buf, Number.isFinite(maxBytes) ? { maxOutputLength: maxBytes } : {});
+  }
+  return buf.toString("utf-8");
+}
+
+/**
  * GET для стрічки: описовий User-Agent, умовний запит, стеля розміру.
  *
  * @returns {Promise<{ status: number, body: string|null, etag: string|null,
@@ -93,7 +111,7 @@ export async function fetchFeed(url, {
     headers,
     timeout: timeoutMs,
     maxContentLength: maxBytes,
-    responseType: "text",
+    responseType: "arraybuffer", // байти: можливо, це .gz (decodeBody)
     // Не кидати на 304/401/403/429/503 — це штатні відповіді для опитувача:
     // «без змін», «закрито для нас», «прийди пізніше».
     validateStatus: (s) => (s >= 200 && s < 300) || [304, 401, 403, 429, 503].includes(s),
@@ -104,7 +122,7 @@ export async function fetchFeed(url, {
   const limited = res.status === 429 || res.status === 503;
   return {
     status: res.status,
-    body: res.status >= 200 && res.status < 300 ? String(res.data ?? "") : null,
+    body: res.status >= 200 && res.status < 300 ? decodeBody(res.data, maxBytes) : null,
     etag: h.etag ?? null,
     lastModified: h["last-modified"] ?? null,
     retryAfterMs: limited ? (retryAfterMs(h["retry-after"]) ?? 60_000) : null,

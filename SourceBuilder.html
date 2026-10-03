@@ -514,6 +514,19 @@ function buildCardBody(src) {
                ${(src.mode||'listener')==='listener' ? 'disabled' : ''}>
       </div>
     </div>
+    ${src.platform === 'rss' ? `
+    <div class="field-row">
+      <div class="field-group">
+        <label>Discovery — як шукати нові статті</label>
+        <select onchange="setDiscovery(${id},this.value)">
+          ${DISCOVERY_KINDS.map(k => `<option value="${k}" ${discoveryOf(src)===k?'selected':''}>${k}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field-group">
+        <label>Discovery info</label>
+        <span style="font-size:0.72rem;color:var(--text3);line-height:1.5">${DISCOVERY_HINTS[discoveryOf(src)]}</span>
+      </div>
+    </div>` : ''}
     <div class="field-row">
       <div class="field-group">
         <label>Mode info</label>
@@ -807,6 +820,27 @@ function setField(id, field, value) {
     card.replaceWith(newCard);
   }
   updateOutput();
+}
+
+// Як rss-джерело шукає нові статті (docs/theflow/NEWS_INTAKE.md §2.1).
+// Типовий rss у файл не пишемо — відсутній `feed` означає те саме.
+const DISCOVERY_KINDS = ['rss', 'sitemap', 'wpjson'];
+const DISCOVERY_HINTS = {
+  rss: 'channel_id — URL стрічки RSS/Atom.',
+  sitemap: 'channel_id — URL news sitemap або його індексу (robots.txt → Sitemap:).',
+  wpjson: 'channel_id — корінь сайту на WordPress (/wp-json/wp/v2/posts).',
+};
+
+function discoveryOf(src) {
+  return src.feed?.discovery ?? 'rss';
+}
+
+function setDiscovery(id, value) {
+  const src = getSrc(id);
+  if (!src) return;
+  if (value === 'rss') delete src.feed;
+  else src.feed = { discovery: value };
+  refreshCard(id);
 }
 
 /**
@@ -1103,6 +1137,10 @@ function buildJSON() {
     // extra_media_types: null = лише глобальні, у файл не пишемо
     if (!Array.isArray(clean.extra_media_types) || clean.extra_media_types.length === 0) {
       delete clean.extra_media_types;
+    }
+    // feed: лише для rss, і лише не типовий спосіб (setDiscovery)
+    if (clean.platform !== 'rss' || !clean.feed) {
+      delete clean.feed;
     }
     // poll_interval_min: null = глобальний дефолт, у файл не пишемо
     if (clean.poll_interval_min === null || clean.poll_interval_min === undefined) {

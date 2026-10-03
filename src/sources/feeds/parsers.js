@@ -10,6 +10,7 @@ import * as cheerio from "cheerio";
  *   text        — plain text вмісту стрічки (HTML знято), не повна стаття
  *   publishedAt — мс або null
  *   imageUrls   — зображення елемента, для UrlMediaResolver
+ *   keywords    — лише sitemap: news:keywords, для triage (NEWS_INTAKE.md §2.3)
  */
 
 const MAX_IMAGES = 4;
@@ -107,6 +108,116 @@ export function parseFeed(xml, { maxTextChars = 4_000 } = {}) {
     });
   });
   return out.filter((i) => i.id);
+}
+
+// ── News sitemap (NEWS_INTAKE.md §1) ──────────────────────────────────────
+
+/**
+ * Компаратор «найновіші першими» за полем `at` (мс). Без дати — у кінець, у
+ * порядку документа: sort стабільний, а NaN від (-∞) − (-∞) стає 0.
+ */
+const newestFirst = (a, b) => (b.at ?? -Infinity) - (a.at ?? -Infinity) || 0;
+
+/** "/2026/10/03/business/fed-holds-rates/" → "fed holds rates"; без змістовного slug — null. */
+export function titleFromUrl(url) {
+  let path;
+  try {
+    path = new URL(url).pathname;
+  } catch {
+    return null;
+  }
+  const slug = path.split("/").filter(Boolean).pop() ?? "";
+  const words = slug.replace(/\.[a-z0-9]+$/i, "").replace(/[-_]+/g, " ").trim();
+  // Чисто числовий або хешовий slug (id статті) нічого не каже.
+  return /[a-z]{3,}/i.test(words) && words.includes(" ") ? words : null;
+}
+
+/**
+ * Sitemap (urlset) або індекс sitemap-ів (sitemapindex).
+ *
+ * Для urlset — елементи, найновіші першими: sitemap не впорядкований, а
+ * опитувач бере перші maxItems. Заголовок — news:title, інакше зі slug URL
+ * (Fox і подібні не пишуть news-розширення). Тексту немає: sitemap дає лише
+ * заголовок, дату й ключові слова.
+ *
+ * Для індексу — `children`: URL дочірніх sitemap-ів, найсвіжіші першими.
+ *
+ * @returns {{ items: object[], children: string[] }}
+ */
+export function parseSitemap(xml) {
+  const $ = cheerio.load(String(xml ?? ""), { xml: true });
+
+  if ($("sitemapindex").length) {
+    const children = $("sitemapindex > sitemap").map((_, el) => ({
+      url: $(el).find("loc").first().text().trim(),
+      at: toMs($(el).find("lastmod").first().text()),
+    })).get();
+    return {
+      items: [],
+      children: children.filter((c) => /^https?:\/\//i.test(c.url)).sort(newestFirst).map((c) => c.url),
+    };
+  }
+
+  const items = $("urlset > url").map((_, el) => {
+    const it = $(el);
+    const loc = it.find("loc").first().text().trim();
+    if (!/^https?:\/\//i.test(loc)) return null;
+    const keywords = it.find("news\\:keywords").first().text().split(",").map((k) => k.trim()).filter(Boolean);
+    return {
+      id: loc,
+      link: loc,
+      title: clean(htmlToText(it.find("news\\:title").first().text())) || titleFromUrl(loc),
+      text: "",
+      author: null,
+      publishedAt: toMs(it.find("news\\:publication_date").first().text() || it.find("lastmod").first().text()),
+      imageUrls: uniq(it.find("image\\:loc").map((__, e) => $(e).text().trim()).get(), MAX_IMAGES),
+      keywords,
+    };
+  }).get().filter(Boolean);
+
+  items.sort((a, b) => newestFirst({ at: a.publishedAt }, { at: b.publishedAt }));
+  return { items, children: [] };
+}
+
+// ── WordPress REST API ────────────────────────────────────────────────────
+
+/**
+ * Адреса списку постів WordPress. channel_id — корінь сайту
+ * ("https://thehill.com") або вже повний шлях до `/wp-json/...` (сайт у
+ * підкаталозі). Поля обмежені тим, що потрібно для пошуку статей: без
+ * `content` відповідь у десятки разів менша (текст — справа кроку 4).
+ */
+export function wpPostsUrl(raw, perPage = 25) {
+  let url;
+  try {
+    url = new URL(String(raw ?? "").trim());
+  } catch {
+    return null;
+  }
+  if (!/^https?:$/.test(url.protocol)) return null;
+  if (!url.pathname.includes("/wp-json/")) url = new URL("/wp-json/wp/v2/posts", url.origin);
+  url.searchParams.set("per_page", String(Math.min(100, Math.max(1, perPage))));
+  url.searchParams.set("_fields", "id,link,date_gmt,title,excerpt");
+  return url.href;
+}
+
+/** `/wp-json/wp/v2/posts` → елементи. Не масив або не JSON → порожній список. */
+export function parseWpPosts(body, { maxTextChars = 4_000 } = {}) {
+  let list = body;
+  if (typeof list === "string") {
+    try { list = JSON.parse(list); } catch { return []; }
+  }
+  if (!Array.isArray(list)) return [];
+  return list.filter((p) => p?.link).map((p) => ({
+    id: p.link,
+    link: p.link,
+    title: clean(htmlToText(p.title?.rendered)) || null,
+    text: htmlToText(p.excerpt?.rendered).slice(0, maxTextChars),
+    author: null,
+    // date_gmt приходить без зони — це UTC.
+    publishedAt: toMs(p.date_gmt ? `${p.date_gmt}Z` : null),
+    imageUrls: [],
+  }));
 }
 
 // ── Reddit ────────────────────────────────────────────────────────────────

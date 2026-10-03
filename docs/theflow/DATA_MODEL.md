@@ -258,6 +258,12 @@ Creates `knowledge_examples` and backfills every `post_feedback` label that
 still has its post (`flow knowledge backfill` reruns it). Idempotent through
 the UNIQUE `feedback_id`.
 
+### `016-source-feed`
+
+Adds `sources.feed` JSON NULL — `{ "discovery": "rss" | "sitemap" |
+"wpjson" }`, how an `rss` source finds new articles (NEWS_INTAKE.md §2.1).
+NULL is a plain RSS/Atom feed, so existing sources need no backfill.
+
 ### Fresh installs
 
 `src/inemuri.js` and `src/cli.js` still call `database.sync()` on boot, which

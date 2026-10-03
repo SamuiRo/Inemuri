@@ -86,6 +86,32 @@
       }
     },
     {
+      "platform": "rss",
+      "channel_id": "https://nypost.com/news-sitemap.xml",
+      "channel_name": "NYPost (news sitemap example)",
+      "is_active": false,
+      "poll_interval_min": 5,
+      "feed": {
+        "discovery": "sitemap"
+      },
+      "filters": {
+        "enabled": true,
+        "keywords": [],
+        "blacklist": ["betting", "sports picks"],
+        "case_sensitive": false
+      }
+    },
+    {
+      "platform": "rss",
+      "channel_id": "https://thehill.com",
+      "channel_name": "The Hill (WordPress API example)",
+      "is_active": false,
+      "poll_interval_min": 5,
+      "feed": {
+        "discovery": "wpjson"
+      }
+    },
+    {
       "platform": "reddit",
       "channel_id": "r/cs2",
       "channel_name": "r/cs2 (Reddit example — needs REDDIT_CLIENT_ID/SECRET)",

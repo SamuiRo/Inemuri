@@ -50,6 +50,15 @@ export const Source = database.sequelize.define("Source", {
     defaultValue: null,
     comment: 'Інтервал полінгу цього джерела (хв). NULL = глобальний дефолт'
   },
+  // Налаштування стрічки для platform "rss" (NEWS_INTAKE.md §2.1):
+  // { discovery: "rss" | "sitemap" | "wpjson" }. NULL = звичайна RSS/Atom.
+  // Див. src/sources/feeds/discovery.js. Міграція 016.
+  feed: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Як шукати нові статті: { discovery }. NULL = RSS/Atom'
+  },
   // Типи медіа, які качати ДОДАТКОВО до глобального DOWNLOADABLE_MEDIA_TYPES.
   // NULL = лише глобальний список. Додавальне, не перевизначення: повний
   // список легко задати без "photo" і тихо втратити всі зображення.

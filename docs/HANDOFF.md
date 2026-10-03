@@ -2,7 +2,7 @@
 
 ## Current state
 
-`v4.52.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
+`v4.53.0`. TheFlow Phase 0 (persistence, no AI), Phase 1 (LLM gateway and
 enrichment, shadow mode) and Phase 1.5 (vision) are **implemented**, Phase 2's resolve stage (§5.2) is
 built and waiting on destination channels, and Phase 3's deduplication tiers 1
 and 2 run in the enrich worker, with the delta call and updates to delivered
@@ -15,11 +15,12 @@ from `flow review` feed the enrich prompt as examples, and a scheduled digest
 goes to `digest_destinations` once that key is set. Phase 6 (news intake,
 [theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)) has started: step 1, the
 portable knowledge base `knowledge_examples`, is built — `flow review` writes
-to it and few-shot reads from it. The delivery mechanism (§5.3–5.6) is
+to it and few-shot reads from it; step 2, discovery through news sitemaps and
+the WordPress API (`sources.feed.discovery`), is built. The delivery mechanism (§5.3–5.6) is
 built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the §5.1 channels and
-the final template exist. 15 migrations exist
-(`database/migrations/001`–`015`); `npm run migrate:status`
-is clean on the dev database. `npm test` is 538 green `node --test` cases,
+the final template exist. 16 migrations exist
+(`database/migrations/001`–`016`); `npm run migrate:status`
+is clean on the dev database. `npm test` is 550 green `node --test` cases,
 run on a throwaway database since `v4.43.1` — never on `database/pot.sqlite`.
 See
 [CHANGELOG.md](CHANGELOG.md) for the version-by-version detail and
@@ -114,10 +115,12 @@ destinations is worse than not starting. A fresh clone now starts — before
 
 ## Next steps
 
-- **News intake (Phase 6), step 2 next** — `sitemap` and `wpjson` discovery
-  (ROADMAP §14.2). Before step 3 (triage) the operator decides what counts as
-  market-moving, the outlet list and the share of sampled rejects
-  (NEWS_INTAKE.md §5). Labels now live in `knowledge_examples`;
+- **News intake (Phase 6), step 3 next** — headline triage (ROADMAP §14.3).
+  It waits on the operator: what counts as market-moving, the outlet list and
+  the share of sampled rejects (NEWS_INTAKE.md §5). A news site can already
+  be added (`"feed": { "discovery": "sitemap" }`, README § Feed sources), but
+  until triage every new article is ingested — keep TheFlow off or a
+  blacklist on for a large outlet. Labels now live in `knowledge_examples`;
   `flow knowledge export --out kb.jsonl` before moving instances, `flow
   knowledge import kb.jsonl` after.
 
@@ -208,6 +211,14 @@ destinations is worse than not starting. A fresh clone now starts — before
   own, or part of `steam`? (ROADMAP §3 checkpoint)
 
 ## Session log
+
+### 2026-10-03 — news intake step 2
+
+`sitemap` and `wpjson` discovery (migration `016`, `src/sources/feeds/discovery.js`),
+gzip bodies, the sitemap index followed to its freshest child. Checked live:
+NYPost sitemap 599 items, Reuters 50 through its index, NYT `.gz` 714, Fox
+243, The Hill and TechCrunch WordPress 25 each, NYPost WordPress 401.
+`SourceBuilder.html` gained a discovery selector for `rss` sources.
 
 ### 2026-10-03 — news intake spec, knowledge base
 

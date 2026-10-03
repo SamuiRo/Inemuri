@@ -27,7 +27,7 @@ enrichment, shadow mode, dormant without a provider key) and Phase 1.5
 resolve stage and delivery mechanism (off until `FLOW_DELIVERY_ENABLED`),
 Phase 3's deduplication with the delta call, the §9.1 history search and
 Phase 3.5's Reddit and RSS sources, Phase 4's entity extraction, Phase 5's
-few-shot and digests and Phase 6's knowledge base (news intake,
+few-shot and digests and Phase 6's knowledge base and sitemap/WordPress discovery (news intake,
 [docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)); the rest is still specification — see
 [docs/THEFLOW.md](docs/THEFLOW.md)
 and `docs/theflow/` (in particular `docs/theflow/ROADMAP.md` for exact

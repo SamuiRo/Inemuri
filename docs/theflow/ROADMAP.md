@@ -1434,6 +1434,19 @@ articles a day per outlet, over 90% irrelevant.
 > requeue no longer changes what a label taught. CLI: `flow knowledge
 > stats|export|import|backfill`.
 
+> **14.2 done (v4.53.0).** `src/sources/feeds/discovery.js` — one strategy
+> per way of finding items (`rss`, `sitemap`, `wpjson`, `reddit`): the URL to
+> ask, the Accept header, the parser. An `rss` source picks one with
+> `sources.feed.discovery` (migration `016`, NULL = RSS/Atom). `parsers.js`
+> gains `parseSitemap` (urlset and sitemap index, newest first, title from
+> `news:title` or the URL slug, `news:keywords` kept for triage) and
+> `parseWpPosts` / `wpPostsUrl` (title and excerpt only — the text is 14.4).
+> The poller follows an index to its freshest child; ETag/Last-Modified are
+> kept for the URL actually parsed (`cursor.url`), so an unchanged index never
+> hides a new child behind a 304. `fetchFeed` reads bytes and unpacks raw
+> gzip (`.xml.gz`) under the same size cap. Checked live against NYPost,
+> Reuters, NYT, Fox, The Hill and TechCrunch — NEWS_INTAKE.md §4.
+
 Open before 14.3: what counts as market-moving, the outlet list, the share of
 sampled rejects (NEWS_INTAKE.md §5).
 

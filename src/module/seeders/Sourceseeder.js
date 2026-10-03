@@ -1,6 +1,7 @@
 import { print } from "../../shared/utils.js";
 import { Source } from "../teapot/models/index.js";
 import { SOURCE_CONFIG } from "../../config/app.config.js";
+import { DISCOVERY_KINDS } from "../../sources/feeds/discovery.js";
 
 const VALID_MODES = ["listener", "polling", "both"];
 // reddit / rss — стрічки (ROADMAP §7): channel_id — сабреддит ("r/cs2") або
@@ -43,6 +44,16 @@ function normalizeExtraMediaTypes(raw) {
   return cleaned.length > 0 ? cleaned : null;
 }
 
+/**
+ * Налаштування стрічки (NEWS_INTAKE.md §2.1). Лише для rss; типовий спосіб
+ * (rss) не зберігається — NULL означає те саме.
+ */
+function normalizeFeed(platform, feed) {
+  if (platform !== "rss" || !feed || typeof feed !== "object") return null;
+  const discovery = feed.discovery ?? "rss";
+  return discovery === "rss" ? null : { discovery };
+}
+
 function mergeFlow(flow) {
   if (!flow || typeof flow !== "object") return { ...FLOW_DEFAULT };
   return {
@@ -69,7 +80,11 @@ class SourceSeeder {
       throw new Error(`Invalid platform: ${source.platform} (expected ${SOURCE_PLATFORMS.join(" / ")})`);
     }
     if (source.platform === "rss" && !/^https?:\/\//i.test(String(source.channel_id))) {
-      throw new Error(`rss source "${source.channel_name}": channel_id must be the feed URL`);
+      throw new Error(`rss source "${source.channel_name}": channel_id must be the feed, sitemap or site URL`);
+    }
+    const discovery = source.feed?.discovery;
+    if (discovery !== undefined && !DISCOVERY_KINDS.includes(discovery)) {
+      throw new Error(`source "${source.channel_name}": feed.discovery must be one of ${DISCOVERY_KINDS.join(" / ")}`);
     }
 
     if (source.mode && !VALID_MODES.includes(source.mode)) {
@@ -108,6 +123,8 @@ class SourceSeeder {
         poll_interval_min: normalizePollInterval(sourceData.poll_interval_min),
         // NULL = лише глобальний DOWNLOADABLE_MEDIA_TYPES
         extra_media_types: normalizeExtraMediaTypes(sourceData.extra_media_types),
+        // NULL = звичайна RSS/Atom
+        feed: normalizeFeed(sourceData.platform, sourceData.feed),
         text_replacements: sourceData.text_replacements || {
           enabled: false,
           patterns: [],

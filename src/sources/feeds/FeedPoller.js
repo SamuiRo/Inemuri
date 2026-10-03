@@ -4,21 +4,15 @@ import FlowIngest from "../../module/theflow/FlowIngest.js";
 import { print } from "../../shared/utils.js";
 import { FEEDS } from "../../config/app.config.js";
 import { fetchFeed, feedThrottle, RedditAuth } from "./http.js";
-import {
-  parseFeed, parseRedditListing, normalizeSubreddit, redditListingUrl, selectNew,
-} from "./parsers.js";
+import { selectNew } from "./parsers.js";
+import { strategyFor } from "./discovery.js";
 
 export const FEED_PLATFORMS = ["reddit", "rss"];
 const MIN = 60_000;
 
 /** Звідки опитувати джерело. null — конфіг джерела непридатний. */
 export function feedUrlOf(source, maxItems = FEEDS.maxItems, { oauth = false } = {}) {
-  if (source.platform === "reddit") {
-    const sub = normalizeSubreddit(source.channel_id);
-    return sub ? redditListingUrl(sub, maxItems, { oauth }) : null;
-  }
-  if (source.platform === "rss") return /^https?:\/\//i.test(source.channel_id) ? source.channel_id : null;
-  return null;
+  return strategyFor(source)?.url(source, { maxItems, oauth }) ?? null;
 }
 
 /**
@@ -51,11 +45,12 @@ export function toFeedMessageData(source, item) {
 }
 
 /**
- * Опитувач стрічок: Reddit і RSS/Atom (ROADMAP §7.1–7.5).
+ * Опитувач стрічок: Reddit, RSS/Atom, news sitemap, WordPress API
+ * (ROADMAP §7.1–7.5, NEWS_INTAKE.md §2.1; спосіб — discovery.js).
  *
  * На кожне джерело — свій розклад (`poll_interval_min`, інакше
- * FEED_POLL_INTERVAL_MIN), курсор у SourceState.cursor (`{ ts, seen, etag,
- * lastModified }`), перший прохід — лише baseline. Запити йдуть через
+ * FEED_POLL_INTERVAL_MIN), курсор у SourceState.cursor (`{ ts, seen, url,
+ * etag, lastModified }`), перший прохід — лише baseline. Запити йдуть через
  * HostThrottle (пауза між запитами до одного хоста), умовно (304 — дешево),
  * а 429/503 відкладають джерело на Retry-After.
  *
@@ -102,7 +97,7 @@ export class FeedPoller {
     this.sources = (await Source.findAll({ where: { platform: FEED_PLATFORMS, is_active: true } }))
       .filter((s) => {
         if (feedUrlOf(s, this.config.maxItems, { oauth: Boolean(this.redditAuth?.configured) })) return true;
-        this.log(`[FEEDS] ${s.platform} source "${s.channel_name}": unusable channel_id ${JSON.stringify(s.channel_id)} — skipped`, "warning");
+        this.log(`[FEEDS] ${s.platform} source "${s.channel_name}": unusable channel_id ${JSON.stringify(s.channel_id)} or feed.discovery — skipped`, "warning");
         return false;
       });
     return this.sources.length;
@@ -159,22 +154,72 @@ export class FeedPoller {
   }
 
   async pollSource(source) {
+    const strategy = strategyFor(source);
     const oauth = source.platform === "reddit" && Boolean(this.redditAuth?.configured);
-    const url = feedUrlOf(source, this.config.maxItems, { oauth });
+    const parseOpts = { maxTextChars: this.config.maxTextChars };
     const state = await SourceState.getOrCreate(source.id);
     const cursor = state.cursor && typeof state.cursor === "object" && "seen" in state.cursor ? state.cursor : null;
 
+    let url = feedUrlOf(source, this.config.maxItems, { oauth });
+    let res = await this._get(source, url, strategy.accept, cursor, { oauth, configuredUrl: url });
+    if (!this._shouldParse(source, res, { oauth })) return 0;
+    let parsed = strategy.parse(res.body, parseOpts);
+
+    // Індекс sitemap-ів: статті — у найсвіжішому дочірньому. Індекс сам
+    // запитується без умовних заголовків (див. _get), тож новий дочірній
+    // sitemap не загубиться за 304 незмінного індексу. Один рівень вкладення.
+    if (parsed.children.length) {
+      url = parsed.children[0];
+      res = await this._get(source, url, strategy.accept, cursor, { oauth });
+      if (!this._shouldParse(source, res, { oauth })) return 0;
+      parsed = strategy.parse(res.body, parseOpts);
+      if (parsed.children.length) {
+        this.log(`[FEEDS] "${source.channel_name}": sitemap index nested deeper than one level — point channel_id at an inner index`, "warning");
+        return 0;
+      }
+    }
+
+    const items = parsed.items;
+    const picked = selectNew(items.slice(0, this.config.maxItems), cursor, { seenMax: this.config.seenGuids });
+    for (const item of picked.items) await this.handleItem(source, item);
+
+    await state.update({
+      cursor: { ...picked.cursor, url, etag: res.etag ?? null, lastModified: res.lastModified ?? null },
+      ...(state.baseline_set_at ? {} : { baseline_set_at: new Date(this.now()) }),
+    });
+    if (picked.baseline) {
+      this.log(`[FEEDS] baseline for "${source.channel_name}": ${items.length} existing item(s) skipped`, "info");
+    } else if (picked.items.length) {
+      this.log(`[FEEDS] "${source.channel_name}": ${picked.items.length} new item(s)`, "success");
+    }
+    return picked.items.length;
+  }
+
+  /**
+   * Один GET через throttle. Умовні заголовки — лише для тієї адреси, чиї
+   * ETag/Last-Modified лежать у курсорі (`cursor.url`; у старих курсорів
+   * його немає — тоді це адреса з конфігу).
+   */
+  async _get(source, url, accept, cursor, { oauth, configuredUrl = null }) {
+    const own = cursor && (cursor.url ?? configuredUrl) === url;
     const headers = oauth ? { authorization: `bearer ${await this.redditAuth.token()}` } : {};
-    const res = await this.throttle.run(url, () => this.fetch(url, {
+    return this.throttle.run(url, () => this.fetch(url, {
       userAgent: this.config.userAgent,
       timeoutMs: this.config.timeoutMs,
       maxBytes: this.config.maxFeedBytes,
-      etag: cursor?.etag ?? null,
-      lastModified: cursor?.lastModified ?? null,
-      accept: source.platform === "reddit" ? "application/json" : undefined,
+      etag: own ? cursor.etag ?? null : null,
+      lastModified: own ? cursor.lastModified ?? null : null,
+      accept,
       headers,
     }));
+  }
 
+  /**
+   * Чи є що розбирати. Ні — коли джерело закрите (401/403), просить почекати
+   * (429/503) або нічого не змінилось (304); тоді тут же планується наступне
+   * опитування.
+   */
+  _shouldParse(source, res, { oauth }) {
     if (res.forbidden) {
       if (oauth && res.status === 401) this.redditAuth.invalidate(); // протухлий токен — новий наступного разу
       const backoff = (this.config.forbiddenBackoffMin ?? 360) * MIN;
@@ -186,35 +231,17 @@ export class FeedPoller {
           : "";
         this.log(`[FEEDS] "${source.channel_name}" answered ${res.status}${hint}. Retrying every ${Math.round(backoff / MIN)} min.`, "warning");
       }
-      return 0;
+      return false;
     }
     this._warnedForbidden.delete(source.id);
 
     if (res.retryAfterMs != null) {
       this._nextAt.set(source.id, this.now() + Math.max(res.retryAfterMs, this._intervalMs(source)));
       this.log(`[FEEDS] "${source.channel_name}" rate-limited (${res.status}), next in ${Math.round(res.retryAfterMs / 1000)}s+`, "warning");
-      return 0;
+      return false;
     }
     this._nextAt.set(source.id, this.now() + this._intervalMs(source));
-    if (res.status === 304) return 0;
-
-    const items = source.platform === "reddit"
-      ? parseRedditListing(JSON.parse(res.body), { maxTextChars: this.config.maxTextChars })
-      : parseFeed(res.body, { maxTextChars: this.config.maxTextChars });
-
-    const picked = selectNew(items.slice(0, this.config.maxItems), cursor, { seenMax: this.config.seenGuids });
-    for (const item of picked.items) await this.handleItem(source, item);
-
-    await state.update({
-      cursor: { ...picked.cursor, etag: res.etag ?? null, lastModified: res.lastModified ?? null },
-      ...(state.baseline_set_at ? {} : { baseline_set_at: new Date(this.now()) }),
-    });
-    if (picked.baseline) {
-      this.log(`[FEEDS] baseline for "${source.channel_name}": ${items.length} existing item(s) skipped`, "info");
-    } else if (picked.items.length) {
-      this.log(`[FEEDS] "${source.channel_name}": ${picked.items.length} new item(s)`, "success");
-    }
-    return picked.items.length;
+    return res.status !== 304;
   }
 
   async handleItem(source, item) {
