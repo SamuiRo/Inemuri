@@ -126,6 +126,11 @@ export class FlowDelivery {
     this.log = log;
     this._timer = null;
     this._running = false;
+    this._pass = null; // прохід, що виконується зараз — його чекає stop()
+    // Надіслано, але запис у БД не вдався: post.id → () => повторити запис.
+    // Такий пост не можна вважати невдалим — повтор відправки дав би дубль
+    // у каналі. Тримаємо в пам'яті й дописуємо на початку кожного проходу.
+    this._unsaved = new Map();
     this._sources = new Map();
   }
 
@@ -135,20 +140,30 @@ export class FlowDelivery {
     this._schedule(this.intervalMs);
   }
 
-  stop() {
+  /** Зупиняє цикл і чекає поточний прохід (не довше за graceMs). */
+  async stop({ graceMs = 15_000 } = {}) {
     this._running = false;
     if (this._timer) clearTimeout(this._timer);
     this._timer = null;
+    if (!this._pass) return true;
+    let timer;
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(false), graceMs); });
+    const done = await Promise.race([this._pass.then(() => true, () => true), timeout]);
+    clearTimeout(timer);
+    return done;
   }
 
   _schedule(ms) {
     if (!this._running) return;
     this._timer = setTimeout(async () => {
       let n = 0;
+      this._pass = this.runOnce();
       try {
-        n = await this.runOnce();
+        n = await this._pass;
       } catch (error) {
         this.log(`[DELIVERY] tick error: ${error.message}`, "error");
+      } finally {
+        this._pass = null;
       }
       this._schedule(n > 0 ? 1_000 : this.intervalMs);
     }, ms);
@@ -157,6 +172,7 @@ export class FlowDelivery {
 
   /** Один прохід: спершу оновлення (спростування не чекають), потім нові. */
   async runOnce() {
+    const saved = await this._saveUnsaved();
     const updated = await this.refreshOnce();
 
     const batch = await this.candidates();
@@ -164,11 +180,31 @@ export class FlowDelivery {
       try {
         await this.deliver(post);
       } catch (error) {
+        if (error.sent) {
+          this.log(`[DELIVERY] posts#${post.id} sent, but the record was not saved (${error.message}) — retrying the write, not the send`, "error");
+          continue;
+        }
         this.log(`[DELIVERY] posts#${post.id} failed: ${error.message}`, "warning");
         await this._recordFailure(post, error.message);
       }
     }
-    return updated + batch.length;
+    return saved + updated + batch.length;
+  }
+
+  /** Дописати записи надісланих постів, які не вдалось зберегти. */
+  async _saveUnsaved() {
+    let saved = 0;
+    for (const [id, save] of this._unsaved) {
+      try {
+        await save();
+        this._unsaved.delete(id);
+        saved += 1;
+        this.log(`[DELIVERY] posts#${id} delivery record saved on retry`, "success");
+      } catch (error) {
+        this.log(`[DELIVERY] posts#${id} delivery record still not saved: ${error.message}`, "warning");
+      }
+    }
+    return saved;
   }
 
   // ── нові пости ─────────────────────────────────────────────────────
@@ -189,8 +225,10 @@ export class FlowDelivery {
       [Op.or]: [{ link_role: null }, { link_role: "canonical" }],
       ...(this.dedupEnabled ? { dedup: { [Op.ne]: null } } : {}),
     };
+    // Надіслані з незбереженим записом виглядають у БД як ненадіслані — не брати.
+    const unsaved = this._unsaved.size ? [{ id: { [Op.notIn]: [...this._unsaved.keys()] } }] : [];
     return await Post.findAll({
-      where: { [Op.and]: [undecided, { [Op.or]: [enriched, { status: "failed" }] }] },
+      where: { [Op.and]: [undecided, { [Op.or]: [enriched, { status: "failed" }] }, ...unsaved] },
       order: [
         [database.sequelize.fn("COALESCE", database.sequelize.col("posted_at"), database.sequelize.col("Post.createdAt")), "ASC"],
         ["id", "ASC"],
@@ -341,7 +379,7 @@ export class FlowDelivery {
     const record = delivered.map((d) => ({
       ...d, sent_at: d.sent_at instanceof Date ? d.sent_at.toISOString() : d.sent_at,
     }));
-    await database.sequelize.transaction(async (transaction) => {
+    const save = () => database.sequelize.transaction(async (transaction) => {
       await post.update({
         status: p.resolved.outcome === "routed" ? "routed" : "unsorted",
         delivery: {
@@ -359,6 +397,15 @@ export class FlowDelivery {
         await Cluster.update({ delivered: [...prev, ...record] }, { where: { id: p.cluster.id }, transaction });
       }
     });
+    try {
+      await save();
+    } catch (error) {
+      // Повідомлення вже в каналах. Помилка тут не має стати «невдалою
+      // доставкою» — її повтор надіслав би той самий пост ще раз.
+      this._unsaved.set(post.id, save);
+      error.sent = true;
+      throw error;
+    }
     this.log(
       `[DELIVERY] posts#${post.id} → ${p.resolved.outcome} (${p.resolved.reason}), ${delivered.length}/${wanted} sent`,
       "success",

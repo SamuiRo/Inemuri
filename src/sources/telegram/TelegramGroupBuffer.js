@@ -2,13 +2,56 @@ import { print } from "../../shared/utils.js";
 import { ALBUM_GROUP_TIMEOUT_MS } from "../../config/app.config.js";
 
 /**
+ * Текст альбому з його повідомлень (уже відсортованих за id): rawText, text
+ * і entities — узгоджено між собою.
+ *
+ * Раніше бралось `...first` і лише `text` склеювався з усіх: rawText і
+ * entities лишались від першого повідомлення. Підпис не на першому елементі
+ * давав rawText "" — для TheFlow це skipped_empty, а класичний шлях (Telegram
+ * шле rawText) відправляв альбом без підпису.
+ *
+ * Кілька підписів склеюються через перенос рядка; entities кожного
+ * зсуваються на довжину всього, що перед ним (UTF-16, як offset-и MTProto).
+ *
+ * @param {object[]} messages
+ * @returns {{ rawText: string, text: string, entities: object[] }}
+ */
+export function mergeAlbumText(messages) {
+  const captioned = messages.filter((m) => String(m.rawText ?? "").trim().length > 0);
+  const text = messages
+    .map((m) => m.text)
+    .filter((t) => t?.trim().length > 0)
+    .join("\n");
+  if (captioned.length === 0) return { rawText: "", text, entities: [] };
+  if (captioned.length === 1) {
+    const [m] = captioned;
+    return { rawText: m.rawText, text: m.text ?? m.rawText, entities: m.entities ?? [] };
+  }
+
+  const parts = [];
+  const entities = [];
+  let shift = 0;
+  for (const m of captioned) {
+    for (const e of m.entities ?? []) {
+      // Свіжий об'єкт того ж класу: entities повідомлення не мутуємо.
+      const moved = Object.assign(Object.create(Object.getPrototypeOf(e)), e);
+      moved.offset = e.offset + shift;
+      entities.push(moved);
+    }
+    parts.push(m.rawText);
+    shift += m.rawText.length + 1; // + перенос рядка
+  }
+  return { rawText: parts.join("\n"), text, entities };
+}
+
+/**
  * TelegramGroupBuffer
  *
  * Накопичує повідомлення одного альбому (groupedId) протягом
  * ALBUM_GROUP_TIMEOUT_MS і потім передає зібраний альбом у callback.
  *
  * Callback отримує один об'єкт groupedMessage із:
- *   - text — об'єднаний текст усіх повідомлень
+ *   - text, rawText, entities — текст альбому (mergeAlbumText)
  *   - media — масив усіх медіа
  *   - isGrouped: true
  *   - groupSize: <кількість>
@@ -79,14 +122,13 @@ class TelegramGroupBuffer {
 
       const first       = group.messages[0];
       const allMedia    = group.messages.map((m) => m.media).filter(Boolean);
-      const combinedText = group.messages
-        .map((m) => m.text)
-        .filter((t) => t?.trim().length > 0)
-        .join("\n");
+      const { rawText, text, entities } = mergeAlbumText(group.messages);
 
       const groupedMessage = {
         ...first,
-        text:      combinedText,
+        text,
+        rawText,
+        entities,
         media:     allMedia.length > 0 ? allMedia : null,
         isGrouped: true,
         groupSize: group.messages.length,

@@ -6,8 +6,8 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.57.2`; pushed up to `v4.57.0`. 17
-migrations; `npm test` is 597 green `node --test` cases on a throwaway
+`v4.57.3`; pushed up to `v4.57.0`. 17
+migrations; `npm test` is 605 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
 
@@ -59,7 +59,8 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    offline against the operator's good/bad examples
    (`devtest/Sources/FILTERS.proposed.json`), not against live traffic.
    Re-enrichment of old verdicts under v3 is a separate decision
-   (`flow requeue --status enriched`, quota cost).
+   (`flow requeue --status enriched --reset-dedup`, quota cost; the flag
+   re-clusters them, possible only while nothing is delivered).
 1. **Deploy and run the shadow week** (operator). Push `v4.56.0` first — it
    carries the triage batching fix. On the server: copy the ignored configs,
    `npm run seed`, `flow knowledge import`, `flow preflight` → Ready, start.
@@ -118,11 +119,11 @@ third of Telegram flow posts to `SQLITE_BUSY` (now `IMMEDIATE`, plus retries
 that keep the polling checkpoint), and a provider-reported daily quota was
 ignored, which would have turned the pending queue `failed` (now refused and
 deferred). Media captions are budgeted to 1024 (`TELEGRAM_PREMIUM`, the
-operator has no Premium). Not fixed, noted for later: a DB error after a
-successful send makes delivery resend; `flow requeue --status enriched` keeps
-old dedup decisions (run `flow dedup --reset --run` after it while nothing is
-delivered); album text is taken from the first message only; triage
-leftovers can block the retry window; shutdown does not wait for the tick.
+operator has no Premium). `v4.57.3` closed the rest: delivery no longer
+resends when the record fails to save, album text comes from the captioned
+item, shutdown waits for the tick, triage leftovers cannot block retries,
+numeric env vars are validated, and `flow requeue` warns about (or with
+`--reset-dedup` erases) old dedup decisions.
 
 ### 2026-10-03 — the first 18 Telegram channels
 

@@ -319,3 +319,31 @@ test("no vision stage — the worker behaves exactly as before", async () => {
   await p.reload();
   assert.equal(p.status, "enriched");
 });
+
+test("stop() waits for the running tick; posts not reached keep their attempts", async () => {
+  // Регресія (аудит 2026-10-04): stop() не чекав тіку — база закривалась
+  // посеред запису, а захоплені спроби згоряли на кожному рестарті.
+  // Pending, що лишили попередні тести (shed), — геть із черги: пакет бере
+  // найстаріші першими.
+  await Post.update({ status: "failed" }, { where: { source_id: sourceId, status: "pending" } });
+  const posts = await seed(2);
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let calls = 0;
+  const w = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async () => { calls++; await gate; return { ...GOOD }; } }),
+    taxonomy,
+    batchSize: 50,
+    tickMs: 60_000,
+  });
+  w.start();
+  while (calls === 0) await new Promise((r) => setTimeout(r, 10));
+  const stopping = w.stop({ graceMs: 5_000 });
+  release();
+  assert.equal(await stopping, true);
+  assert.equal(calls, 1, "the batch stops after the post in flight");
+
+  const states = await Promise.all(posts.map(async (p) => { await p.reload(); return [p.status, p.attempts]; }));
+  assert.equal(states.filter(([s]) => s === "enriched").length, 1, "the post in flight is finished");
+  assert.ok(states.some(([s, a]) => s === "pending" && a === 0), "the rest got their claim back");
+});

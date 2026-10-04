@@ -655,12 +655,16 @@ flow
   .option("--error <text>", "only posts whose last_error contains this text")
   .option("--model <model_used>", "only posts whose verdict came from this model")
   .option("--prompt-below <n>", "only verdicts from an enrich prompt version below n (re-extract after a prompt change)")
+  .option("--reset-dedup", "also erase every deduplication decision, so re-enriched posts are deduplicated again (refused once anything is delivered)")
   .option("--dry-run", "count, change nothing")
   .action(async (options) => {
     try {
       await database.connect();
       const status = String(options.status).split(",").map((s) => s.trim()).filter(Boolean);
-      const { ids, withFeedback } = await Post.requeue({
+      // Перевірка ДО requeue: якщо скидання дедуплікації неможливе, краще не
+      // починати, ніж лишити пости перезбагаченими зі старими кластерами.
+      if (options.resetDedup && !options.dryRun) await DedupStage.assertResettable();
+      const { ids, withFeedback, withDedup } = await Post.requeue({
         status,
         errorLike: options.error,
         modelUsed: options.model,
@@ -675,6 +679,20 @@ flow
           `${withFeedback} of them have post_feedback labels for the old verdict — review them again after re-enrichment`,
           "warning",
         );
+      }
+      if (withDedup) {
+        if (options.resetDedup && !options.dryRun) {
+          const r = await DedupStage.reset();
+          print(`Deduplication reset: ${r.posts} post(s) back to undecided, ${r.clusters} cluster(s) removed`, "warning");
+        } else {
+          // Перезбагачений пост лишається в старому кластері зі старим топіком
+          // і дедуплікацію заново не проходить.
+          print(
+            `${withDedup} of them keep their old deduplication decision (cluster, role) and will not be deduplicated ` +
+              "again — add --reset-dedup, or run `flow dedup --reset --run` once they are re-enriched",
+            "warning",
+          );
+        }
       }
       if (!options.dryRun && ids.length) {
         print("The enrich worker picks them up on its next tick; a running service needs no restart.", "info");

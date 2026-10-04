@@ -7,6 +7,43 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.57.3] - 2026-10-04
+
+The rest of the TheFlow audit findings.
+
+### Fixed
+- **Delivery could resend a post.** If the database write after a
+  successful send failed, the post was recorded as a failed delivery and the
+  retry sent it to the channels again. Now a sent post whose record did not
+  save is held in memory, skipped by the candidate query, and its write is
+  retried at the start of every pass — the send is never repeated. (A restart
+  in that window still loses the in-memory note; the next pass then resends.)
+- **Album text.** `TelegramGroupBuffer` took `rawText` and `entities` from
+  the album's first message and only `text` from all of them, so a caption on
+  any other item gave an empty `rawText`: TheFlow recorded the album as
+  `skipped_empty`, and classic forwarding (Telegram sends `rawText`) sent it
+  without its caption. `mergeAlbumText()` takes text and entities from the
+  captioned item; several captions are joined and their entities shifted.
+- **Shutdown waited for nothing.** `EnrichWorker.stop()` and
+  `FlowDelivery.stop()` now wait for the running tick (up to 15 s) before the
+  database closes; posts of an interrupted batch get their claim back instead
+  of losing an attempt on every restart.
+- **Triage leftovers blocked their own retries.** Passed candidates that ran
+  out of promotion attempts were filtered after a `limit`-ed query and could
+  fill the window forever; `DiscoveredItem.unpromoted()` now excludes them in
+  the query.
+- **Empty or invalid numeric env vars.** `ENRICH_TICK_MS=` gave 0 (a busy
+  loop), `GEMINI_RPD=abc` gave NaN (a quota that is never reached). The
+  TheFlow and LLM knobs now go through `optionalNumber` / `fraction`: a
+  warning on start and the default.
+
+### Added
+- `flow requeue` reports how many requeued posts keep an old deduplication
+  decision — a re-enriched post stays in its old cluster with its old topic
+  and is not deduplicated again — and `--reset-dedup` erases every decision
+  in the same run (refused, before anything is requeued, once a cluster is
+  delivered).
+
 ## [4.57.2] - 2026-10-04
 
 Fixes from an audit of TheFlow before the shadow week.

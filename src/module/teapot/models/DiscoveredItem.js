@@ -86,10 +86,17 @@ DiscoveredItem.nextPending = function (limit) {
   });
 };
 
-/** Пропущені, для яких пост ще не створено (збій створення минулого тіку). */
-DiscoveredItem.unpromoted = function (limit) {
+/**
+ * Пропущені, для яких пост ще не створено (збій створення минулого тіку).
+ * Ті, що вичерпали `maxAttempts`, відсіюються в запиті, а не після: інакше
+ * `limit` таких рядків назавжди займали б вікно, і новий збій не мав би
+ * жодного повтору.
+ */
+DiscoveredItem.unpromoted = function (limit, maxAttempts = Infinity) {
+  const where = { status: "passed", post_id: null };
+  if (Number.isFinite(maxAttempts)) where.attempts = { [Op.lt]: maxAttempts };
   return DiscoveredItem.findAll({
-    where: { status: "passed", post_id: null },
+    where,
     order: [["id", "ASC"]],
     limit,
   });

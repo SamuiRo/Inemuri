@@ -222,19 +222,19 @@ export const DOWNLOADABLE_MEDIA_TYPES = ["photo", "video", "document", "animatio
 // ── TheFlow (Phase 0) ────────────────────────────────────────────────────
 // Мінімальна довжина нормалізованого тексту після replacements. Коротше —
 // пост зберігається зі статусом skipped_empty (не викидається).
-export const THEFLOW_MIN_TEXT_LENGTH = Number(process.env.THEFLOW_MIN_TEXT_LENGTH ?? 10);
+export const THEFLOW_MIN_TEXT_LENGTH = optionalNumber("THEFLOW_MIN_TEXT_LENGTH", process.env.THEFLOW_MIN_TEXT_LENGTH, 10);
 // Вікно для skipped_repost: точний збіг хешу нормалізованого тексту в межах
 // останніх N годин вважається репостом.
-export const THEFLOW_REPOST_WINDOW_HOURS = Number(process.env.THEFLOW_REPOST_WINDOW_HOURS ?? 24);
+export const THEFLOW_REPOST_WINDOW_HOURS = optionalNumber("THEFLOW_REPOST_WINDOW_HOURS", process.env.THEFLOW_REPOST_WINDOW_HOURS, 24);
 
 // ── TheFlow — LLM gateway (Phase 1) ─────────────────────────────────────
 // Специфікація: docs/theflow/LLM_GATEWAY.md §Configuration.
 export const LLM_PRIMARY        = process.env.LLM_PRIMARY  || "gemini";
 export const LLM_FALLBACK       = process.env.LLM_FALLBACK || null;
 export const LLM_TIER_UP        = process.env.LLM_TIER_UP  || null; // сильніша модель, НЕ fallback
-export const LLM_TIER_UP_BELOW  = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
-export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
-export const LLM_TIMEOUT_MS     = Number(process.env.LLM_TIMEOUT_MS || 30_000);
+export const LLM_TIER_UP_BELOW  = fraction("LLM_TIER_UP_BELOW", process.env.LLM_TIER_UP_BELOW, 0.5);
+export const LLM_MAX_CONCURRENCY = optionalNumber("LLM_MAX_CONCURRENCY", process.env.LLM_MAX_CONCURRENCY, 2);
+export const LLM_TIMEOUT_MS     = optionalNumber("LLM_TIMEOUT_MS", process.env.LLM_TIMEOUT_MS, 30_000);
 // Прапорця shadow mode тут немає навмисно. У фазі 1 shadow — це властивість
 // структури, а не конфігу: вердикти пише EnrichWorker, а читача вердиктів
 // (routing) ще не існує. Перемикач з'явиться разом із ним у фазі 2, і саме
@@ -247,9 +247,9 @@ export const LLM_QUOTA_RESERVE  = 0.15; // частка RPD, зарезерво�
 
 // Enrichment worker (ROADMAP 3.6). Tick і batch виводяться з виміряного RPD
 // (3.1), не вгадуються — гальмо все одно token bucket, не таймер.
-export const ENRICH_TICK_MS      = Number(process.env.ENRICH_TICK_MS ?? 30_000);
-export const ENRICH_BATCH_SIZE   = Number(process.env.ENRICH_BATCH_SIZE ?? 10);
-export const ENRICH_MAX_ATTEMPTS = Number(process.env.ENRICH_MAX_ATTEMPTS ?? 3);
+export const ENRICH_TICK_MS      = optionalNumber("ENRICH_TICK_MS", process.env.ENRICH_TICK_MS, 30_000);
+export const ENRICH_BATCH_SIZE   = optionalNumber("ENRICH_BATCH_SIZE", process.env.ENRICH_BATCH_SIZE, 10);
+export const ENRICH_MAX_ATTEMPTS = optionalNumber("ENRICH_MAX_ATTEMPTS", process.env.ENRICH_MAX_ATTEMPTS, 3);
 // Воркер стартує лише коли є ключ провайдера LLM_PRIMARY і це не вимкнено явно.
 // Кеш транскрипцій vision (ROADMAP §4). Скріншоти перепощують протягом
 // кількох днів; довше тримати — зайвий скан при кожному пошуку за відстанню.
@@ -436,6 +436,12 @@ const GEMINI_COMPLETE = process.env.GEMINI_COMPLETE_MODEL || "gemini-3.5-flash-l
 const GEMINI_VISION = process.env.GEMINI_VISION_MODEL || GEMINI_COMPLETE;
 const GEMINI_EMBED = process.env.GEMINI_EMBED_MODEL || "gemini-embedding-2";
 
+// Порожнє чи невалідне значення — попередження і дефолт, не 0 / NaN:
+// `Number("")` дає 0, і `GEMINI_RPD=` мовчки вимикав би провайдера, а
+// `Number("abc")` — NaN, з яким `used >= rpd` ніколи не спрацьовує.
+const GEMINI_RPD = optionalNumber("GEMINI_RPD", process.env.GEMINI_RPD, 500);
+const GEMINI_RPM = optionalNumber("GEMINI_RPM", process.env.GEMINI_RPM, 15);
+
 export const LLM_PROVIDERS = {
   gemini: {
     apiKey:        process.env.GEMINI_API_KEY || null,
@@ -457,26 +463,26 @@ export const LLM_PROVIDERS = {
     // Закріплено явно (ROADMAP 13.2): дефолт моделі — 3072, і він може
     // змінитись. 768 — одне з рекомендованих значень; провайдер нормалізує
     // вектор сам, тож це безпечно і для embedding-001, де нормалізація ручна.
-    embedDim:      Number(process.env.GEMINI_EMBED_DIM || 768),
+    embedDim:      optionalNumber("GEMINI_EMBED_DIM", process.env.GEMINI_EMBED_DIM, 768),
     // Дефолти — виміряні ліміти безкоштовного тиру (AI Studio, 2026-09-13).
     // Платний проєкт має вищі: там ці числа просто недовикористовують квоту,
     // а не перевищують її — безпечний бік.
     // rpd/rpm — ліміти complete-моделі (і vision, якщо модель та сама); вони ж
     // фолбек для моделі без власного запису, напр. tier-up.
-    rpd:           Number(process.env.GEMINI_RPD || 500),
-    rpm:           Number(process.env.GEMINI_RPM || 15),
+    rpd:           GEMINI_RPD,
+    rpm:           GEMINI_RPM,
     modelLimits: modelLimits([
       [GEMINI_COMPLETE, {
-        rpd: Number(process.env.GEMINI_RPD || 500),
-        rpm: Number(process.env.GEMINI_RPM || 15),
+        rpd: GEMINI_RPD,
+        rpm: GEMINI_RPM,
       }],
       [GEMINI_VISION, {
-        rpd: Number(process.env.GEMINI_VISION_RPD || process.env.GEMINI_RPD || 500),
-        rpm: Number(process.env.GEMINI_VISION_RPM || process.env.GEMINI_RPM || 15),
+        rpd: optionalNumber("GEMINI_VISION_RPD", process.env.GEMINI_VISION_RPD, GEMINI_RPD),
+        rpm: optionalNumber("GEMINI_VISION_RPM", process.env.GEMINI_VISION_RPM, GEMINI_RPM),
       }],
       [GEMINI_EMBED, {
-        rpd: Number(process.env.GEMINI_EMBED_RPD || 1_000),
-        rpm: Number(process.env.GEMINI_EMBED_RPM || 100),
+        rpd: optionalNumber("GEMINI_EMBED_RPD", process.env.GEMINI_EMBED_RPD, 1_000),
+        rpm: optionalNumber("GEMINI_EMBED_RPM", process.env.GEMINI_EMBED_RPM, 100),
       }],
     ]),
     // Google скидає RPD опівночі за тихоокеанським часом, не UTC
@@ -490,8 +496,8 @@ export const LLM_PROVIDERS = {
     embedModel:    process.env.OPENROUTER_EMBED_MODEL    || null, // null => no embed capability
     visionModel:   process.env.OPENROUTER_VISION_MODEL   || null,
     embedDim:      Number(process.env.OPENROUTER_EMBED_DIM || 0),
-    rpd:           Number(process.env.OPENROUTER_RPD || 200),
-    rpm:           Number(process.env.OPENROUTER_RPM || 20),
+    rpd:           optionalNumber("OPENROUTER_RPD", process.env.OPENROUTER_RPD, 200),
+    rpm:           optionalNumber("OPENROUTER_RPM", process.env.OPENROUTER_RPM, 20),
     // Не звірено з документацією OpenRouter — задайте, якщо ліміти вашого
     // акаунта скидаються не за UTC.
     quotaTimeZone: quotaTimeZone("OPENROUTER_QUOTA_TZ", process.env.OPENROUTER_QUOTA_TZ, "UTC"),

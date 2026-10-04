@@ -382,12 +382,15 @@ class Inemuri {
 
     try {
       // Зупиняємо enrichment worker
-      if (this.enrichWorker) {
-        print("Stopping TheFlow enrichment worker...");
-        this.enrichWorker.stop();
-      }
+      // Воркер і доставка дописують поточний тік до того, як закриється база.
+      // Паралельно, бо незалежні; кожен чекає не довше за свій grace.
+      if (this.enrichWorker) print("Stopping TheFlow enrichment worker...");
       if (this.flowHealth) this.flowHealth.stop();
-      if (this.flowDelivery) this.flowDelivery.stop();
+      const finished = await Promise.all([
+        this.enrichWorker?.stop() ?? true,
+        this.flowDelivery?.stop() ?? true,
+      ]);
+      if (finished.includes(false)) print("TheFlow tick still running after the grace period — stopping anyway", "warning");
       if (this.feedPoller) this.feedPoller.stop();
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);

@@ -68,26 +68,48 @@ export class EnrichWorker {
     this.Post = PostModel;
     this._timer = null;
     this._stopped = true;
+    this._halting = false;
+    // Тік, що виконується зараз (null — простій). stop() чекає його: інакше
+    // база закривалась посеред запису, а захоплена спроба згоряла на кожному
+    // рестарті.
+    this._running = null;
   }
 
   start() {
     if (!this._stopped) return;
     this._stopped = false;
+    this._halting = false;
     print(`[ENRICH] worker started — tick ${this.tickMs}ms, batch ${this.batchSize}`, "success");
     this._schedule(0);
   }
 
-  stop() {
+  /**
+   * Зупиняє цикл і чекає поточний тік, але не довше за `graceMs`: виклик
+   * провайдера може висіти до таймауту, а зупинка не має висіти разом із ним.
+   * @returns {Promise<boolean>} true — тік завершився (або його не було).
+   */
+  async stop({ graceMs = 15_000 } = {}) {
     this._stopped = true;
+    // Окремо від _stopped: той true і до start(), а runOnce() викликають і
+    // напряму (CLI, тести) — пакет має обриватись лише після справжнього stop().
+    this._halting = true;
     if (this._timer) {
       clearTimeout(this._timer);
       this._timer = null;
     }
+    if (!this._running) return true;
+    let timer;
+    const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve(false), graceMs); });
+    const done = await Promise.race([this._running.then(() => true, () => true), timeout]);
+    clearTimeout(timer);
+    return done;
   }
 
   _schedule(delayMs) {
     if (this._stopped) return;
-    this._timer = setTimeout(() => this._tick(), delayMs);
+    this._timer = setTimeout(() => {
+      this._running = this._tick().finally(() => { this._running = null; });
+    }, delayMs);
   }
 
   async _tick() {
@@ -135,6 +157,11 @@ export class EnrichWorker {
     let advanced = 0;
     for (let i = 0; i < batch.length; i++) {
       const post = batch[i];
+      if (this._halting) {
+        // Зупинка посеред пакета: решту не чіпали — повертаємо їхні спроби.
+        for (const rest of batch.slice(i)) await this.Post.releaseClaim(rest.id);
+        break;
+      }
       try {
         if (await this._enrichPost(post)) advanced += 1;
       } catch (error) {

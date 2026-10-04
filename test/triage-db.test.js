@@ -210,3 +210,17 @@ test("sweep removes candidates older than the retention", async () => {
   assert.ok(await DiscoveredItem.sweep({ retentionDays: 14, now: later }) >= 1);
   assert.equal(await DiscoveredItem.count({ where: { source_id: src.id } }), 0);
 });
+
+test("leftovers that exhausted their attempts do not block the retry window", async () => {
+  // Регресія (аудит 2026-10-04): відсів спроб був після запиту з limit, тож
+  // limit вичерпаних рядків назавжди займали вікно повторів.
+  const q = new TriageQueue({ profile, log: quiet });
+  const items = [article("business", "Old one"), article("business", "Fresh one")];
+  for (const a of items) await q.add(src, a);
+  const [stuck, fresh] = await Promise.all(items.map((a) => DiscoveredItem.findOne({ where: { source_id: src.id, external_id: a.id } })));
+  await stuck.update({ status: "passed", attempts: 3, last_error: "promote: gone" });
+  await fresh.update({ status: "passed", attempts: 1, last_error: "promote: db locked" });
+
+  const rows = await DiscoveredItem.unpromoted(1, 3);
+  assert.deepEqual(rows.map((r) => r.id), [fresh.id]);
+});

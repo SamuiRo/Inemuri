@@ -389,8 +389,13 @@ Post.releaseClaim = async function (id) {
  * Мітки `post_feedback` на ці пости стосуються старого вердикту — їх
  * повертаємо окремим числом, рішення про них за викликачем.
  *
+ * Рішення дедуплікації (`cluster_id`, `link_role`, `dedup`) теж лишаються:
+ * стерти їх в одного поста означало б зламати кластер, у якому є інші.
+ * Скільки таких — `withDedup`; перерахунок — `flow dedup --reset`
+ * (`flow requeue --reset-dedup`), поки нічого не доставлено.
+ *
  * @param {{ status?: string[], errorLike?: string, modelUsed?: string, dryRun?: boolean }} filter
- * @returns {Promise<{ ids: number[], withFeedback: number }>}
+ * @returns {Promise<{ ids: number[], withFeedback: number, withDedup: number }>}
  */
 Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, promptBelow, dryRun = false } = {}) {
   const { Op } = database.sequelize.Sequelize;
@@ -406,15 +411,16 @@ Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, prom
     )];
   }
 
-  const rows = await this.findAll({ where, attributes: ["id"] });
+  const rows = await this.findAll({ where, attributes: ["id", "cluster_id", "dedup"] });
   const ids = rows.map((r) => r.id);
-  if (ids.length === 0) return { ids, withFeedback: 0 };
+  const withDedup = rows.filter((r) => r.cluster_id != null || r.dedup != null).length;
+  if (ids.length === 0) return { ids, withFeedback: 0, withDedup };
 
   const [[{ n }]] = await database.sequelize.query(
     `SELECT COUNT(DISTINCT post_id) AS n FROM post_feedback WHERE post_id IN (${ids.map(() => "?").join(",")})`,
     { replacements: ids },
   );
-  if (dryRun) return { ids, withFeedback: n };
+  if (dryRun) return { ids, withFeedback: n, withDedup };
 
   await this.update(
     {
@@ -435,7 +441,7 @@ Post.requeue = async function ({ status = ["failed"], errorLike, modelUsed, prom
     },
     { where: { id: ids } },
   );
-  return { ids, withFeedback: n };
+  return { ids, withFeedback: n, withDedup };
 };
 
 export default Post;

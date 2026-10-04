@@ -526,6 +526,7 @@ node src/cli.js flow requeue --dry-run
 node src/cli.js flow requeue --error "HTTP 400"
 node src/cli.js flow requeue --status enriched --model some-model
 node src/cli.js flow requeue --status enriched --prompt-below 2
+node src/cli.js flow requeue --status enriched --reset-dedup
 node src/cli.js flow health
 node src/cli.js flow dedup
 node src/cli.js flow dedup --pairs 30
@@ -541,7 +542,10 @@ verdict and embedding cleared, `text_ocr` kept so vision is not paid for
 twice. Default is every `failed` post; `--error` narrows by `last_error`,
 `--status`/`--model` pick verdicts that cannot be trusted, `--prompt-below`
 re-extracts verdicts made by an older enrich prompt (`analysis.prompt_version`). It reports how many
-of them carry `post_feedback` labels for the old verdict.
+of them carry `post_feedback` labels for the old verdict, and how many keep an
+old deduplication decision: a re-enriched post stays in its cluster with the
+old topic. `--reset-dedup` erases every decision in the same run so they are
+clustered again — refused once anything is delivered.
 
 `flow search` searches the TheFlow corpus: by keywords through SQLite FTS5
 (no AI call, Cyrillic included), or with `--semantic` by meaning through one

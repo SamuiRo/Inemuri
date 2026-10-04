@@ -227,3 +227,51 @@ test("a failed or shed translation does not stop delivery: the original goes out
     await cleanup();
   }
 });
+
+test("sent but the record failed to save — never resent; the write is retried next pass", async () => {
+  // Регресія (аудит 2026-10-04): помилка запису після route() ставала
+  // «невдалою доставкою», і повтор надсилав той самий пост у канали ще раз.
+  const p = await post();
+  const { route, sent } = fakeRouter();
+  const s = stage({ route });
+  const real = database.sequelize.transaction.bind(database.sequelize);
+  let failNext = true;
+  database.sequelize.transaction = (...args) => {
+    if (failNext) {
+      failNext = false;
+      return Promise.reject(Object.assign(new Error("SQLITE_BUSY: database is locked"), { name: "SequelizeTimeoutError" }));
+    }
+    return real(...args);
+  };
+  try {
+    await s.runOnce();
+    const afterFirst = sent.length;
+    assert.ok(afterFirst > 0, "sent once");
+    let P = await Post.findByPk(p.id);
+    assert.equal(P.delivery, null, "the record is not saved yet");
+
+    await s.runOnce();
+    assert.equal(sent.length, afterFirst, "not sent again");
+    P = await Post.findByPk(p.id);
+    assert.equal(P.status, "routed");
+    assert.ok(Array.isArray(P.delivery.delivered) && P.delivery.delivered.length === afterFirst);
+    assert.equal(s._unsaved.size, 0);
+  } finally {
+    database.sequelize.transaction = real;
+  }
+});
+
+test("stop() waits for the running pass", async () => {
+  await post();
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const s = stage({ route: async (md) => { await gate; return fakeRouter().route(md); }, intervalMs: 0 });
+  s.start();
+  await new Promise((r) => setTimeout(r, 50)); // прохід почався і висить на route
+  let stopped = false;
+  const stopping = s.stop({ graceMs: 5_000 }).then((v) => { stopped = true; return v; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(stopped, false, "still waiting for the pass");
+  release();
+  assert.equal(await stopping, true);
+});

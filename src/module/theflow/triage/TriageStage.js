@@ -158,7 +158,7 @@ export class TriageStage {
 
   /** Пропущені минулого разу, але без поста (збій створення) — ще раз, у межах спроб. */
   async _promoteLeftovers() {
-    const rows = (await this.Model.unpromoted(this.batchSize)).filter((r) => (r.attempts ?? 0) < this.maxAttempts);
+    const rows = (await this.Model.unpromoted(this.batchSize, this.maxAttempts)).filter((r) => (r.attempts ?? 0) < this.maxAttempts);
     let promoted = 0;
     for (const row of rows) {
       if (await this._promoteOne(row)) promoted += 1;

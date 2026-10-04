@@ -97,3 +97,13 @@ test("requeue --prompt-below picks verdicts of an older prompt (none recorded = 
   assert.ok(res.ids.includes(v1.id));
   assert.ok(!res.ids.includes(v2.id));
 });
+
+test("requeue reports how many posts keep an old deduplication decision", async () => {
+  const model = `${XID}dd`;
+  const clustered = await make({ status: "enriched", model_used: model, dedup: { decision: "new" }, link_role: "canonical" });
+  await make({ status: "enriched", model_used: model });
+  const res = await Post.requeue({ status: ["enriched"], modelUsed: model, dryRun: true });
+  assert.equal(res.ids.length, 2);
+  assert.equal(res.withDedup, 1);
+  assert.ok(res.ids.includes(clustered.id));
+});

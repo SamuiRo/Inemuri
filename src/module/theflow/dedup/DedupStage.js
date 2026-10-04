@@ -120,11 +120,7 @@ export class DedupStage {
    * @returns {Promise<{ posts: number, clusters: number }>}
    */
   static async reset() {
-    const delivered = (await Cluster.findAll({ attributes: ["id", "delivered"] }))
-      .filter((c) => Array.isArray(c.delivered) && c.delivered.length > 0);
-    if (delivered.length) {
-      throw new Error(`${delivered.length} cluster(s) already delivered — refusing to reset deduplication`);
-    }
+    await DedupStage.assertResettable();
     return await database.sequelize.transaction(async (transaction) => {
       const [suppressed] = await Post.update(
         { status: "enriched" },
@@ -137,6 +133,15 @@ export class DedupStage {
       const clusters = await Cluster.destroy({ where: {}, transaction });
       return { posts: Math.max(posts, suppressed), clusters };
     });
+  }
+
+  /** Кидає, якщо хоч один кластер уже доставлено — тоді reset() заборонений. */
+  static async assertResettable() {
+    const delivered = (await Cluster.findAll({ attributes: ["id", "delivered"] }))
+      .filter((c) => Array.isArray(c.delivered) && c.delivered.length > 0);
+    if (delivered.length) {
+      throw new Error(`${delivered.length} cluster(s) already delivered — refusing to reset deduplication`);
+    }
   }
 
   /** Закриває відкриті кластери, неактивні довше за вікно свого сигналу. */
