@@ -180,6 +180,56 @@ test("gateway error — retried until attempts exhausted, then failed", async ()
   assert.equal(p.status, "failed"); // attempts now 2 >= maxAttempts
 });
 
+test("quota / rate limit error — not a failure: the claim is returned, the rest of the batch waits", async () => {
+  // Регресія (аудит 2026-10-04): денна квота чи 429 після повторів списували
+  // спробу, і за кілька тіків уся черга ставала failed.
+  const posts = await seed(3);
+  let calls = 0;
+  const w = new EnrichWorker({
+    gateway: fakeGateway({ enrich: async () => { calls++; throw Object.assign(new Error("daily quota (429)"), { kind: "quota" }); } }),
+    taxonomy,
+    batchSize: 50,
+    maxAttempts: 1,
+  });
+  await w.runOnce();
+  assert.equal(calls, 1, "the batch stops after the first deferral");
+  for (const p of posts) {
+    await p.reload();
+    assert.equal(p.status, "pending");
+    assert.equal(p.attempts, 0, "the claim is returned");
+    assert.equal(p.last_error, null);
+  }
+});
+
+test("concurrent ingest — no SQLITE_BUSY (transactions are IMMEDIATE)", async () => {
+  // Регресія (аудит 2026-10-04). findOrCreate — транзакція SELECT → INSERT на
+  // окремому з'єднанні. З DEFERRED дві такі (listener + polling) ловили
+  // дедлок блокувань, і SQLite одразу віддавав SQLITE_BUSY: третина вставок
+  // падала, а polling просував checkpoint — пости зникали.
+  const loop = async (tag) => {
+    for (let i = 0; i < 40; i++) {
+      await Post.ingest({
+        source_id: sourceId, platform: "telegram", external_id: `${XID}cc_${tag}_${i}`,
+        channel_id: "-100test", raw_text: "x", status: "pending", attempts: 0,
+      });
+    }
+  };
+  const writer = async () => {
+    for (let i = 0; i < 40; i++) {
+      await database.sequelize.transaction(async (transaction) => {
+        await Post.findOne({ where: { source_id: sourceId }, transaction });
+        await Post.update({ last_error: null }, { where: { external_id: `${XID}cc_a_0` }, transaction });
+      });
+    }
+  };
+  await Promise.all([loop("a"), loop("b"), writer()]);
+  const mine = { source_id: sourceId, external_id: { [database.sequelize.Sequelize.Op.like]: `${XID}cc_%` } };
+  const n = await Post.count({ where: mine });
+  // Не лишати 80 pending: наступні тести беруть найстаріші pending пакетом.
+  await Post.destroy({ where: mine });
+  assert.equal(n, 80);
+});
+
 test("claimPending — increments attempts and returns the rows once", async () => {
   await seed(2);
   const first = await Post.claimPending(50);

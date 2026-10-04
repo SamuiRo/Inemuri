@@ -140,6 +140,7 @@ After a successful login, Inemuri can print a new `TELEGRAM_SESSION` string. Sav
 | `TELEGRAM_SESSION` | Yes after first login | Persisted GramJS session string for Telegram authentication. |
 | `TELEGRAM_API_ID` | Yes | Telegram API ID from your Telegram developer app. |
 | `TELEGRAM_API_HASH` | Yes | Telegram API hash from your Telegram developer app. |
+| `TELEGRAM_PREMIUM` | Optional | `true` if the sending Telegram account has Premium. Media captions are cut to 4096 characters instead of 1024 (longer ones Telegram rejects). Default `false`. |
 | `DISCORD_BOT_TOKEN` | For Discord | Bot token. Without it Discord delivery and discordapp are off; everything else runs. |
 | `CMC_API_KEY` | Optional | Required for the bundled crypto daily cron job. |
 | `DISCORD_COMMAND_WHITELIST` | Optional | Comma-separated Discord user IDs allowed to run admin commands. **Empty = nobody** (since `v4.31.0`). |

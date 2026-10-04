@@ -3,6 +3,7 @@ import { Op } from "sequelize";
 import database from "../../teapot/sqlite/sqlite_db.js";
 import { Post, Cluster } from "../../teapot/models/index.js";
 import { NEVER_SUPPRESS_SIGNALS } from "./DedupCore.js";
+import { isDeferrable } from "../../../services/ai/LLMGateway.js";
 
 /**
  * TheFlow — delta-виклик (ROADMAP §6.6, DEDUPLICATION.md «Step 2»).
@@ -78,6 +79,11 @@ export class DeltaStage {
           { priority: "normal" },
         );
       } catch (error) {
+        // Квота чи rate limit — як shed: не спроба, пакет чекає наступного тіку.
+        if (isDeferrable(error)) {
+          this.log(`[DELTA] deferred (${error.message})`, "warning");
+          break;
+        }
         const attempts = Number(post.adds?.error ? post.adds.attempts : 0) + 1;
         await post.update({
           adds: { error: String(error.message).slice(0, 300), attempts, at: new Date(this.now()).toISOString() },

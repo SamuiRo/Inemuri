@@ -27,6 +27,13 @@ export const TELEGRAM_SESSION =
   process.env.TELEGRAM_SESSION === "" ? null : process.env.TELEGRAM_SESSION;
 export const TELEGRAM_API_ID = +process.env.TELEGRAM_API_ID;
 export const TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH;
+// Чи має акаунт, від якого шле Inemuri, Telegram Premium. Від цього залежить
+// ліміт підпису до медіа: 1024 символи без Premium, 4096 з ним
+// (caption_length_limit_default / _premium у help.getAppConfig). Довший
+// підпис Telegram відхиляє (MEDIA_CAPTION_TOO_LONG). Текст без медіа — 4096
+// для всіх.
+export const TELEGRAM_PREMIUM = process.env.TELEGRAM_PREMIUM === "true";
+export const TELEGRAM_CAPTION_LIMIT = TELEGRAM_PREMIUM ? 4096 : 1024;
 
 // ── Discord ────────────────────────────────────────────────────────────────
 /** Список id через кому; порожні елементи відкидаються. */

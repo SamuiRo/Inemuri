@@ -21,7 +21,11 @@
  */
 
 export const LIMITS = {
-  telegram: 4096, // text і caption однаково: клієнт — user account, не бот
+  telegram: 4096, // текст повідомлення
+  // Підпис до медіа без Premium (з Premium — 4096). Викликач передає
+  // справжній ліміт акаунта (`captionLimit`, TELEGRAM_PREMIUM); за
+  // замовчуванням — безпечний.
+  telegramCaption: 1024,
   discord: 4096, // embed.description
 };
 
@@ -180,8 +184,13 @@ export function renderNotice({ header, relation, text, platform }) {
  * @param {{outcome: string, reason: string}} args.resolved  Результат resolve().
  * @param {string|null} [args.link] Посилання на оригінал.
  * @param {"telegram"|"discord"} args.platform
+ * @param {number} [args.captionLimit]  Ліміт підпису до медіа в Telegram
+ *   (1024 без Premium, 4096 з ним). Діє лише на пост із медіа.
  */
-export function render({ post, cluster = null, members = [], source = null, resolved, link = null, platform }) {
+export function render({
+  post, cluster = null, members = [], source = null, resolved, link = null, platform,
+  captionLimit = LIMITS.telegramCaption,
+}) {
   if (!LIMITS[platform]) throw new Error(`render(): unknown platform ${JSON.stringify(platform)}`);
 
   const topic = post.topic ?? null;
@@ -231,7 +240,12 @@ export function render({ post, cluster = null, members = [], source = null, reso
     // Тіло — raw_text з оригінальними entities (DELIVERY.md: «delivered as
     // written»). Заголовок іде в слот source.name адаптера: header + "\n" +
     // body ≤ ліміту.
-    const max = LIMITS.telegram - header.length - 1;
+    // Пост із медіа йде підписом — його ліміт без Premium 1024, не 4096.
+    // Бюджетувати треба тут: обрізання в адаптері відрізало б обов'язкові
+    // рядки (посилання, діагностику) разом із хвостом тіла. Якщо медіа потім
+    // не завантажиться, текст піде коротшим, ніж міг би, — але піде.
+    const limit = post.has_media ? Math.min(LIMITS.telegram, Number(captionLimit) || LIMITS.telegramCaption) : LIMITS.telegram;
+    const max = limit - header.length - 1;
     const body = composeBody({
       before,
       original: translated ?? post.raw_text ?? "",

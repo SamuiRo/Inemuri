@@ -7,6 +7,46 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.57.2] - 2026-10-04
+
+Fixes from an audit of TheFlow before the shadow week.
+
+### Fixed
+- **Telegram flow posts lost to `SQLITE_BUSY`.** Ingest is a Sequelize
+  `findOrCreate`: a SELECT → INSERT transaction on its own SQLite connection.
+  Two DEFERRED ones (listener and polling, or ingest and a stage) both took a
+  read lock and then both wanted to write; SQLite answered one with
+  `SQLITE_BUSY` at once, without the busy timeout. The listener only logged
+  it, polling advanced its checkpoint, and the post was gone. Measured on a
+  throwaway database: 207 of 600 inserts failed under two ingest loops and a
+  worker. Transactions are now `IMMEDIATE` (`sqlite_db.js`): 600 of 600.
+  `FlowIngest` also retries a busy database (0.2 / 1 / 3 s) and then throws
+  with `transient: true`, which the Telegram listener rethrows — polling keeps
+  its checkpoint and takes the message again next tick. A permanent ingest
+  error is still logged and skipped, so one bad message cannot stall a channel.
+- **A daily quota the provider reported was ignored.** `markExhausted` wrote
+  the flag but the gateway's gate only compared the local counter with `rpd`.
+  When Google ran out first (the same key on another machine, AI Studio, a
+  lower real limit), every post went into a `429` and spent an attempt; the
+  whole pending queue became `failed` within minutes, and triage candidates
+  with it. The gate now refuses an `exhausted` model (the call sheds), and a
+  quota or rate-limit error that outlives the retries is deferred by every
+  stage — `isDeferrable()` in `LLMGateway.js`: the enrich worker returns the
+  claim and releases the rest of the batch, triage and delta wait for the next
+  tick. None of it counts as an attempt.
+- **Media captions over 1024 characters.** Captions were assumed to be 4096
+  for a user account; without Telegram Premium the limit is 1024, and Telegram
+  rejects a longer one (`MEDIA_CAPTION_TOO_LONG`). TheFlow's lead, translation
+  and mandatory lines would have pushed many media posts over it.
+
+### Added
+- `TELEGRAM_PREMIUM` (default `false`): the sending account has Premium, so
+  captions may be 4096. `render()` budgets a post with media to the caption
+  limit (`captionLimit`, passed by `FlowDelivery`), so the link, the
+  unverified-codes line and the diagnostics survive; `TelegramDestination`
+  cuts any caption to the limit and clips its entities as a last resort —
+  this applies to classic forwarding too.
+
 ## [4.57.1] - 2026-10-03
 
 ### Changed

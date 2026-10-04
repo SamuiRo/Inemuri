@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import FlowIngest from "../src/module/theflow/FlowIngest.js";
+import FlowIngest, { isTransientDbError } from "../src/module/theflow/FlowIngest.js";
 
 // The static helpers on FlowIngest are pure — no DB, no network. They shape
 // every row that reaches the corpus, so they are worth pinning down.
@@ -58,4 +58,38 @@ test("_toDate — unix seconds, Date passthrough, null", () => {
   assert.equal(FlowIngest._toDate(d), d);
   assert.deepEqual(FlowIngest._toDate(1_700_000_000), new Date(1_700_000_000 * 1000));
   assert.equal(FlowIngest._toDate("not a date"), null);
+});
+
+test("isTransientDbError — busy / locked database, however Sequelize wraps it", () => {
+  assert.equal(isTransientDbError({ name: "SequelizeTimeoutError", message: "x" }), true);
+  assert.equal(isTransientDbError({ parent: { code: "SQLITE_BUSY" }, message: "x" }), true);
+  assert.equal(isTransientDbError(new Error("SQLITE_BUSY: database is locked")), true);
+  assert.equal(isTransientDbError({ name: "SequelizeUniqueConstraintError", message: "Validation error" }), false);
+  assert.equal(isTransientDbError(new Error("NOT NULL constraint failed")), false);
+  assert.equal(isTransientDbError(null), false);
+});
+
+test("_insert — retries a busy database, then gives up with `transient` so polling keeps its checkpoint", async () => {
+  const busy = () => Object.assign(new Error("SQLITE_BUSY: database is locked"), { name: "SequelizeTimeoutError" });
+  let calls = 0;
+  const slept = [];
+  const flaky = new FlowIngest({
+    PostModel: { ingest: async () => { calls++; if (calls < 3) throw busy(); return [{ id: 1 }, true]; } },
+    retryDelaysMs: [1, 2, 3],
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  assert.deepEqual(await flaky._insert({}), [{ id: 1 }, true]);
+  assert.deepEqual(slept, [1, 2]);
+
+  const stuck = new FlowIngest({ PostModel: { ingest: async () => { throw busy(); } }, retryDelaysMs: [1], sleep: async () => {} });
+  await assert.rejects(stuck._insert({}), (e) => e.transient === true);
+
+  let tries = 0;
+  const broken = new FlowIngest({
+    PostModel: { ingest: async () => { tries++; throw new Error("NOT NULL constraint failed"); } },
+    retryDelaysMs: [1, 1],
+    sleep: async () => {},
+  });
+  await assert.rejects(broken._insert({}), (e) => !e.transient);
+  assert.equal(tries, 1, "a permanent error is not retried");
 });

@@ -181,6 +181,16 @@ the wall rather than after. The counter resets on the provider's schedule
 (usually the UTC day). Without this, the first exhausted quota produces a burst
 of failures instead of a clean switchover.
 
+**The provider's word beats the counter.** A daily-quota `429` marks the
+model `exhausted` for the day, and the gate refuses it from then on even if
+the local count is below `rpd` — the counter only sees this database, while
+the same key on another machine, AI Studio, or a lower limit on Google's side
+use the quota too. A refused call sheds, and a quota or rate-limit error that
+survives the retries is *deferred* by every stage (`isDeferrable()`): the
+enrich claim is returned, triage and delta wait for the next tick. Neither
+counts as an attempt (v4.57.2; before it a mismatch turned the whole pending
+queue `failed` within minutes).
+
 **The counter is per provider, not per capability.** `enrich`, `embed`, and
 `vision` draw on the same daily allowance. Counting them separately produces a
 specific and confusing failure: vision, which costs several times more per call,

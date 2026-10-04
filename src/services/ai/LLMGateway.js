@@ -43,6 +43,16 @@ import { OpenAICompatProvider } from "./providers/OpenAICompatProvider.js";
 
 const PRIORITIES = ["critical", "normal", "low"];
 
+/**
+ * Помилка, яка означає «зараз не можна», а не «з цим постом щось не так»:
+ * денна квота або rate limit, що пережив повтори. Стадії мають відкласти
+ * роботу (як shed), а не списувати спробу — інакше сплеск 429 робить
+ * справні пости failed.
+ */
+export function isDeferrable(error) {
+  return error?.kind === "quota" || error?.kind === "rate_limit";
+}
+
 // Текст джерела для перевірки дослівності: заголовок (Reddit, новини) — теж
 // текст джерела, код чи тікер із нього не вигадка моделі.
 const sourceText = (input) => [input.title, input.text].filter((s) => s && String(s).trim() !== "").join("\n");
@@ -334,7 +344,15 @@ export class LLMGateway {
     if (!entry.breaker.allow()) return "circuit open";
 
     const { rpd } = this._limitsFor(entry, model);
-    const used = await this.quota.used(this._quotaKey(entry, model), this._quotaDay(entry));
+    const key = this._quotaKey(entry, model);
+    const day = this._quotaDay(entry);
+    // Провайдер сам сказав «денну квоту вичерпано» — віримо йому, а не
+    // лічильнику. Лічильник бачить лише виклики цієї бази: той самий ключ на
+    // іншій машині, AI Studio чи занижений Google ліміт вичерпують квоту
+    // раніше, ніж used дійде до rpd. Без цієї перевірки кожен наступний пост
+    // ішов у 429 і списував спробу — уся черга за хвилини ставала failed.
+    if (await this.quota.isExhausted?.(key, day)) return "quota exhausted";
+    const used = await this.quota.used(key, day);
     if (used >= rpd) return "quota exhausted";
 
     if (priority !== "critical" && rpd !== Infinity) {

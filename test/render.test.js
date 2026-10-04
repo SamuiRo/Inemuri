@@ -187,3 +187,19 @@ test("text_uk — absent or blank keeps the original body and entities", () => {
     assert.equal(r.entities.length, 1);
   }
 });
+
+test("telegram: a post with media fits the caption limit (1024 without Premium), text-only keeps 4096", () => {
+  const long = "x".repeat(10_000);
+  const withMedia = post({ raw_text: long, has_media: true });
+  const r = render({ post: withMedia, source: "Chan", resolved: routed, platform: "telegram", link: "https://t.me/c/1/2" });
+  assert.equal(LIMITS.telegramCaption, 1024, "the safe default");
+  assert.ok(r.header.length + 1 + r.body.length <= 1024);
+  assert.ok(r.body.includes("https://t.me/c/1/2"), "mandatory lines survive the shorter budget");
+
+  const premium = render({ post: withMedia, source: "Chan", resolved: routed, platform: "telegram", captionLimit: 4096 });
+  assert.ok(premium.header.length + 1 + premium.body.length > 1024);
+  assert.ok(premium.header.length + 1 + premium.body.length <= 4096);
+
+  const textOnly = render({ post: post({ raw_text: long }), source: "Chan", resolved: routed, platform: "telegram" });
+  assert.ok(textOnly.header.length + 1 + textOnly.body.length > 1024, "no media — the message limit applies");
+});

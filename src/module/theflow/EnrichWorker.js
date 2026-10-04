@@ -1,6 +1,7 @@
 import { print } from "../../shared/utils.js";
 import { Post } from "../teapot/models/index.js";
 import { ENRICH_PROMPT_VERSION } from "../../services/ai/prompts/enrich.js";
+import { isDeferrable } from "../../services/ai/LLMGateway.js";
 import {
   CATEGORIES,
   ENRICH_TICK_MS,
@@ -132,11 +133,18 @@ export class EnrichWorker {
     if (batch.length === 0) return 0;
 
     let advanced = 0;
-    for (const post of batch) {
+    for (let i = 0; i < batch.length; i++) {
+      const post = batch[i];
       try {
         if (await this._enrichPost(post)) advanced += 1;
       } catch (error) {
         await this._recordFailure(post, error);
+        if (isDeferrable(error)) {
+          // Провайдер не приймає — решта пакета впреться в те саме. Повертаємо
+          // їхні спроби і чекаємо наступного тіку.
+          for (const rest of batch.slice(i + 1)) await this.Post.releaseClaim(rest.id);
+          break;
+        }
       }
     }
     return advanced;
@@ -233,6 +241,13 @@ export class EnrichWorker {
   }
 
   async _recordFailure(post, error) {
+    // Квота чи rate limit — не вада поста: повертаємо спробу, пост лишається
+    // pending і піде, коли провайдер знову прийматиме.
+    if (isDeferrable(error)) {
+      await this.Post.releaseClaim(post.id);
+      print(`[ENRICH] posts#${post.id} deferred (${error.message}) — left pending`, "warning");
+      return;
+    }
     // `attempts` was already incremented at claim time (§13.1).
     const exhausted = (post.attempts ?? 0) >= this.maxAttempts;
     await post.update({

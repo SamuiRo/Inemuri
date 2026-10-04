@@ -5,6 +5,7 @@ import { Post, Source, Cluster } from "../../teapot/models/index.js";
 import { resolve } from "../ResolveStage.js";
 import { render, renderNotice } from "./render.js";
 import { telegramLink } from "../search/HistorySearch.js";
+import { TELEGRAM_CAPTION_LIMIT } from "../../../config/app.config.js";
 
 const HOUR = 3_600_000;
 const timeOf = (p) => new Date(p.posted_at ?? p.createdAt).getTime();
@@ -92,6 +93,7 @@ export class FlowDelivery {
    *   flowFor?: (post: object) => Promise<object|null>,
    *   translate?: ((input: { text: string, title: string|null }) => Promise<{ text_uk: string, model_used?: string }|{ shed: true }>)|null,
    *     Переклад поста не українською (LLMGateway.translate). null — без перекладу.
+   *   captionLimit?: number,  Ліміт підпису до медіа в Telegram (TELEGRAM_PREMIUM).
    *   dedupEnabled?: boolean,
    *   maxAgeHours?: number,
    *   batchSize?: number,
@@ -104,7 +106,7 @@ export class FlowDelivery {
   constructor({
     route, sendTo = async () => null, edit = async () => { throw new Error("edit not wired"); },
     resolveMedia = async () => [], routing, flowFor = async () => null, translate = null,
-    dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
+    captionLimit = TELEGRAM_CAPTION_LIMIT, dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
     intervalMs = 15_000, now = Date.now, log = () => {},
   }) {
     this.route = route;
@@ -114,6 +116,7 @@ export class FlowDelivery {
     this.routing = routing;
     this.flowFor = flowFor;
     this.translate = translate;
+    this.captionLimit = captionLimit;
     this.dedupEnabled = dedupEnabled;
     this.maxAgeHours = maxAgeHours;
     this.batchSize = batchSize;
@@ -219,7 +222,7 @@ export class FlowDelivery {
     return render({
       post: plain, cluster: plainOf(cluster), members: members.map(plainOf),
       source: (await this._source(post.source_id))?.channel_name ?? null,
-      resolved, link: telegramLink(plain), platform,
+      resolved, link: telegramLink(plain), platform, captionLimit: this.captionLimit,
     });
   }
 

@@ -3,6 +3,27 @@ import { CustomFile } from "telegram/client/uploads.js";
 import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
 import telegramClient from "../../module/telegram/TelegramClient.js";
 import { print } from "../../shared/utils.js";
+import { TELEGRAM_CAPTION_LIMIT } from "../../config/app.config.js";
+
+/**
+ * Entities (Api.MessageEntity*), що лежать у [0, end): за межею — геть,
+ * через межу — укорочені. Свіжі об'єкти: buildFormattingEntities будує їх
+ * на кожну відправку, але чужі мутувати не будемо.
+ */
+export function clipEntities(entities, end) {
+  const out = [];
+  for (const e of entities ?? []) {
+    if (!(e.offset < end) || !(e.length > 0)) continue;
+    if (e.offset + e.length <= end) {
+      out.push(e);
+      continue;
+    }
+    const clipped = Object.assign(Object.create(Object.getPrototypeOf(e)), e);
+    clipped.length = end - e.offset;
+    out.push(clipped);
+  }
+  return out;
+}
 
 class TelegramDestinationAdapter extends BaseDestinationAdapter {
   constructor(eventBus) {
@@ -12,7 +33,10 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     // Telegram ліміти для user accounts (MTProto, не Bot API)
     this.limits = {
       fileSize: 2000 * 1024 * 1024, // 2GB для user accounts
-      caption: 4096, // MTProto user account: caption = message ліміт (Bot API має 1024, ми не бот)
+      // Підпис до медіа: 1024 без Premium, 4096 з ним (TELEGRAM_PREMIUM).
+      // Раніше тут стояло 4096 для всіх — довший за 1024 підпис з акаунта без
+      // Premium Telegram відхиляв (MEDIA_CAPTION_TOO_LONG).
+      caption: TELEGRAM_CAPTION_LIMIT,
       message: 4096, // максимальна довжина текстового повідомлення
     };
 
@@ -265,6 +289,10 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     }
 
     const caption = this.truncateText(text || "", this.limits.caption);
+    // Entities за межею обрізаного підпису Telegram відхиляє — підганяємо.
+    if (caption.length < (text || "").length && options.formattingEntities?.length) {
+      options = { ...options, formattingEntities: clipEntities(options.formattingEntities, caption.length) };
+    }
 
     // Якщо одне медіа - відправляємо як одиночне
     if (validMedia.length === 1) {

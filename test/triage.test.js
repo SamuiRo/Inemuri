@@ -164,3 +164,20 @@ test("gateway.triage: validated, cached by the batch and profile, sheds under qu
   const busy = gateway(async () => { throw new Error("must not be called"); }, { used: 90 });
   assert.deepEqual(await busy.triage(input), { shed: true, reason: "quota reserve" });
 });
+
+test("TriageStage: a quota error defers the batch — no attempt is recorded", async () => {
+  const { TriageStage } = await import("../src/module/theflow/triage/TriageStage.js");
+  const updates = [];
+  const row = { id: 1, attempts: 0, createdAt: new Date(0), update: async (patch) => updates.push(patch) };
+  const stage = new TriageStage({
+    gateway: { triage: async () => { throw Object.assign(new Error("daily quota"), { kind: "quota" }); } },
+    promote: async () => ({ id: 9 }),
+    profile,
+    batchSize: 1,
+    Model: { nextPending: async () => [row], unpromoted: async () => [] },
+    log: () => {},
+  });
+  stage._describe = async (batch) => batch.map(() => ({ title: "t" }));
+  assert.equal(await stage.runOnce(), 0);
+  assert.deepEqual(updates, [], "the candidate keeps its attempts and stays pending");
+});

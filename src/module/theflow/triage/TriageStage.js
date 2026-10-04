@@ -2,6 +2,7 @@ import { DiscoveredItem, Source } from "../../teapot/models/index.js";
 import { FLOW_TRIAGE } from "../../../config/app.config.js";
 import { print } from "../../../shared/utils.js";
 import { shouldSample } from "./rules.js";
+import { isDeferrable } from "../../../services/ai/LLMGateway.js";
 
 /**
  * TheFlow — LLM-triage заголовків (NEWS_INTAKE.md §2.3, ROADMAP §14.3).
@@ -71,6 +72,11 @@ export class TriageStage {
         examplesHash: shots.hash,
       }, { priority: "normal" });
     } catch (error) {
+      if (isDeferrable(error)) {
+        // Квота чи rate limit — не вада заголовків: спроби не списуємо.
+        this.log(`[TRIAGE] ${batch.length} candidate(s) deferred (${error.message})`, "warning");
+        return advanced;
+      }
       await this._recordFailure(batch, `${error.kind ?? "error"}: ${error.message}`);
       this.log(`[TRIAGE] batch of ${batch.length} failed: ${error.message}`, "warning");
       return advanced;

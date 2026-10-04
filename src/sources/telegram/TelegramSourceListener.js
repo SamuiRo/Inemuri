@@ -524,6 +524,13 @@ class TelegramSourceListener extends BaseSourceAdapter {
   /**
    * TheFlow стадія 1: regex-стадія + ідемпотентний INSERT у `posts`.
    * Помилка ingest НЕ валить update-loop — логуємо як подію і рухаємось далі.
+   *
+   * Виняток — тимчасова (база зайнята, `error.transient`): її кидаємо далі.
+   * Для polling це означає, що checkpoint не просунеться і повідомлення
+   * заберуть наступного тіку (ingest ідемпотентний). Раніше тут ковталось
+   * усе, polling робив state.advance() — і пост зникав без сліду.
+   * Постійну помилку далі не кидаємо: одне биге повідомлення не має
+   * назавжди зупинити опитування каналу.
    */
   async _ingestToFlow(messageData, text, compiledFilter, source) {
     try {
@@ -557,6 +564,7 @@ class TelegramSourceListener extends BaseSourceAdapter {
         context: `theflow-ingest:${messageData.channelId}`,
         stack:   error.stack,
       });
+      if (error.transient) throw error;
     }
   }
 

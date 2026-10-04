@@ -6,8 +6,8 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.57.1`; pushed up to `v4.57.0`. 17
-migrations; `npm test` is 587 green `node --test` cases on a throwaway
+`v4.57.2`; pushed up to `v4.57.0`. 17
+migrations; `npm test` is 597 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
 
@@ -71,7 +71,8 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
 4. **Destination channels** (ROADMAP §5.1): create them, put them in
    `routing.json`, design the template with
    `node src/cli.js flow preview --ignore-age --limit 10`, then
-   `FLOW_DELIVERY_ENABLED=true`.
+   `FLOW_DELIVERY_ENABLED=true`. The sending account has no Premium, so
+   `TELEGRAM_PREMIUM` stays unset: media posts are budgeted to 1024.
 5. **Deduplication thresholds** once several sources produce:
    `node src/cli.js flow dedup --pairs 30`, set `DEDUP_HIGH`/`DEDUP_LOW`,
    `flow dedup --reset --run` (only while nothing is delivered).
@@ -108,6 +109,20 @@ retired documents that describe a design never built — do not cite them.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-04 — audit of TheFlow, three fixes
+
+An audit of the whole flow path before the shadow week. Two critical bugs,
+both reproduced before fixing: concurrent `findOrCreate` transactions lost a
+third of Telegram flow posts to `SQLITE_BUSY` (now `IMMEDIATE`, plus retries
+that keep the polling checkpoint), and a provider-reported daily quota was
+ignored, which would have turned the pending queue `failed` (now refused and
+deferred). Media captions are budgeted to 1024 (`TELEGRAM_PREMIUM`, the
+operator has no Premium). Not fixed, noted for later: a DB error after a
+successful send makes delivery resend; `flow requeue --status enriched` keeps
+old dedup decisions (run `flow dedup --reset --run` after it while nothing is
+delivered); album text is taken from the first message only; triage
+leftovers can block the retry window; shutdown does not wait for the tick.
 
 ### 2026-10-03 — the first 18 Telegram channels
 

@@ -399,3 +399,31 @@ test("a real failure still throws even when another provider was refused at the 
   }, { quota });
   await assert.rejects(() => g.enrich(input()), (e) => e.kind === "server");
 });
+
+test("quota — a provider that answered `daily quota` is not called again that day, the call sheds", async () => {
+  // Регресія (аудит 2026-10-04). markExhausted писав позначку, але _gate її не
+  // читав: якщо Google вичерпав квоту раніше за локальний лічильник (той самий
+  // ключ на іншій машині), кожен пост ішов у 429 і списував спробу.
+  const quota = fakeQuota();
+  let calls = 0;
+  const g = mkGateway({ primary: fakeProvider("primary", {
+    complete: async () => { calls++; const e = new Error("daily quota"); e.kind = "quota"; throw e; },
+  }) }, { quota, meta: { primary: { rpd: 500 } } });
+  await assert.rejects(g.enrich(input()), (e) => e.kind === "quota");
+  assert.ok(quota._exhausted.has("primary:m-primary"));
+
+  const next = await g.enrich({ ...input(), text: "another post with SAVE20" });
+  assert.equal(next.shed, true, "deferred, not an error");
+  assert.match(next.reason, /quota exhausted/);
+  assert.equal(calls, 1, "no second call to an exhausted provider");
+});
+
+test("isDeferrable — quota and rate limit mean `not now`, the rest are failures", async () => {
+  const { isDeferrable } = await import("../src/services/ai/LLMGateway.js");
+  assert.equal(isDeferrable({ kind: "quota" }), true);
+  assert.equal(isDeferrable({ kind: "rate_limit" }), true);
+  for (const kind of ["server", "network", "bad_response", "unavailable", undefined]) {
+    assert.equal(isDeferrable({ kind }), false, String(kind));
+  }
+  assert.equal(isDeferrable(null), false);
+});

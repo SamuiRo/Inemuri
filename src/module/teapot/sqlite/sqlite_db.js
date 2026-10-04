@@ -12,6 +12,14 @@ export class Database {
       dialect: "sqlite",
       storage: SQLITE_STORAGE, // абсолютний шлях
       logging: false,
+      // IMMEDIATE, а не DEFERRED за замовчуванням. Sequelize відкриває кожну
+      // транзакцію на окремому з'єднанні SQLite, а findOrCreate (ingest
+      // TheFlow) — це транзакція SELECT → INSERT. Дві DEFERRED-транзакції
+      // спершу обидві беруть SHARED, потім обидві хочуть писати — SQLite
+      // віддає одній SQLITE_BUSY одразу, без busy_timeout (дедлок). Під
+      // listener + polling + воркером так падала третина вставок. IMMEDIATE
+      // бере блокування запису на BEGIN, і конкуренти просто чекають.
+      transactionType: "IMMEDIATE",
       pool: {
         max: 5,
         min: 0,

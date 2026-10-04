@@ -26,6 +26,20 @@ import {
  * важливо мати has_media та хеш, але не ціною мережі в update-loop).
  */
 
+// Повтори INSERT при зайнятій базі (SQLITE_BUSY). IMMEDIATE-транзакції
+// (sqlite_db.js) прибирають дедлок, але інший процес (CLI) може тримати
+// блокування довше за busy_timeout — тоді краще почекати, ніж загубити пост.
+const BUSY_RETRY_DELAYS_MS = [200, 1_000, 3_000];
+
+/** Зайнята/заблокована база — тимчасово, варто повторити. */
+export function isTransientDbError(error) {
+  if (!error) return false;
+  if (error.name === "SequelizeTimeoutError") return true; // так Sequelize загортає SQLITE_BUSY
+  const code = error.parent?.code ?? error.original?.code ?? error.code;
+  if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return true;
+  return /SQLITE_BUSY|SQLITE_LOCKED|database is locked/i.test(String(error.message ?? ""));
+}
+
 const REAL_MEDIA_TYPES = new Set([
   "photo", "video", "video_note", "document", "animation", "audio",
 ]);
@@ -34,9 +48,35 @@ export class FlowIngest {
   constructor({
     minTextLength = THEFLOW_MIN_TEXT_LENGTH,
     repostWindowHours = THEFLOW_REPOST_WINDOW_HOURS,
+    PostModel = Post,
+    retryDelaysMs = BUSY_RETRY_DELAYS_MS,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   } = {}) {
     this._regex = new RegexStage({ minTextLength });
     this._repostWindowMs = repostWindowHours * 60 * 60 * 1000;
+    this.Post = PostModel;
+    this._retryDelaysMs = retryDelaysMs;
+    this._sleep = sleep;
+  }
+
+  /**
+   * Post.ingest з повторами на зайнятій базі. Вичерпані повтори — помилка з
+   * `transient: true`: викликач (polling) не має просувати checkpoint, інакше
+   * пост втрачено назавжди. Інші помилки — як є, без повторів.
+   */
+  async _insert(fields) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.Post.ingest(fields);
+      } catch (error) {
+        if (!isTransientDbError(error)) throw error;
+        if (attempt >= this._retryDelaysMs.length) {
+          error.transient = true;
+          throw error;
+        }
+        await this._sleep(this._retryDelaysMs[attempt]);
+      }
+    }
   }
 
   /**
@@ -75,7 +115,7 @@ export class FlowIngest {
     let status = stage.status;
     if (status === "ok" && stage.textHash) {
       const since = new Date(Date.now() - this._repostWindowMs);
-      const earlier = await Post.findOne({
+      const earlier = await this.Post.findOne({
         where: {
           source_id: source.id,
           text_hash: stage.textHash,
@@ -102,7 +142,7 @@ export class FlowIngest {
         ? FlowIngest._buildMediaRef(channelId, messageData)
         : { kind: "url", urls: mediaUrls };
 
-    const [post, created] = await Post.ingest({
+    const [post, created] = await this._insert({
       source_id: source.id,
       platform,
       // external_id — універсальна ідентичність елемента: Telegram message id

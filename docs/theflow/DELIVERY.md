@@ -89,7 +89,7 @@ window expired — fall back to a reply carrying the re-rendered content.
 
 | Platform | Where the body goes | Limit |
 |---|---|---|
-| Telegram | message text, or media caption | 4096 for both. The client is a user account over MTProto, not a bot, so the Bot API's 1024-character caption limit does not apply |
+| Telegram | message text, or media caption | Text 4096. Caption 1024 without Telegram Premium on the sending account, 4096 with it (`TELEGRAM_PREMIUM`). `render()` budgets a post with media to the caption limit, so the mandatory lines survive; the adapter also cuts and clips entities as a last resort |
 | Discord | `embed.description` | 4096, within a 6000-character budget across the whole embed |
 
 Discord delivery already goes **exclusively through embeds**

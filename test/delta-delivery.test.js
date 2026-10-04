@@ -211,3 +211,35 @@ test("a new canonical in a delivered cluster rewrites the message instead of sen
   assert.equal(R.delivery.rewrote_cluster, cluster.id);
   assert.equal(R.status, "routed");
 });
+
+test("delta: a quota error stops the batch without an attempt, like a shed", async () => {
+  const { cluster } = await clusterWith();
+  const p = await post({ cluster_id: cluster.id, link_role: "linked" });
+  const quota = Object.assign(new Error("daily quota"), { kind: "quota" });
+  await new DeltaStage({ gateway: fakeGateway(quota) }).runOnce();
+  assert.equal((await Post.findByPk(p.id)).adds, null);
+});
+
+test("Telegram: a caption over the limit is cut and its entities clipped to it", async () => {
+  const { default: TelegramDestination, clipEntities } = await import("../src/destinations/telegram/TelegramDestination.js");
+  const { Api } = await import("telegram");
+  const bold = new Api.MessageEntityBold({ offset: 5, length: 10 });
+  const clipped = clipEntities([bold, new Api.MessageEntityItalic({ offset: 20, length: 3 })], 10);
+  assert.equal(clipped.length, 1);
+  assert.equal(clipped[0].length, 5);
+  assert.equal(clipped[0].className, "MessageEntityBold");
+  assert.equal(bold.length, 10, "the original entity is not mutated");
+
+  const tg = Object.create(TelegramDestination.prototype);
+  tg.limits = { caption: 1024 };
+  tg.prepareMediaForSend = async (m) => m;
+  let sent;
+  tg.sendSingleMedia = async (entity, media, caption, options) => { sent = { caption, options }; return { id: 1 }; };
+  await tg.sendWithMedia({}, "y".repeat(2000), [{ type: "photo", data: Buffer.from("x") }], {
+    formattingEntities: [new Api.MessageEntityBold({ offset: 1000, length: 100 }), new Api.MessageEntityBold({ offset: 1500, length: 5 })],
+  });
+  assert.equal(sent.caption.length, 1024);
+  assert.equal(sent.options.formattingEntities.length, 1);
+  const e = sent.options.formattingEntities[0];
+  assert.ok(e.offset + e.length <= 1024);
+});
