@@ -6,8 +6,8 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.57.3`; pushed up to `v4.57.0`. 17
-migrations; `npm test` is 605 green `node --test` cases on a throwaway
+`v4.58.0`; pushed up to `v4.57.0`. 18
+migrations; `npm test` is 623 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
 
@@ -18,6 +18,7 @@ tests on every push.
 | Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Ready for the shadow week** |
 | Taxonomy | `categories.json` v3: v2 (`health`, `mind`, `money`, `markets`; `research`, `report`) + `games`, `p2e`; `meme` |
 | Delivery extras | Ads (`is_ad`) → `#unsorted`; routed posts not in Ukrainian are translated (`translate()`, only for what is sent); `filters.min_length` |
+| Status board | Built (`v4.58.0`): silent sources and channels, one message edited in place; on with `status_destinations` |
 | discordapp | Complete and in production ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); one piece not run live: `/export-chats` to Telegram |
 
 **Dev copy.** 18 Telegram channels from the operator's list
@@ -69,11 +70,18 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    version), set the market cap and corroboration rules (NEWS_INTAKE.md §5).
 3. **Phase 6 step 4** — article text for what passed triage (JSON-LD
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
-4. **Destination channels** (ROADMAP §5.1): create them, put them in
-   `routing.json`, design the template with
-   `node src/cli.js flow preview --ignore-age --limit 10`, then
+4. **Destination channels — prepared, applied with the deploy.** The server
+   config (git-ignored) creates the test channels in the staff category;
+   the local `routing.json` routes to them with `TODO:<key>` placeholders.
+   On the VPS, with the production bot: follow DEPLOYMENT.md "Turning on
+   delivery to test channels and the status board" — migrate, apply, delete
+   the old texts and panels (posted by the test bot), `discordapp.js ids` →
+   fill the placeholders, `flow preflight` → Ready, `flow preview`, then
    `FLOW_DELIVERY_ENABLED=true`. The sending account has no Premium, so
-   `TELEGRAM_PREMIUM` stays unset: media posts are budgeted to 1024.
+   `TELEGRAM_PREMIUM` stays unset: media posts are budgeted to 1024. The
+   post template is no longer a draft (DELIVERY.md "The template"); the
+   server texts, embed role panels and the announcement in news are in the
+   git-ignored config and go out with the same apply.
 5. **Deduplication thresholds** once several sources produce:
    `node src/cli.js flow dedup --pairs 30`, set `DEDUP_HIGH`/`DEDUP_LOW`,
    `flow dedup --reset --run` (only while nothing is delivered).
@@ -110,6 +118,21 @@ retired documents that describe a design never built — do not cite them.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-04 — the server and routing for the test week
+
+The operator's server was redesigned for TheFlow (config and texts only,
+git-ignored): almost every topic behind its own role, role panels by group,
+new channels created in the staff category for the test week, the archive
+for a dedicated role only. Code for it, generic: routing by source,
+`also` rules for a shared codes channel, the status board, `discordapp.js
+ids`, placeholder checks in preflight. Nothing was applied: the operator
+applies on the VPS with the production bot. A plan with an empty state
+(what the VPS will see) adopts everything cleanly and reposts the 9 managed
+messages — the old copies are deleted by hand. Then the texts: the delivery
+template in Ukrainian with codes, events and diagnostics as embed fields,
+role panels as embeds (new generic option), the status board in Ukrainian,
+and the server texts plus an announcement in news (git-ignored).
 
 ### 2026-10-04 — audit of TheFlow, three fixes
 

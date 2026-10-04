@@ -156,6 +156,31 @@ Whatever the final wording, these are fixed by other documents:
   "reply instead of edit when too long" rule from DEDUPLICATION.md is not
   needed.
 
+## The template (v4.58.0)
+
+The draft became the template. Ukrainian throughout, like the translation and
+the lead — delivery is addressed to a Ukrainian reader.
+
+- **Axes** read as words: `🕹️ Ігри · 🎟 Промокод` (`TEMPLATE.topicLabel`,
+  `signalLabel`, `signalEmoji`); an unknown key is shown as is.
+- **Discord** is a full embed: the source is the author, the Ukrainian lead
+  (`summary_uk`, or the article title for news and Reddit) is the title, both
+  linking to the original; the body is the description; promo codes, the
+  event, additions and — in `#unsorted` only — the diagnostics are fields;
+  axes and "also reported by N" are the footer; the post's time is the embed
+  timestamp. Codes are inline code (`` `SAVE20` ``) — copyable — with the
+  expiry and an "read from an image, check it" note; times are Discord
+  timestamps (`<t:…:f>` plus relative), so every reader sees their own zone;
+  a date without a time stays text, because midnight UTC would show as the
+  previous day in western zones. The description gets what is left of the
+  6000-character embed budget after everything else.
+- **Telegram** keeps text: lead and event above the body, then one line per
+  code with a `MessageEntityCode` over the code — one tap copies it — and the
+  rest of the mandatory lines. `composeBody()` takes lines as plain strings or
+  `{ text, entities }` and rebases their entities.
+- `DiscordDestination` reads `title`, `fields` and `timestamp` from
+  `messageData.embed`, besides colour, footer and the link.
+
 ## Translation (v4.57.0)
 
 The readers are Ukrainian; most source channels are not. A post the model

@@ -317,6 +317,16 @@ synthetic `message.received`, the path cron messages use. It reads `posts`,
 `sources` and `provider_quota` and knows nothing of Telegram or Discord;
 `inemuri.js` injects the delivery.
 
+**Status board.** `src/module/status/` — not part of TheFlow: it watches
+every source and delivery channel. `SourceActivity` records when a source last
+published (`source_states.last_seen_at`, migration `018`) from the Telegram
+listener, polling and the feed poller, throttled and in the background so
+ingest never waits; `collect.js` reads sources and asks each destination
+adapter's `describeChannel()` when its channel last got a message;
+`StatusBoard` renders one message and edits it in place in each
+`status_destinations` entry (`status_messages` remembers which). It knows no
+platform — `inemuri.js` injects send, edit and the adapters.
+
 **Phase 1.5 (vision) is implemented**, off on every source until
 `flow.vision.enabled` is set. `src/module/theflow/VisionStage.js` runs inside
 the worker between ingest and enrichment — ingest itself still makes no

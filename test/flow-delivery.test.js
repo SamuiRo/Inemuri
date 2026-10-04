@@ -83,9 +83,10 @@ test("a routed post goes to both platforms, becomes routed, and the cluster reco
   const tg = sent.find((m) => m.source.destinations.telegram);
   const ds = sent.find((m) => m.source.destinations.discord);
   assert.deepEqual(tg.source.destinations, { telegram: ["-100steam"] });
-  assert.match(tg.source.name, /^Deliv Src — 🎮 steam · event$/);
-  assert.match(tg.rawText, /📡 Also reported by 1 more channel/);
-  assert.equal(ds.embed.footer, "steam · event");
+  assert.match(tg.source.name, /^Deliv Src — 🎮 Steam · 📅 Подія$/);
+  assert.match(tg.rawText, /📡 Також повідомили ще 1 канал/);
+  assert.equal(ds.embed.footer, "🎮 Steam · 📅 Подія · 📡 Також повідомили ще 1 канал");
+  assert.ok(ds.embed.timestamp, "the post's time goes into the embed");
   assert.equal(tg.downloadedMedia.length, 1, "media fetched once, lazily, for a post actually sent");
   assert.ok(Buffer.isBuffer(tg.downloadedMedia[0].data), "adapters read `data`, resolvers give `buffer`");
   assert.equal(mediaCalls.length, 1);

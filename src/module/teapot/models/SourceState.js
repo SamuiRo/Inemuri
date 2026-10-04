@@ -46,6 +46,14 @@ export const SourceState = database.sequelize.define("SourceState", {
     defaultValue: null,
     comment: "Коли був встановлений початковий baseline",
   },
+  last_seen_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+    comment:
+      "Коли джерело востаннє публікувало, наскільки це бачив Inemuri (будь-який режим). " +
+      "NULL — не бачили відтоді, як почали стежити. Міграція 018, читає статус-борд",
+  },
 }, {
   tableName: "source_states",
   timestamps: true,
@@ -77,6 +85,19 @@ SourceState.getOrCreate = async function (sourceId) {
 SourceState.hasBaseline = async function (sourceId) {
   const state = await this.findOne({ where: { source_id: sourceId } });
   return state !== null && state.last_message_id !== null;
+};
+
+/**
+ * Позначити, що джерело опублікувало в момент `at` (статус-борд). Лише
+ * вперед: пізніше побачене старе повідомлення (polling наздоганяє) час не
+ * відкочує. Один UPSERT-подібний прохід — рядок створюється для будь-якого
+ * джерела, не лише polling.
+ */
+SourceState.touch = async function (sourceId, at = new Date()) {
+  const state = await this.getOrCreate(sourceId);
+  if (state.last_seen_at && new Date(state.last_seen_at).getTime() >= at.getTime()) return false;
+  await state.update({ last_seen_at: at });
+  return true;
 };
 
 // ==================== INSTANCE МЕТОДИ ====================

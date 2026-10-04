@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { CATEGORIES, ROUTING } from "../src/config/app.config.js";
+import { CATEGORIES } from "../src/config/app.config.js";
+// Зразок, а не ROUTING: той читає локальний routing.json, коли він є, і тест
+// залежав би від даних розгортання.
+import ROUTING from "../src/config/routing.sample.json" with { type: "json" };
 import { validateStructural } from "../src/services/ai/schemas.js";
 
 // The shipped categories.json must stay a well-formed closed taxonomy — the

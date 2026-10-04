@@ -166,10 +166,10 @@ test("a denial ignores the cap: the message is edited AND a reply with the denia
   const t = fakeTransport();
   await new FlowDelivery({ ...t, routing }).refreshOnce();
   assert.equal(t.edits.length, 1);
-  assert.match(t.edits[0].md.rawText, /⛔ Denied: скасовано/);
+  assert.match(t.edits[0].md.rawText, /⛔ Спростовано: скасовано/);
   assert.equal(t.sends.length, 1);
   assert.equal(t.sends[0].md.replyTo, 77, "the denial replies to the original, so it notifies");
-  assert.match(t.sends[0].md.rawText, /⛔ Denied: скасовано/);
+  assert.match(t.sends[0].md.rawText, /⛔ Спростовано: скасовано/);
   const modes = (await Post.findByPk(p.id)).adds.applied.map((x) => x.mode);
   assert.deepEqual(modes, ["edit", "notice"]);
 });

@@ -4,6 +4,7 @@
  *   node scripts/discordapp.js check <guildId> [config]         лише читання
  *   node scripts/discordapp.js apply <guildId> [config] [--yes]  провіжн
  *   node scripts/discordapp.js export <guildId>                  сервер → конфіг у exports/
+ *   node scripts/discordapp.js ids <guildId>                     id за ключами зі стану (для routing.json)
  *
  * check показує те, що інакше з'ясовується методом спроб:
  *   - під ким бот залогінений, чи він на сервері, чи Community сервер;
@@ -35,9 +36,29 @@ const NEEDED = ["ViewChannel", "SendMessages", "EmbedLinks", "AttachFiles", "Rea
 const args = process.argv.slice(2);
 const confirmed = args.includes("--yes");
 const [action, guildId, configName = null] = args.filter((arg) => arg !== "--yes");
-if (!["check", "apply", "export"].includes(action) || !guildId) {
-  console.error("Usage: node scripts/discordapp.js check|apply|export <guildId> [config] [--yes]");
+if (!["check", "apply", "export", "ids"].includes(action) || !guildId) {
+  console.error("Usage: node scripts/discordapp.js check|apply|export|ids <guildId> [config] [--yes]");
   process.exit(1);
+}
+
+// ids — лише з бази (стан провіжну), без Discord і без токена: id каналів і
+// ролей за ключами конфігу. Потрібне після apply, що створив нові канали, —
+// їхні id ідуть у routing.json (TheFlow не читає стан discordapp, D2).
+if (action === "ids") {
+  try {
+    const rows = await DiscordResource.forGuild(guildId);
+    const out = {};
+    for (const row of rows) {
+      if (row.archived_at || !["channel", "role", "category"].includes(row.kind)) continue;
+      (out[row.kind === "category" ? "categories" : `${row.kind}s`] ??= {})[row.key] = row.discord_id;
+    }
+    console.log(Object.keys(out).length
+      ? JSON.stringify(out, null, 2)
+      : `Nothing managed for ${guildId} in this database yet — run apply first.`);
+  } finally {
+    await database.sequelize.close().catch(() => {});
+  }
+  process.exit(0);
 }
 if (!DISCORD_BOT_TOKEN) {
   console.error("DISCORD_BOT_TOKEN is not set in .env");

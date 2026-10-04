@@ -28,10 +28,19 @@
  *
  * Результат завжди містить `reason` — саме він робить `#unsorted` корисним:
  * за ним видно, який опис у таксономії чи яке правило треба виправити.
+ *
+ * Розширення поза специфікацією:
+ *   - `when.source` — джерело поста: `channel_id` (Telegram chat id, URL
+ *     стрічки, сабреддит) або назва джерела. Канал, присвячений одній темі
+ *     (одній грі), маршрутизується за ним точніше, ніж за топіком;
+ *   - `"also": true` — правило, що ДОДАЄ призначення і не зупиняє пошук.
+ *     Діє щоразу, коли збіглося, незалежно від пріоритету; серед звичайних
+ *     правил, як і раніше, виграє перше за пріоритетом. Так пост іде і у
+ *     свій канал, і в збірний (усі промокоди — ще й в один канал).
  */
 
 /** Ключі, які розуміє `when`. Решта — помилка конфігурації, див. validateRouting. */
-const WHEN_KEYS = new Set(["topic", "signal_type"]);
+const WHEN_KEYS = new Set(["topic", "signal_type", "source"]);
 
 /** Статуси, які resolve приймає. Решта — помилка виклику. */
 const RESOLVABLE = new Set(["enriched", "failed"]);
@@ -69,15 +78,40 @@ export function orderRules(rules) {
     .sort((a, b) => b.priority - a.priority || a.index - b.index);
 }
 
-/** Чи збігається `when` з вердиктом. Відсутній ключ — будь-яке значення. */
+/**
+ * Чи збігається `when` з вердиктом. Відсутній ключ — будь-яке значення.
+ * `verdict.source` — список ідентифікаторів джерела (channel_id, назва);
+ * `when.source` збігається, якщо будь-який з них є в списку.
+ */
 export function matchesWhen(when, verdict) {
   if (!when || typeof when !== "object") return false;
   for (const key of WHEN_KEYS) {
     if (!(key in when)) continue;
     const allowed = asArray(when[key]);
+    if (key === "source") {
+      const ids = asArray(verdict.source).map(String);
+      if (!allowed.some((value) => ids.includes(String(value)))) return false;
+      continue;
+    }
     if (!allowed.includes(verdict[key])) return false;
   }
   return true;
+}
+
+/** Ідентифікатори джерела для `when.source`: channel_id поста і джерела, назва. */
+function sourceIds(post, source) {
+  return [...new Set([post.channel_id, source?.channel_id, source?.channel_name]
+    .filter((v) => v != null && String(v).trim() !== "")
+    .map(String))];
+}
+
+/** Об'єднання призначень без повторів, порядок — як прийшли. */
+function mergeDestinations(into, more) {
+  for (const [platform, ids] of Object.entries(more)) {
+    const list = into[platform] ?? (into[platform] = []);
+    for (const id of ids) if (!list.includes(id)) list.push(id);
+  }
+  return into;
 }
 
 /**
@@ -87,14 +121,17 @@ export function matchesWhen(when, verdict) {
  *   Результат `source.getFlowConfig()`.
  * @param {{routing?: object[], unsorted_destinations?: object}} args.routing
  *   Вміст routing.json (експорт ROUTING).
+ * @param {{channel_id?: string, channel_name?: string}|null} [args.source]
+ *   Джерело поста — для `when.source` за назвою (channel_id є і в пості).
  * @returns {{
  *   outcome: "routed"|"unsorted",
  *   reason: string,
  *   destinations: Record<string, string[]>,
  *   rule: {index: number, priority: number}|null,
+ *   rules: Array<{index: number, priority: number, also: boolean}>,
  * }}
  */
-export function resolve({ post, flow = {}, routing = {} }) {
+export function resolve({ post, flow = {}, routing = {}, source = null }) {
   if (!post || !RESOLVABLE.has(post.status)) {
     // Помилка виклику, а не маршрутизації: pending ще не має вердикту, а
     // skipped_* і routed доставляти не можна взагалі. Тихий unsorted тут
@@ -110,6 +147,7 @@ export function resolve({ post, flow = {}, routing = {} }) {
     reason,
     destinations: copyDestinations(routing.unsorted_destinations),
     rule: null,
+    rules: [],
   });
 
   if (post.status === "failed") return unsorted(RESOLVE_REASONS.MODEL_FAILED);
@@ -134,21 +172,31 @@ export function resolve({ post, flow = {}, routing = {} }) {
     return unsorted(RESOLVE_REASONS.TOPIC_NOT_IN_SOURCE);
   }
 
-  const verdict = { topic: post.topic, signal_type: post.signal_type };
+  const verdict = { topic: post.topic, signal_type: post.signal_type, source: sourceIds(post, source) };
+  const destinations = {};
+  const matched = [];
+  let main = null;
   for (const { rule, index, priority } of orderRules(routing.routing)) {
+    const also = rule.also === true;
+    // Після першого звичайного правила шукаємо лише `also`.
+    if (main && !also) continue;
     if (!matchesWhen(rule.when, verdict)) continue;
-    const destinations = copyDestinations(rule.destinations);
+    const own = copyDestinations(rule.destinations);
     // Правило, що збіглося, але нікуди не веде, — не підстава загубити пост.
-    if (Object.keys(destinations).length === 0) continue;
-    return {
-      outcome: "routed",
-      reason: RESOLVE_REASONS.MATCHED_RULE,
-      destinations,
-      rule: { index, priority },
-    };
+    if (Object.keys(own).length === 0) continue;
+    mergeDestinations(destinations, own);
+    matched.push({ index, priority, also });
+    if (!also) main = { index, priority };
   }
 
-  return unsorted(RESOLVE_REASONS.NO_RULE);
+  if (matched.length === 0) return unsorted(RESOLVE_REASONS.NO_RULE);
+  return {
+    outcome: "routed",
+    reason: RESOLVE_REASONS.MATCHED_RULE,
+    destinations,
+    rule: main ?? { index: matched[0].index, priority: matched[0].priority },
+    rules: matched,
+  };
 }
 
 /**
@@ -174,6 +222,9 @@ export function validateRouting(routing, taxonomy) {
   const unsorted = copyDestinations(routing?.unsorted_destinations);
   if (Object.keys(unsorted).length === 0) {
     problems.push("unsorted_destinations is empty — #unsorted is mandatory, verdicts would have nowhere to fall through to");
+  }
+  for (const field of ["unsorted_destinations", "health_destinations", "digest_destinations", "status_destinations"]) {
+    problems.push(...destinationIdProblems(routing?.[field], field));
   }
 
   const rules = routing?.routing;
@@ -202,10 +253,17 @@ export function validateRouting(routing, taxonomy) {
       for (const s of asArray(rule.when.signal_type)) {
         if (!signals.has(s)) problems.push(`${at}.when.signal_type "${s}" is not in the taxonomy`);
       }
+      if ("source" in rule.when && asArray(rule.when.source).every((v) => String(v ?? "").trim() === "")) {
+        problems.push(`${at}.when.source is empty — the rule would never match`);
+      }
+    }
+    if (rule.also != null && typeof rule.also !== "boolean") {
+      problems.push(`${at}.also ${JSON.stringify(rule.also)} must be true or false`);
     }
     if (Object.keys(copyDestinations(rule.destinations)).length === 0) {
       problems.push(`${at}.destinations is empty — the rule can match but deliver nowhere`);
     }
+    problems.push(...destinationIdProblems(rule.destinations, `${at}.destinations`));
     if (rule.priority != null && !Number.isFinite(Number(rule.priority))) {
       problems.push(`${at}.priority ${JSON.stringify(rule.priority)} is not a number`);
     }
@@ -214,4 +272,23 @@ export function validateRouting(routing, taxonomy) {
   return problems;
 }
 
-export default { resolve, validateRouting, orderRules, matchesWhen, RESOLVE_REASONS };
+/**
+ * Ідентифікатори, які платформа точно не прийме: Discord — лише snowflake,
+ * Telegram — числовий chat id або @username. Ловить заглушки на кшталт
+ * "TODO:claims", що лишились у routing.json до створення каналу: інакше
+ * доставка мовчки не дійшла б нікуди.
+ */
+export function destinationIdProblems(destinations, at) {
+  const problems = [];
+  for (const [platform, ids] of Object.entries(copyDestinations(destinations))) {
+    for (const id of ids) {
+      const ok = platform === "discord" ? /^[0-9]{17,20}$/.test(id)
+        : platform === "telegram" ? /^-?[0-9]+$/.test(id) || /^@[A-Za-z0-9_]{4,}$/.test(id)
+          : true;
+      if (!ok) problems.push(`${at}.${platform} "${id}" is not a valid ${platform} id`);
+    }
+  }
+  return problems;
+}
+
+export default { resolve, validateRouting, orderRules, matchesWhen, destinationIdProblems, RESOLVE_REASONS };

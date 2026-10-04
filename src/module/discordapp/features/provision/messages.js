@@ -67,7 +67,15 @@ export function renderMessage(message, context) {
   for (let i = 0; i < buttons.length; i += BUTTONS_PER_ROW) {
     components.push({ type: ACTION_ROW, components: buttons.slice(i, i + BUTTONS_PER_ROW) });
   }
-  return { payload: { content: message.panel.text ?? DEFAULT_PANEL_TEXT, embeds: [], components }, pending };
+  const text = message.panel.text ?? DEFAULT_PANEL_TEXT;
+  if (!message.panel.embed) return { payload: { content: text, embeds: [], components }, pending };
+  // Панель-embed: один embed над кнопками, `# Заголовок` — його заголовок.
+  const [part] = splitEmbeds(text);
+  const embed = { description: part?.description ?? text };
+  const title = part?.title ?? message.panel.embed.title;
+  if (title) embed.title = title;
+  if (message.panel.embed.color !== undefined) embed.color = message.panel.embed.color;
+  return { payload: { content: "", embeds: [embed], components }, pending };
 }
 
 /**

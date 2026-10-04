@@ -22,6 +22,7 @@ import TelegramMediaDownloader from "./TelegramMediaDownloader.js";
 import TelegramGroupBuffer    from "./TelegramGroupBuffer.js";
 import TelegramDeduplicator   from "./TelegramDeduplicator.js";
 import FlowIngest             from "../../module/theflow/FlowIngest.js";
+import sourceActivity         from "../../module/status/SourceActivity.js";
 
 class TelegramSourceListener extends BaseSourceAdapter {
   constructor(eventBus) {
@@ -438,6 +439,10 @@ class TelegramSourceListener extends BaseSourceAdapter {
    * альбом → буфер, звичайне → фільтр+обробка.
    */
   async _routeIncoming(messageData) {
+    // Статус-борд: джерело живе. У фоні — ingest на це не чекає.
+    const known = this.sourcesCache.get(messageData.channelId);
+    if (known) sourceActivity.touch(known.id, messageData.timestamp);
+
     if (messageData.groupedId) {
       this._groupBuffer.add(messageData);
     } else {

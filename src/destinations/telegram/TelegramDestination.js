@@ -844,6 +844,14 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
     });
   }
 
+  /** Назва чату й дата останнього повідомлення (статус-борд). */
+  async describeChannel(destinationId) {
+    const entity = await this.resolveEntity(destinationId);
+    const [last] = await this.client.getMessages(entity, { limit: 1 });
+    const name = entity?.title ?? (entity?.username ? `@${entity.username}` : null);
+    return { name, lastActivityAt: last?.date ? new Date(last.date * 1000) : null };
+  }
+
   /**
    * Пересилання повідомлень
    * @param {string} fromChatId - З якого чату

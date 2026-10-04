@@ -92,6 +92,16 @@ class BaseDestinationAdapter {
   }
 
   /**
+   * Назва каналу і коли в ньому востаннє з'явилось повідомлення — для
+   * статус-борду (канали доставки, що давно не оновлювались). Опційне.
+   * @param {string} destinationId
+   * @returns {Promise<{ name: string|null, lastActivityAt: Date|null }>}
+   */
+  async describeChannel(destinationId) {
+    throw new Error(`describeChannel() is not supported by the ${this.platform} adapter`);
+  }
+
+  /**
    * Форматування повідомлення під специфіку платформи (може бути перевизначено)
    * @param {Object} messageData - Дані повідомлення
    * @returns {Object} - Відформатовані дані

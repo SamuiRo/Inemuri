@@ -26,8 +26,10 @@ import { createTriageExamples } from "./module/theflow/triage/examples.js";
 import { collectStorage, assessStorage } from "./module/theflow/Storage.js";
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import mediaResolver from "./module/theflow/media/index.js";
-import { Source, VisionCache, DiscoveredItem } from "./module/teapot/models/index.js";
-import { validateRouting, copyDestinations } from "./module/theflow/ResolveStage.js";
+import StatusBoard from "./module/status/StatusBoard.js";
+import { collectStatus } from "./module/status/collect.js";
+import { Source, VisionCache, DiscoveredItem, StatusMessage } from "./module/teapot/models/index.js";
+import { validateRouting, copyDestinations, destinationIdProblems } from "./module/theflow/ResolveStage.js";
 import {
   VISION_CACHE_TTL_HOURS,
   CATEGORIES,
@@ -40,6 +42,7 @@ import {
   FLOW_FEWSHOT,
   FLOW_TRIAGE,
   FLOW_DIGEST,
+  STATUS,
   LLM_PRIMARY,
   LLM_PROVIDERS,
   DISCORD_BOT_TOKEN,
@@ -344,6 +347,33 @@ class Inemuri {
         print("TheFlow delivery off (shadow mode) — FLOW_DELIVERY_ENABLED=true to send; `flow preview` to look first");
       }
 
+      // 8b''. Статус-борд: джерела, що мовчать, і канали без оновлень —
+      //      одне повідомлення в кожному status_destinations, правиться на
+      //      місці. Без них не запускається.
+      const statusDestinations = copyDestinations(ROUTING.status_destinations);
+      const statusIdProblems = destinationIdProblems(statusDestinations, "status_destinations");
+      if (statusIdProblems.length) {
+        // Заглушка до створення каналу — не стукати в неї щогодини.
+        print(`[STATUS] board off: ${statusIdProblems.join("; ")}`, "warning");
+      } else if (Object.keys(statusDestinations).length > 0) {
+        this.statusBoard = new StatusBoard({
+          collect: () => collectStatus({ routing: ROUTING, adapterFor: (platform) => this.messageRouter.adapters.get(platform) }),
+          destinations: statusDestinations,
+          send: (platform, id, messageData) => this.messageRouter.sendToDestination(platform, id, messageData),
+          edit: (platform, channelId, messageId, messageData) => {
+            const adapter = this.messageRouter.adapters.get(platform);
+            if (!adapter?.capabilities?.edit) throw new Error(`${platform} adapter cannot edit`);
+            return adapter.editMessageData(channelId, messageId, messageData);
+          },
+          store: StatusMessage,
+          thresholds: STATUS,
+          intervalMs: STATUS.intervalMin * 60_000,
+          log: print,
+        });
+        this.statusBoard.start();
+        print(`Status board ON — every ${STATUS.intervalMin} min`);
+      }
+
       // 8c. Пошук по історії (§9.1). Відповідає на запит "theflow.search" —
       //     так його питає discordapp (/search), не імпортуючи ядро (D1).
       //     Keyword працює завжди; semantic — лише коли є gateway.
@@ -386,6 +416,7 @@ class Inemuri {
       // Паралельно, бо незалежні; кожен чекає не довше за свій grace.
       if (this.enrichWorker) print("Stopping TheFlow enrichment worker...");
       if (this.flowHealth) this.flowHealth.stop();
+      if (this.statusBoard) this.statusBoard.stop();
       const finished = await Promise.all([
         this.enrichWorker?.stop() ?? true,
         this.flowDelivery?.stop() ?? true,

@@ -108,6 +108,33 @@ test("renderMessage — text, embed, and a panel split into rows of five", () =>
   assert.equal(payload.content, "Choose your roles:");
 });
 
+test("role panel as an embed — text in the embed (title from `# `), buttons below, content empty", () => {
+  const desired = desiredOf({
+    roles: ROLES,
+    channels: [{ key: "info", name: "info", messages: [
+      { key: "topics", embed: { color: "#f47c9b" }, rolePanel: { text: `# Topics\n${"x".repeat(2500)}`, roles: ["rust"] } },
+    ] }],
+  });
+  const panel = desired.messages[0];
+  assert.deepEqual(panel.panel.embed, { color: 0xf47c9b });
+  const context = { roleIds: new Map([["rust", "id-rust"]]), roleNames: new Map([["rust", "Rust"]]) };
+  const { payload } = renderMessage(panel, context);
+  assert.equal(payload.content, "");
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].title, "Topics");
+  assert.equal(payload.embeds[0].description.length, 2500, "an embed panel holds more than 2000 characters");
+  assert.equal(payload.embeds[0].color, 0xf47c9b);
+  assert.equal(payload.components[0].components[0].custom_id, "roles:t:id-rust");
+
+  // Без embed — як і раніше, ліміт content 2000; `as` для панелі — помилка.
+  const { errors } = validate({ roles: ROLES, channels: [{ key: "info", name: "info", messages: [
+    { key: "long", rolePanel: { text: "x".repeat(2500), roles: ["rust"] } },
+    { key: "persona", as: "guide", rolePanel: { roles: ["rust"] } },
+  ] }] });
+  assert.ok(errors.some((e) => e.includes("up to 2000 characters")));
+  assert.ok(errors.some((e) => e.includes("a role panel is posted by the bot")));
+});
+
 test("hashPayload — stable for equal payloads, different when text changes", () => {
   const a = { content: "x", embeds: [], components: [] };
   assert.equal(hashPayload(a), hashPayload({ ...a }));

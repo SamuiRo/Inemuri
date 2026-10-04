@@ -8,6 +8,7 @@ import { selectNew } from "./parsers.js";
 import { strategyFor, usesTriage } from "./discovery.js";
 import TriageQueue from "../../module/theflow/triage/TriageQueue.js";
 import { toItem } from "../../module/theflow/triage/candidates.js";
+import sourceActivity from "../../module/status/SourceActivity.js";
 
 export const FEED_PLATFORMS = ["reddit", "rss"];
 const MIN = 60_000;
@@ -76,7 +77,9 @@ export class FeedPoller {
   constructor({
     eventBus, fetch = fetchFeed, throttle = feedThrottle, flowIngest = new FlowIngest(),
     triage = new TriageQueue(), config = FEEDS, redditAuth = null, now = Date.now, log = print,
+    activity = sourceActivity,
   }) {
+    this.activity = activity;
     this.eventBus = eventBus;
     this.fetch = fetch;
     this.throttle = throttle;
@@ -183,6 +186,10 @@ export class FeedPoller {
     }
 
     const items = parsed.items;
+    // Статус-борд: коли джерело публікувало востаннє — за найсвіжішим
+    // елементом стрічки, новим чи вже баченим. 304 сюди не доходить: нового нема.
+    const newest = items.reduce((m, i) => (i.publishedAt != null && i.publishedAt > m ? i.publishedAt : m), 0);
+    if (newest) this.activity.touch(source.id, newest);
     const picked = selectNew(items.slice(0, this.config.maxItems), cursor, { seenMax: this.config.seenGuids });
     for (const item of picked.items) await this.handleItem(source, item);
 

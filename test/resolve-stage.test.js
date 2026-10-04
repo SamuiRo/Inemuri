@@ -10,7 +10,7 @@ import {
 } from "../src/module/theflow/ResolveStage.js";
 import { CATEGORIES } from "../src/config/app.config.js";
 
-const UNSORTED = { telegram: ["-100unsorted"] };
+const UNSORTED = { telegram: ["-1009990001"] };
 
 const routing = (rules) => ({ unsorted_destinations: UNSORTED, routing: rules });
 
@@ -255,4 +255,65 @@ test("is_ad — an ad goes to #unsorted with reason ad, even when a rule matches
   // is_ad false або відсутній — звичайна маршрутизація.
   assert.equal(resolve({ post: post({ analysis: { is_ad: false } }), flow: FLOW, routing: rules }).outcome, "routed");
   assert.equal(resolve({ post: post({ analysis: null }), flow: FLOW, routing: rules }).outcome, "routed");
+});
+
+// ── when.source і also ────────────────────────────────────────────────
+
+const GAME_A = { telegram: ["-1001"] };
+const GAME_B = { telegram: ["-1002"] };
+const CODES = { telegram: ["-1003"], discord: ["123456789012345678"] };
+const GAMES = { telegram: ["-1004"] };
+
+test("when.source — a source dedicated to one topic routes by its channel id or its name", () => {
+  const rules = routing([
+    { when: { source: "-100500" }, destinations: GAME_A, priority: 50 },
+    { when: { source: ["Game B channel"] }, destinations: GAME_B, priority: 50 },
+    { when: { topic: "games" }, destinations: GAMES },
+  ]);
+  const game = (over) => post({ topic: "games", signal_type: "launch", ...over });
+  assert.deepEqual(resolve({ post: game({ channel_id: "-100500" }), flow: FLOW, routing: rules }).destinations, GAME_A);
+  assert.deepEqual(resolve({ post: game({ channel_id: "-100600" }), flow: FLOW, routing: rules, source: { channel_name: "Game B channel" } }).destinations, GAME_B);
+  assert.deepEqual(resolve({ post: game({ channel_id: "-100700" }), flow: FLOW, routing: rules }).destinations, GAMES, "other sources fall to the topic rule");
+});
+
+test("also — a promo code goes to its game channel AND the shared codes channel, whatever the priorities", () => {
+  const rules = routing([
+    { when: { source: "-100500" }, destinations: GAME_A, priority: 50 },
+    { when: { topic: ["games", "steam"], signal_type: ["promo_code", "freebie"] }, destinations: CODES, also: true, priority: 0 },
+  ]);
+  const r = resolve({ post: post({ topic: "games", signal_type: "promo_code", channel_id: "-100500" }), flow: FLOW, routing: rules });
+  assert.equal(r.outcome, "routed");
+  assert.deepEqual(r.destinations, { telegram: ["-1001", "-1003"], discord: ["123456789012345678"] });
+  assert.deepEqual(r.rule, { index: 0, priority: 50 }, "the main rule is the non-also one");
+  assert.equal(r.rules.length, 2);
+
+  // Лише also збіглося — пост маршрутизовано туди, а не в #unsorted.
+  const onlyCodes = resolve({ post: post({ topic: "steam", signal_type: "freebie", channel_id: "-100999" }), flow: FLOW, routing: rules });
+  assert.equal(onlyCodes.outcome, "routed");
+  assert.deepEqual(onlyCodes.destinations, CODES);
+
+  // Звичайний пост цього ж джерела — без збірного каналу.
+  assert.deepEqual(resolve({ post: post({ topic: "games", signal_type: "launch", channel_id: "-100500" }), flow: FLOW, routing: rules }).destinations, GAME_A);
+});
+
+test("also never overrides the gates: an ad or low confidence still goes to #unsorted", () => {
+  const rules = routing([{ when: { signal_type: "promo_code" }, destinations: CODES, also: true }]);
+  assert.equal(resolve({ post: post({ analysis: { is_ad: true } }), flow: FLOW, routing: rules }).outcome, "unsorted");
+  assert.equal(resolve({ post: post({ confidence: 0.1 }), flow: FLOW, routing: rules }).outcome, "unsorted");
+});
+
+test("validateRouting — source, also and destination ids", () => {
+  const problems = validateRouting({
+    unsorted_destinations: { discord: ["TODO:unsorted"] },
+    status_destinations: { telegram: ["@ok_channel"] },
+    routing: [
+      { when: { source: [] }, destinations: GAME_A },
+      { when: { topic: "games" }, destinations: { discord: ["TODO:claims"] }, also: "yes" },
+    ],
+  }, CATEGORIES);
+  assert.ok(problems.some((p) => p.includes('unsorted_destinations.discord "TODO:unsorted"')));
+  assert.ok(problems.some((p) => p.includes("routing[0].when.source is empty")));
+  assert.ok(problems.some((p) => p.includes("routing[1].also")));
+  assert.ok(problems.some((p) => p.includes('routing[1].destinations.discord "TODO:claims"')));
+  assert.ok(!problems.some((p) => p.includes("status_destinations")), "@username is a valid telegram id");
 });

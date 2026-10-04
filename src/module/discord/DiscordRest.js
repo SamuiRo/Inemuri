@@ -68,6 +68,17 @@ class DiscordRest {
   async deleteMessage(channelId, messageId) {
     return this.rest.delete(Routes.channelMessage(channelId, messageId));
   }
+
+  /** Сам канал: name, type, last_message_id, … */
+  async fetchChannel(channelId) {
+    return this.rest.get(Routes.channel(channelId));
+  }
+}
+
+/** Час створення з Discord snowflake (id повідомлення, каналу), або null. */
+export function snowflakeTime(id) {
+  if (id == null || !/^[0-9]+$/.test(String(id))) return null;
+  return new Date(Number((BigInt(id) >> 22n) + 1420070400000n));
 }
 
 const discordRest = new DiscordRest(DISCORD_BOT_TOKEN);

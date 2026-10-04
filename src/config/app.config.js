@@ -412,6 +412,17 @@ export const FLOW_HEALTH = {
   repeatHours: optionalNumber("FLOW_HEALTH_REPEAT_HOURS", process.env.FLOW_HEALTH_REPEAT_HOURS, 6),
 };
 
+// Статус-борд (src/module/status/): джерела, що мовчать, і канали доставки
+// без оновлень — одним повідомленням, яке оновлюється на місці. Працює, коли
+// в routing.json задано `status_destinations`; інакше вимкнений.
+export const STATUS = {
+  intervalMin: optionalNumber("STATUS_INTERVAL_MIN", process.env.STATUS_INTERVAL_MIN, 60),
+  // Джерело без нових постів довше за це — у списку тихих.
+  sourceSilentHours: optionalNumber("STATUS_SOURCE_SILENT_HOURS", process.env.STATUS_SOURCE_SILENT_HOURS, 72),
+  // Канал доставки без нових повідомлень довше за це.
+  channelSilentHours: optionalNumber("STATUS_CHANNEL_SILENT_HOURS", process.env.STATUS_CHANNEL_SILENT_HOURS, 168),
+};
+
 // Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
 // embedModel === null, не оголошує capability `embed` — gateway маршрутизує
 // `embed()` на іншого провайдера або деградує до tier 1 (ROADMAP 3.1).

@@ -925,7 +925,9 @@ flow
             process.stdout.write(`${r.header}\n${r.body}\n`);
             process.stdout.write(`   [${r.entities.length} entities, ${r.header.length + 1 + r.body.length}/4096 chars]\n`);
           } else {
-            process.stdout.write(`author: ${r.author}\n${r.description}\nfooter: ${r.footer ?? ""} · color #${r.color.toString(16)} · url ${r.url ?? "-"}\n`);
+            process.stdout.write(`author: ${r.author ?? "-"}\ntitle: ${r.title ?? "-"}\n${r.description}\n`);
+            for (const f of r.fields ?? []) process.stdout.write(`[${f.name}]\n${f.value}\n`);
+            process.stdout.write(`footer: ${r.footer ?? ""} · color #${r.color.toString(16)} · url ${r.url ?? "-"} · ${r.timestamp ?? "no time"}\n`);
           }
         }
         process.stdout.write("\n");

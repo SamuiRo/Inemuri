@@ -289,6 +289,9 @@ messages, role panels, AutoMod rules — is described in
   `{ "key", "file": "rules.md", "embed"?: true | { "title"?, "color"? } }`
   with the text in `src/config/discordapp/messages/` (git-ignored except
   `*.sample.md`), or `{ "key", "rolePanel": { "mode"?, "text"?, "roles" } }`.
+  A panel takes `"embed"` too (v4.58.0): the text goes into one embed above
+  the buttons (up to 4096 instead of 2000), a first line `# Title` becomes its
+  title, `color` its stripe. Still posted by the bot, never a persona.
   Text over Discord's limit (2000, or 4096 in an embed) is a config error
   before anything is read from the server. Provisioned messages never ping:
   `@everyone` in a rules text is text.

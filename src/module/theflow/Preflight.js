@@ -9,6 +9,7 @@ import {
   TELEGRAM_SESSION, TELEGRAM_API_ID,
 } from "../../config/app.config.js";
 import { usesTriage } from "../../sources/feeds/discovery.js";
+import { validateRouting } from "./ResolveStage.js";
 
 /**
  * Перевірка готовності розгортання (`flow preflight`): чи заповнено все, без
@@ -79,7 +80,9 @@ export async function collectPreflight() {
       unsorted: destinationCount(ROUTING.unsorted_destinations),
       health: destinationCount(ROUTING.health_destinations),
       digest: destinationCount(ROUTING.digest_destinations),
+      status: destinationCount(ROUTING.status_destinations),
       rules: Array.isArray(ROUTING.routing) ? ROUTING.routing.length : 0,
+      problems: validateRouting(ROUTING, CATEGORIES),
     },
     deliveryEnabled: FLOW_DELIVERY.enabled,
     knowledge,
@@ -157,6 +160,16 @@ export function assessPreflight(s) {
   }
   if (flow.length && !s.routing.health) warn("health", "no health_destinations — stall and failure alerts go to the log only");
   else if (flow.length) ok("health", `health alerts to ${s.routing.health} destination(s)`);
+  if (s.routing.status) ok("status", `status board to ${s.routing.status} destination(s)`);
+
+  // routing.json: id, яких платформа не прийме (заглушки до створення каналу),
+  // — блокер: туди нічого не дійде. Решта — попередження, як і на старті.
+  const problems = s.routing.problems ?? [];
+  const badIds = problems.filter((p) => p.includes("is not a valid"));
+  const other = problems.filter((p) => !p.includes("is not a valid"));
+  if (badIds.length) fail("routing_ids", `routing.json has ${badIds.length} destination id(s) no platform accepts: ${badIds.slice(0, 5).join("; ")}`);
+  if (other.length) warn("routing", `routing.json: ${other.slice(0, 5).join("; ")}`);
+  if (!problems.length) ok("routing", `routing.json: ${s.routing.rules} rule(s), no problems`);
 
   // ── Знання ────────────────────────────────────────────────────────
   if (triage.length && !s.triageExamples) {

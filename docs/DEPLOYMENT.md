@@ -48,7 +48,7 @@ warning, which is how a server quietly ends up running on example values.
 |---|---|---|
 | `.env` | Telegram session, API keys (`GEMINI_API_KEY`), switches | Nothing starts, or TheFlow stays dormant |
 | `src/config/sources.json` | Every source: channels, filters, `flow`, news sources with `feed` | Seed has nothing real to import |
-| `src/config/routing.json` | `unsorted_destinations`, `health_destinations`, `digest_destinations` | No alerts; verdicts route to sample ids |
+| `src/config/routing.json` | `unsorted_destinations`, `routing` rules, `health_destinations`, `digest_destinations`, `status_destinations` | No alerts, no status board; verdicts route to sample ids |
 | `src/config/triage.json` | The reader profile for headline triage | Triage judges against the sample profile |
 | `src/config/cronjob.config.json` | Cron job destinations | Cron jobs post nowhere |
 | `src/config/discordapp/servers/*.json`, `messages/**` | discordapp server configs and texts | `/provision` has nothing to apply |
@@ -133,6 +133,29 @@ Quota: triage asks the model at most once per full batch of 50 headlines or
 once per 20 minutes for a partial one — roughly 90 calls a day for ten
 outlets, out of the 500 a day `gemini-3.5-flash-lite` allows, shared with
 enrich.
+
+## Turning on delivery to test channels and the status board
+
+`v4.58.0` adds routing by source (`when.source`), shared channels (`also`)
+and the status board. A first deploy that also provisions a Discord server
+with a different bot than the one that provisioned it before:
+
+1. `npm run migrate` (service stopped) — `018` adds `source_states.last_seen_at`
+   and `status_messages`.
+2. Copy `routing.json` with its rules. Channels that do not exist yet carry
+   `TODO:<key>` placeholders.
+3. Provision the server (docs/PROVISIONING.md): give the bot Administrator and
+   a role above the roles it manages, `node scripts/discordapp.js check <guildId> <config>`,
+   then `apply … --yes`, then `check` again — it must come back empty.
+4. Delete the old copies of the provisioned texts and role panels by hand: on
+   a new instance every managed message is posted again (PROVISIONING.md).
+5. `node scripts/discordapp.js ids <guildId>` and replace every `TODO:<key>`
+   in `routing.json` with its id.
+6. `node src/cli.js flow preflight` → Ready (it fails while a placeholder is
+   left), then `node src/cli.js flow preview --ignore-age --limit 10`.
+7. `FLOW_DELIVERY_ENABLED=true` only when every rule points at a channel you
+   are happy to see filled; start. The status board posts about a minute
+   after the start.
 
 ## Rollback
 

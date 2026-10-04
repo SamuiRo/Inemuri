@@ -7,7 +7,7 @@ import {
   unknownPermissions,
   VIEW_CHANNEL,
 } from "./permissions.js";
-import { MAX_PANEL_ROLES } from "./messages.js";
+import { MAX_PANEL_ROLES, MAX_CONTENT, MAX_EMBED_DESCRIPTION } from "./messages.js";
 import { PANEL_MODES } from "../roles/rolePanel.js";
 import { parseAutomod } from "./automod.js";
 
@@ -296,7 +296,6 @@ function parseMessage(message, channelKey, roleKeys, personas, path, v) {
     return parsed;
   }
 
-  if (message.embed !== undefined) v.error(`${path}.embed`, "applies to text messages only");
   // Кнопки панелі обробляє бот; від імені вебхука їх не публікуємо.
   if (message.as !== undefined) v.error(`${path}.as`, "applies to text messages only — a role panel is posted by the bot");
   const panel = message.rolePanel;
@@ -306,12 +305,16 @@ function parseMessage(message, channelKey, roleKeys, personas, path, v) {
 
   const mode = panel.mode ?? "toggle";
   if (!PANEL_MODES.includes(mode)) v.error(`${panelPath}.mode`, `must be one of ${PANEL_MODES.join(", ")}`);
-  if (panel.text !== undefined && (typeof panel.text !== "string" || !panel.text.trim() || panel.text.length > 2000)) {
-    v.error(`${panelPath}.text`, "must be non-empty text up to 2000 characters");
+  // Панель-embed: текст іде в опис embed (4096), а не в content (2000);
+  // `# Заголовок` першим рядком стає заголовком, як у текстах з файлів.
+  const embed = parseEmbed(message.embed, `${path}.embed`, v);
+  const maxText = embed ? MAX_EMBED_DESCRIPTION : MAX_CONTENT;
+  if (panel.text !== undefined && (typeof panel.text !== "string" || !panel.text.trim() || panel.text.length > maxText)) {
+    v.error(`${panelPath}.text`, `must be non-empty text up to ${maxText} characters`);
   }
 
   const roles = v.list(panel.roles ?? [], `${panelPath}.roles`).map((entry, i) => parsePanelRole(entry, roleKeys, `${panelPath}.roles[${i}]`, v));
-  return { key, channelKey, kind: "rolePanel", panel: { mode, text: panel.text, roles: roles.filter(Boolean) } };
+  return { key, channelKey, kind: "rolePanel", panel: { mode, text: panel.text, embed, roles: roles.filter(Boolean) } };
 }
 
 /**

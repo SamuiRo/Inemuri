@@ -51,7 +51,10 @@ export function toMessageData(rendered, destinations = {}, media = []) {
     platform: "theflow",
     source: { name: rendered.author, destinations },
     text: rendered.description,
-    embed: { color: rendered.color, footer: rendered.footer, url: rendered.url },
+    embed: {
+      color: rendered.color, footer: rendered.footer, url: rendered.url,
+      title: rendered.title ?? null, fields: rendered.fields ?? [], timestamp: rendered.timestamp ?? null,
+    },
     downloadedMedia: media,
   };
 }
@@ -243,8 +246,11 @@ export class FlowDelivery {
   }
 
   async _resolve(post) {
-    const flow = (await this.flowFor(post)) ?? (await this._source(post.source_id))?.getFlowConfig?.() ?? {};
-    return resolve({ post, flow, routing: this.routing });
+    const src = await this._source(post.source_id);
+    const flow = (await this.flowFor(post)) ?? src?.getFlowConfig?.() ?? {};
+    // Джерело — для `when.source` за назвою; channel_id resolve бере і з поста.
+    const source = src ? { channel_id: src.channel_id, channel_name: src.channel_name } : null;
+    return resolve({ post, flow, routing: this.routing, source });
   }
 
   /** Рендер поста кластера для однієї платформи. */
@@ -386,6 +392,8 @@ export class FlowDelivery {
           outcome: p.resolved.outcome,
           reason: p.resolved.reason,
           rule: p.resolved.rule,
+          // Усі правила, що спрацювали (з `also` їх кілька).
+          rules: p.resolved.rules ?? [],
           delivered: record,
           partial: delivered.length < wanted,
           ...(mediaError ? { media_error: mediaError } : {}),

@@ -140,6 +140,7 @@ After a successful login, Inemuri can print a new `TELEGRAM_SESSION` string. Sav
 | `TELEGRAM_SESSION` | Yes after first login | Persisted GramJS session string for Telegram authentication. |
 | `TELEGRAM_API_ID` | Yes | Telegram API ID from your Telegram developer app. |
 | `TELEGRAM_API_HASH` | Yes | Telegram API hash from your Telegram developer app. |
+| `STATUS_INTERVAL_MIN` / `STATUS_SOURCE_SILENT_HOURS` / `STATUS_CHANNEL_SILENT_HOURS` | Optional | Status board: update interval (60 min) and silence thresholds (72 h for sources, 168 h for channels). Active only with `status_destinations` in `routing.json`. |
 | `TELEGRAM_PREMIUM` | Optional | `true` if the sending Telegram account has Premium. Media captions are cut to 4096 characters instead of 1024 (longer ones Telegram rejects). Default `false`. |
 | `DISCORD_BOT_TOKEN` | For Discord | Bot token. Without it Discord delivery and discordapp are off; everything else runs. |
 | `CMC_API_KEY` | Optional | Required for the bundled crypto daily cron job. |
@@ -584,6 +585,19 @@ quota is left), or no flow post for a day. The service sends the same alerts
 to `health_destinations` in `routing.json` — set a Telegram chat there, or
 they only reach the log. Thresholds are the `FLOW_HEALTH_*` variables in
 `.env.example`.
+
+**Status board.** With `status_destinations` in `routing.json`, Inemuri keeps
+one message there and edits it in place every `STATUS_INTERVAL_MIN` (60):
+sources with no new post for `STATUS_SOURCE_SILENT_HOURS` (72), sources not
+seen since tracking began, and delivery channels with no new message for
+`STATUS_CHANNEL_SILENT_HOURS` (168). Last activity of a source is recorded
+on every incoming message, in any mode (`source_states.last_seen_at`,
+migration `018`); a channel's comes from Discord or Telegram directly. A
+deleted status message is posted again on the next update.
+
+Routing rules can match a source (`"when": { "source": "<channel_id or name>" }`)
+and add destinations without ending the search (`"also": true`) — see
+[TAXONOMY.md](docs/theflow/TAXONOMY.md#how-resolve-works).
 
 ## Media handling
 

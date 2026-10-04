@@ -7,6 +7,63 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.58.0] - 2026-10-04
+
+Everything the first test week on a provisioned Discord server needs, ready
+before the deploy.
+
+### Added
+- **Routing by source.** A rule's `when` takes `source`: the post's source
+  `channel_id` (Telegram chat id, feed URL, subreddit) or its name. A channel
+  that covers one subject — one game — is routed by it, which the model's
+  topic cannot do (`games` does not say which game).
+- **Shared channels: `"also": true`.** Such a rule adds its destinations and
+  does not end the search; it applies whenever it matches, whatever its
+  priority, and the first ordinary rule by priority still wins. A promo code
+  goes to its game channel and to one channel with every code. A post that
+  only an `also` rule matched is routed there, not to `#unsorted`; the gates
+  (ad, low confidence, `other`, source topics) still come first. The delivery
+  record keeps every rule that matched (`rules`).
+- **Status board** (`src/module/status/`). With `status_destinations` in
+  `routing.json`, one message per destination, edited in place every
+  `STATUS_INTERVAL_MIN` (60): sources silent for `STATUS_SOURCE_SILENT_HOURS`
+  (72), sources not seen since tracking began, delivery channels without a
+  new message for `STATUS_CHANNEL_SILENT_HOURS` (168), channels that could
+  not be checked. When a source last published is recorded on every incoming
+  message in any mode — listener, polling, feeds — throttled and in the
+  background. A channel's last message comes from Discord (`last_message_id`)
+  or Telegram directly, through a new optional adapter method
+  `describeChannel()`. Migration `018`: `source_states.last_seen_at`,
+  `status_messages`.
+- `node scripts/discordapp.js ids <guildId>` — managed channel, role and
+  category ids by config key, from the local state, for `routing.json`.
+- **The delivery template** (DELIVERY.md "The template"). Ukrainian
+  wording; on Discord a full embed — source as author, the Ukrainian lead as
+  a title linking to the original, codes, event, additions and diagnostics
+  as fields, axes and "also reported by N" in the footer, the post's time as
+  the timestamp. Codes are copyable inline code with expiry and an OCR
+  warning; event times are Discord timestamps, so readers see their own zone.
+  On Telegram every code is its own line with a code entity — one tap copies
+  it. `flow preview` prints the title and fields.
+- **Role panels as embeds**: `"embed"` on a `rolePanel` message puts its text
+  into an embed above the buttons (4096 characters, `# Title` heading,
+  colour).
+- The status board speaks Ukrainian and, on Discord, has a green stripe when
+  everything is active and an amber one when something is silent.
+- `validateRouting` and `flow preflight` reject destination ids no platform
+  accepts (a `TODO:claims` placeholder blocks preflight); preflight also
+  reports the routing check and the status board.
+
+### Changed
+- `test/categories.test.js` checks `routing.sample.json` itself instead of
+  whatever `routing.json` is on the machine.
+
+### Documentation
+- PROVISIONING.md: provisioning state belongs to the instance that applied;
+  applying from another machine or bot posts every managed message again.
+- DEPLOYMENT.md: the checklist for delivery to test channels and the status
+  board.
+
 ## [4.57.3] - 2026-10-04
 
 The rest of the TheFlow audit findings.

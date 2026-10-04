@@ -62,6 +62,17 @@ which are on disk only).
 
 From a terminal the same is `node scripts/discordapp.js check <guildId> [config]`
 (setup check and plan) and `apply <guildId> [config] --yes`.
+`node scripts/discordapp.js ids <guildId>` prints the ids of managed
+channels, roles and categories by config key, from this database only — what
+`routing.json` needs after an apply created new channels.
+
+**The state lives in the database of the instance that applied.** Applying
+from another machine or with another bot starts from an empty state: roles,
+categories and channels are adopted again (by `adopt` id or by name), but
+every managed message is posted anew, because that instance has no record of
+the old ones. When the bot changes this is wanted — role panel buttons route
+to the application that posted the panel — but the previous copies of the
+texts and panels have to be deleted by hand afterwards.
 
 **Code changes** to Inemuri itself (a new version) need a restart before the
 commands use them; config and text changes do not.

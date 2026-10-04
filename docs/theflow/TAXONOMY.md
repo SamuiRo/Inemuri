@@ -177,6 +177,25 @@ A single value and an array are equivalent in `when`: `"games"` equals
 - **A rule that matches but has no destinations is skipped**, not taken. A
   half-written rule should not swallow the posts that reach it.
 
+Two additions beyond the spec (`v4.58.0`):
+
+- **`when.source`** matches the post's source by its `channel_id` (Telegram
+  chat id, feed URL, subreddit) or its `channel_name`. A channel that covers
+  one subject — one game — is routed by it more reliably than by topic:
+  `{ "when": { "source": "-1001234567890" }, "destinations": … }`.
+- **`"also": true`** makes a rule *add* its destinations without ending the
+  search. It applies whenever it matches, whatever its priority; among the
+  other rules the first by priority still wins. Typical use — every promo
+  code also goes to one shared channel:
+  `{ "when": { "signal_type": "promo_code" }, "destinations": …, "also": true }`.
+  A post matched only by `also` rules is routed there, not to `#unsorted`.
+  The gates (ad, low confidence, `other`, source topics) still come first.
+
+`validateRouting` also rejects destination ids no platform accepts (a
+Discord id that is not a snowflake, a Telegram id that is neither numeric nor
+`@username`) — a placeholder such as `TODO:claims` left in `routing.json`
+fails `flow preflight`.
+
 The checks run in a fixed order and the **first one that applies becomes the
 recorded reason**: `model_failed` → `low_confidence` → `topic_other` →
 `topic_not_in_source` → rule match → `no_rule`. Confidence comes before topic

@@ -1,6 +1,6 @@
 import { AttachmentBuilder, EmbedBuilder } from "discord.js";
 import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
-import discordRest from "../../module/discord/DiscordRest.js";
+import discordRest, { snowflakeTime } from "../../module/discord/DiscordRest.js";
 import { DISCORD_UPLOAD_LIMIT_MB } from "../../config/app.config.js";
 import { print } from "../../shared/utils.js";
 
@@ -119,6 +119,15 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
     const payload = await this._buildPayload({ ...messageData, downloadedMedia: [], replyTo: null });
     if (identity?.image_url) payload.embeds[0].setImage(identity.image_url);
     return await this.editMessage(channelId, messageId, { embeds: payload.embeds });
+  }
+
+  /**
+   * Назва й час останнього повідомлення — одним запитом: last_message_id
+   * каналу — snowflake, у ньому вже є час (статус-борд).
+   */
+  async describeChannel(channelId) {
+    const channel = await this.rest.fetchChannel(channelId);
+    return { name: channel?.name ? `#${channel.name}` : null, lastActivityAt: snowflakeTime(channel?.last_message_id) };
   }
 
   /**
@@ -253,6 +262,19 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       if (flowEmbed.color != null) embedSpec.color = flowEmbed.color;
       if (flowEmbed.footer) embedSpec.footer = flowEmbed.footer;
       if (flowEmbed.url) embedSpec.authorUrl = flowEmbed.url;
+      // Заголовок (лід) веде на оригінал так само, як ім'я джерела.
+      if (flowEmbed.title) {
+        embedSpec.title = this._truncate(flowEmbed.title, 256);
+        if (flowEmbed.url) embedSpec.url = flowEmbed.url;
+      }
+      if (Array.isArray(flowEmbed.fields) && flowEmbed.fields.length) {
+        embedSpec.fields = flowEmbed.fields.slice(0, 25).map((f) => ({
+          name: this._truncate(String(f.name), 256),
+          value: this._truncate(String(f.value), 1024),
+          inline: Boolean(f.inline),
+        }));
+      }
+      if (flowEmbed.timestamp) embedSpec.timestamp = new Date(flowEmbed.timestamp);
     }
 
     let files = [];

@@ -65,3 +65,18 @@ test("warnings: listener flow sources, delivery on, digest in shadow, no health,
   for (const key of ["flow_listener", "digest", "health", "knowledge", "llm_fallback"]) assert.equal(levelOf(r, key), "warn", key);
   assert.equal(levelOf(assessPreflight(ready({ deliveryEnabled: true })), "delivery"), "warn");
 });
+
+test("routing.json: a placeholder id blocks, any other routing problem only warns", () => {
+  const placeholder = assessPreflight(ready({ routing: { unsorted: 1, health: 1, digest: 0, rules: 1,
+    problems: ['routing[0].destinations.discord "TODO:claims" is not a valid discord id'] } }));
+  assert.equal(placeholder.ok, false);
+  assert.equal(levelOf(placeholder, "routing_ids"), "fail");
+
+  const typo = assessPreflight(ready({ routing: { unsorted: 1, health: 1, digest: 0, rules: 1,
+    problems: ['routing[0].when.topic "game" is not in the taxonomy'] } }));
+  assert.equal(typo.ok, true);
+  assert.equal(levelOf(typo, "routing"), "warn");
+
+  assert.equal(levelOf(assessPreflight(ready()), "routing"), "ok");
+  assert.equal(levelOf(assessPreflight(ready({ routing: { unsorted: 1, health: 1, digest: 0, status: 1, rules: 0 } })), "status"), "ok");
+});

@@ -1,5 +1,10 @@
 {
-  "_comment": "Deployment-specific routing for TheFlow. Kept out of categories.json, and out of git, because channel ids belong to one deployment while the taxonomy is shared. `routing` stays empty until the phase 2 channels exist (ROADMAP 5.1); until then every verdict resolves to `unsorted_destinations`, which is also the correct shadow-mode configuration. `health_destinations` is where TheFlow health alerts go (ROADMAP 13.10: failing enrichment, a stalled queue, silent ingest); without it they only reach the log. `digest_destinations` receives the scheduled TheFlow digest (FLOW_DIGEST_CRON); without it no digest is scheduled.",
+  "_comment": "Deployment-specific routing for TheFlow. Kept out of categories.json, and out of git, because channel ids belong to one deployment while the taxonomy is shared. `routing` stays empty until the phase 2 channels exist (ROADMAP 5.1); until then every verdict resolves to `unsorted_destinations`, which is also the correct shadow-mode configuration. `health_destinations` is where TheFlow health alerts go (ROADMAP 13.10: failing enrichment, a stalled queue, silent ingest); without it they only reach the log. `digest_destinations` receives the scheduled TheFlow digest (FLOW_DIGEST_CRON); without it no digest is scheduled. `status_destinations` (not set here) is where the status board keeps its one message: silent sources and delivery channels. Rule conditions: `topic`, `signal_type`, `source` (a source's channel_id or name); `\"also\": true` adds destinations without ending the search — see `_rule_examples` and docs/theflow/TAXONOMY.md.",
+  "_rule_examples": [
+    { "when": { "signal_type": ["promo_code", "freebie"] }, "destinations": { "discord": ["123456789012345678"] }, "also": true, "priority": 100 },
+    { "when": { "source": "-1001234567890" }, "destinations": { "discord": ["123456789012345678"] }, "priority": 50 },
+    { "when": { "topic": "tools" }, "destinations": { "telegram": ["-1001234567890"] }, "priority": 10 }
+  ],
   "unsorted_destinations": {
     "telegram": [
       "-1001234567890"
