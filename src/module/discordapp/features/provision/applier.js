@@ -78,8 +78,9 @@ async function runOps(ctx, phase, apply) {
   for (const op of ctx.plan.ops.filter((o) => o.phase === phase)) {
     const label = opLabel(op);
     try {
-      await apply(op, ctx);
-      ctx.log.push({ ok: true, text: label });
+      // Операція може повернути примітку — що зроблено інакше, ніж у плані.
+      const note = await apply(op, ctx);
+      ctx.log.push({ ok: true, text: typeof note === "string" && note ? `${label} — ${note}` : label });
     } catch (error) {
       ctx.log.push({ ok: false, text: `${label}: ${error.message}` });
     }
@@ -341,13 +342,34 @@ async function applyMessageOp(op, { guild, desired, plan, store }) {
   const author = op.spec.as ? await personaWebhook(channel, desired.personas.get(op.spec.as)) : null;
 
   if (op.op === "edit") {
-    if (author) await author.editMessage(op.id, body);
-    else await channel.messages.edit(op.id, body);
-    await store.remember(guild.id, "message", op.key, op.id, extra);
-    return;
+    try {
+      if (author) await author.editMessage(op.id, body);
+      else await channel.messages.edit(op.id, body);
+      await store.remember(guild.id, "message", op.key, op.id, extra);
+      return null;
+    } catch (error) {
+      if (!lostToThisAuthor(error)) throw error;
+      // Повідомлення є, але правити його може лише той, хто надіслав: інший
+      // бот (той самий сервер, новий токен) чи інший вебхук (вебхук персони
+      // створює кожен бот свій). Нова копія — і далі правимо вже її.
+      const message = author ? await author.send(body) : await channel.send(body);
+      await store.remember(guild.id, "message", op.key, message.id, extra);
+      return `posted anew: the old copy (${op.id}) belongs to another bot or webhook — delete it by hand`;
+    }
   }
   const message = author ? await author.send(body) : await channel.send(body);
   await store.remember(guild.id, "message", op.key, message.id, extra);
+  return null;
+}
+
+/**
+ * Помилки правки, після яких поточний автор цього повідомлення вже не
+ * поправить: 50005 — автор інший (інший бот), 10008 — Discord не знаходить
+ * повідомлення серед повідомлень цього вебхука (іншого вебхука або бота) чи
+ * воно видалене. В обох випадках лишається одне — опублікувати знову.
+ */
+export function lostToThisAuthor(error) {
+  return error?.code === 50005 || error?.code === 10008;
 }
 
 /**

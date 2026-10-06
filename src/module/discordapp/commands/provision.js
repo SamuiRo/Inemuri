@@ -45,14 +45,34 @@ export default {
 
     const { plan, blockers, config } = prepared;
     const text = formatPlan(plan, { configName: config.file, blockers });
-    const reply = textReply(text, "provision-plan.md");
-    if (interaction.options.getSubcommand() === "plan") return reply;
+    if (interaction.options.getSubcommand() === "plan") return textReply(text, "provision-plan.md");
 
     // apply: кнопка лише тоді, коли застосовувати є що і нічого не заважає.
-    if (plan.errors.length || blockers.length || !actionableOps(plan).length) return reply;
-    return { ...asPayload(reply), components: [confirmRow(config.name, planFingerprint(plan))] };
+    // Інакше — чому її немає, ПЕРШИМ рядком: довгий план Discord обрізає, і
+    // помилки з його кінця опинялись лише у вкладенні, а відповідь виглядала
+    // як план без кнопки без жодної причини.
+    const hold = applyHold(plan, blockers);
+    if (hold) return textReply(`${hold}\n\n${text}`, "provision-plan.md");
+    return { ...asPayload(textReply(text, "provision-plan.md")), components: [confirmRow(config.name, planFingerprint(plan))] };
   },
 };
+
+/**
+ * Чому під планом немає кнопки Apply, або null — коли вона є. Чиста функція.
+ * @param {{ errors: string[], ops: object[] }} plan
+ * @param {string[]} blockers
+ * @returns {string|null}
+ */
+export function applyHold(plan, blockers = []) {
+  const list = (items) => items.slice(0, 3).map((item) => `• ${item}`).join("\n") +
+    (items.length > 3 ? `\n• …and ${items.length - 3} more (full list at the end of the plan)` : "");
+  if (plan.errors.length) {
+    return `⛔ **No Apply button: ${plan.errors.length} error(s) in the plan — fix them first:**\n${list(plan.errors)}`;
+  }
+  if (blockers.length) return `⛔ **No Apply button — apply needs:**\n${list(blockers)}`;
+  if (!actionableOps(plan).length) return "✅ **Nothing to apply** — the server already matches the config.";
+  return null;
+}
 
 /**
  * Кнопки під планом. customId несе ім'я конфігу і відбиток плану (D11):

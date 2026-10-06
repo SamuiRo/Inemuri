@@ -315,7 +315,11 @@ messages, role panels, AutoMod rules — is described in
     (bot ↔ persona) is posted anew — Discord does not let one author edit the
     other's message (50005, checked live) — and the old copy is left for a
     human to delete. Renaming a persona gives it a new webhook; messages of
-    the old one can then only be reposted.
+    the old one can then only be reposted. The same happens on apply when
+    the plan expected an edit but the current author cannot make it — another
+    bot posted the message (50005), or another webhook did (10008: a webhook
+    does not see other webhooks' messages): a new copy is posted, remembered,
+    and the log line says to delete the old one (v4.59.1).
 - `"requires": "community"` on a resource skips it on a non-Community server.
   Without the flag, a Community-only resource (announcement channels, rules and
   updates channels, onboarding) on a plain server is a **plan error** with the
@@ -385,7 +389,10 @@ content_hash, archived_at, archived_from)`.
 `/provision plan server:<name>` shows the ops and changes nothing.
 `/provision apply server:<name>` shows the same plan with **Apply** and
 **Cancel** buttons, and only when there is something to apply, no plan error
-and nothing blocking (Administrator). The Apply button carries a fingerprint of
+and nothing blocking (Administrator). Without the buttons, the first line says
+why (v4.59.1): the plan's errors, what apply needs, or nothing to apply — a
+long plan is cut to fit the message, and its errors section is at the end.
+The Apply button carries a fingerprint of
 the plan it was shown under; if the server or the config changed before the
 click, nothing is applied and the plan has to be looked at again. The button
 edits its own ephemeral message, so it cannot be pressed twice, and one apply

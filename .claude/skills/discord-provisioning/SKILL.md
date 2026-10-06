@@ -122,7 +122,9 @@ Discord; add a test with every behaviour change.
 
 - Two resources with the same name and no `adopt` → plan error (by design).
 - Discord refuses cross-author edits (bot ↔ webhook, code 50005): changing a
-  message's `as` posts a new copy; the old one is deleted by hand.
+  message's `as` posts a new copy; the old one is deleted by hand. Since
+  v4.59.1 an edit refused because another bot (50005) or another webhook
+  (10008) owns the message also posts a new copy — "posted anew" in the log.
 - A Discord-created AutoMod rule may refuse bot edits (404) and on a Community
   server the mention-spam rule cannot be deleted — drop it from the config if
   the edit fails.

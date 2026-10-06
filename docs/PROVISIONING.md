@@ -74,6 +74,11 @@ the old ones. When the bot changes this is wanted — role panel buttons route
 to the application that posted the panel — but the previous copies of the
 texts and panels have to be deleted by hand afterwards.
 
+The same holds when the state *does* remember the messages but another bot
+posted them (a test bot, then the production one): the plan says `edit`,
+Discord refuses it, and apply posts a new copy instead — the log reads
+"posted anew … delete it by hand" and names the old message id.
+
 **Code changes** to Inemuri itself (a new version) need a restart before the
 commands use them; config and text changes do not.
 

@@ -104,29 +104,36 @@ class FakeGuild {
       editMessage: async (id, payload) => {
         this.calls.push("webhook.edit");
         const message = this.messageList.find((m) => m.id === id);
-        if (message.webhookId !== hook.id) throw new Error("Cannot edit a message authored by another user");
+        // Як Discord: вебхук не бачить чужих повідомлень — 10008.
+        if (message.webhookId !== hook.id) throw Object.assign(new Error("Unknown Message"), { code: 10008 });
         message.payload = payload;
       },
     });
+    this.botId ??= "bot-user";
     return {
-      client: { user: { id: "bot-user" } },
+      client: { user: { id: this.botId } },
       fetchWebhooks: async () => this.webhookList.filter((h) => h.channelId === channelId).map(hookApi),
       createWebhook: async ({ name, avatar }) => {
         this.calls.push("webhook.create");
-        const hook = { id: `w${this.nextId++}`, channelId, name, avatar, token: "t", owner: { id: "bot-user" } };
+        const hook = { id: `w${this.nextId++}`, channelId, name, avatar, token: "t", owner: { id: this.botId } };
         this.webhookList.push(hook);
         return hookApi(hook);
       },
       send: async (payload) => {
         this.calls.push("message.send");
-        const message = { id: `m${this.nextId++}`, channelId, payload, webhookId: null };
+        const message = { id: `m${this.nextId++}`, channelId, payload, webhookId: null, authorId: this.botId };
         this.messageList.push(message);
         return message;
       },
       messages: {
         edit: async (id, payload) => {
           this.calls.push("message.edit");
-          this.messageList.find((m) => m.id === id).payload = payload;
+          const message = this.messageList.find((m) => m.id === id);
+          // Як Discord: чуже повідомлення бот не править — 50005.
+          if (message.webhookId || message.authorId !== this.botId) {
+            throw Object.assign(new Error("Cannot edit a message authored by another user"), { code: 50005 });
+          }
+          message.payload = payload;
         },
       },
     };
@@ -479,6 +486,30 @@ test("apply — a persona posts through its own webhook, edits in place, links b
   const ops = await remaining(guild, desiredOf(asBot, { "welcome.md": body }), store);
   assert.deepEqual(ops.map((op) => op.op), ["post"]);
   assert.match(ops[0].changes[0], /now posted as the bot/);
+});
+
+test("apply — another bot on the same server posts new copies instead of failing on edits it is not allowed", async () => {
+  // Регресія: apply продакшн-ботом після тестового. Стан пам'ятав повідомлення
+  // тестового бота й планував правку: панелі падали з 50005 (чужий автор),
+  // тексти персони — з 10008 (вебхук персони в кожного бота свій).
+  const guild = new FakeGuild();
+  const store = memoryStore();
+  const config = structuredClone(WITH_PERSONA);
+  config.roles = [{ key: "topic", name: "Topic", permissions: [] }];
+  config.categories[0].channels[0].messages.push({ key: "panel", rolePanel: { roles: ["topic"] } });
+  await apply(guild, desiredOf(config, { "welcome.md": "Hello" }), store);
+  assert.equal(guild.messageList.length, 2);
+
+  guild.botId = "production-bot";
+  const changed = desiredOf(structuredClone(config), { "welcome.md": "Hello again" });
+  changed.messages.find((m) => m.key === "panel").panel.text = "Pick a topic";
+  const log = await apply(guild, changed, store);
+
+  const reposted = log.filter((entry) => entry.ok && entry.text.includes("posted anew"));
+  assert.equal(reposted.length, 2, "both the persona text and the panel are posted again");
+  assert.ok(log.every((entry) => entry.ok), "nothing failed");
+  assert.equal(guild.messageList.length, 4, "the old copies stay — they are deleted by hand");
+  assert.deepEqual(await remaining(guild, changed, store), [], "the new copies are the managed ones now");
 });
 
 // ── AutoMod ────────────────────────────────────────────────────────────────

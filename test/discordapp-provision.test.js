@@ -477,3 +477,15 @@ test("resolveServerConfig — by name, by guild id, and loud failures", async ()
     fs.unlinkSync(file);
   }
 });
+
+test("/provision apply says why there is no Apply button, first — the plan's tail may be cut off", async () => {
+  const { applyHold } = await import("../src/module/discordapp/commands/provision.js");
+  const op = { phase: "roles", op: "create" };
+  const errors = ["role A is above the bot", "role B is above the bot", "role C is above the bot", "role D is above the bot"];
+  const held = applyHold({ errors, ops: [op] }, []);
+  assert.match(held, /^⛔ \*\*No Apply button: 4 error\(s\)/);
+  assert.ok(held.includes("• role A is above the bot") && held.includes("…and 1 more"));
+  assert.match(applyHold({ errors: [], ops: [op] }, ["Administrator"]), /apply needs:\*\*\n• Administrator/);
+  assert.match(applyHold({ errors: [], ops: [{ phase: "report", op: "unmanaged" }] }, []), /Nothing to apply/);
+  assert.equal(applyHold({ errors: [], ops: [op] }, []), null, "a clean plan with changes gets the button");
+});

@@ -7,6 +7,25 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.59.1] - 2026-10-06
+
+### Fixed
+- **`/provision apply` without a visible reason for the missing button.**
+  The Apply button is shown only for a plan with changes, no errors and
+  nothing blocking — by design. But a long plan is cut to fit a Discord
+  message (the rest attached as a file), and the errors section is at its
+  end, so the reply looked like a plan with no button and no explanation.
+  The reason now comes first: the plan's errors (up to three, then a count),
+  what apply needs (Administrator), or "nothing to apply".
+- **Apply with another bot failed on every managed message it had to edit.**
+  The state remembered messages posted by the test bot, so the plan said
+  `edit`: role panels failed with "Cannot edit a message authored by another
+  user" (50005), persona texts with "Unknown Message" (10008 — every bot
+  creates its own persona webhook, and a webhook does not see another's
+  messages). An edit refused for either reason now posts a new copy,
+  remembers it, and says in the log to delete the old one. The test fake
+  returns Discord's real error codes for both cases.
+
 ## [4.59.0] - 2026-10-06
 
 ### Added
