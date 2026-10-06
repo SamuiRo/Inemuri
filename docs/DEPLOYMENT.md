@@ -25,17 +25,25 @@ cd $APP_ROOT
 git clone <repo> .            # or unpack the checkout
 npm ci
 cp .env.example .env && $EDITOR .env      # fill in real values
-npm run migrate:status                    # should list 001..NNN as pending
-npm run migrate                           # creates the schema (takes a backup first)
+# copy the git-ignored configs (sources.json, routing.json, triage.json, …) — see below
+npm run setup                             # schema, migrations, sources from sources.json
 pm2 start ecosystem.config.cjs
 pm2 save && pm2 startup                    # bring it back after a reboot
 pm2 logs inemuri --lines 100
 ```
 
-On a brand-new database `database.sync()` (run on boot) already creates every
-table at its latest shape; `npm run migrate` then runs the idempotent
-migrations and just records them. On the current VPS database (pre-TheFlow)
-migration `001` **creates** the TheFlow schema.
+`npm run setup` builds the database from the configs: `db:bootstrap` (the
+tables older than migrations), `migrate`, `seed` from `sources.json`, and
+`flow knowledge import <file>` with `-- --knowledge <file>`; then it prints
+`flow preflight`. It refuses without `src/config/sources.json` (seed would
+take the sample). On an existing database every step is safe to repeat;
+`npm run setup -- --new` starts from an empty database and moves the old one
+to `database/backups/pot.sqlite.<time>.pre-setup` — nothing is deleted.
+
+A new database means: no TheFlow corpus and labels unless imported, no
+provisioning state (the next apply adopts everything and posts the managed
+messages again — PROVISIONING.md), and polling starts from now for every
+source. `npm run migrate` alone on an empty database stops and says so.
 
 ## What `git pull` does not bring
 
@@ -156,6 +164,27 @@ with a different bot than the one that provisioned it before:
 7. `FLOW_DELIVERY_ENABLED=true` only when every rule points at a channel you
    are happy to see filled; start. The status board posts about a minute
    after the start.
+
+## When migrate says "No sources table"
+
+`npm run migrate` found a database without the tables Inemuri creates on its
+first start. It stops before changing anything and prints the path. The
+database lives in `<working directory>/database/pot.sqlite`, so:
+
+1. Find the database the service was using:
+   `pm2 describe inemuri` (look at `exec cwd`) or
+   `find / -name pot.sqlite -not -path "*/backups/*" 2>/dev/null`.
+2. If it is in another directory: stop the service, copy that file to
+   `database/pot.sqlite` here (or run everything from that directory), then
+   `npm run migrate`. Point `cwd` in `ecosystem.config.cjs` at the directory
+   you settle on.
+3. Or start clean: `npm run setup -- --new` builds a new database from the
+   configs (see First install). For a deployment that never ran TheFlow the
+   old database holds only sources, which `sources.json` recreates, and
+   polling positions, which simply start from now.
+
+The empty file the failed run created can be deleted; its "backup" under
+`database/backups/` is empty too.
 
 ## Rollback
 

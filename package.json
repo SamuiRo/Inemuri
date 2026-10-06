@@ -1,6 +1,6 @@
 {
   "name": "inemuri",
-  "version": "4.58.0",
+  "version": "4.59.0",
   "engines": {
     "node": ">=22"
   },
@@ -15,6 +15,7 @@
     "migrate": "node scripts/migrate.js",
     "migrate:status": "node scripts/migrate.js status",
     "db:bootstrap": "node scripts/bootstrap-schema.js",
+    "setup": "node scripts/setup.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.58.0`; pushed up to `v4.57.0`. 18
+`v4.59.0`; pushed up to `v4.58.0`. 18
 migrations; `npm test` is 623 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
@@ -107,7 +107,10 @@ instances, `flow knowledge import kb.jsonl` after. Reddit needs
   file before ever running it.
 - Why has one polling pilot source's checkpoint not advanced since
   2026-05-01 — dead channel, or broken polling? (ROADMAP §1.2, §11)
-- The VPS app-root path, to finish `ecosystem.config.cjs` (`cwd`).
+- The VPS app-root path, to finish `ecosystem.config.cjs` (`cwd`). The first
+  deploy (2026-10-06) ran migrate in `/home/Inemuri` and found no database
+  there — where the `v4.1.7` service kept its `pot.sqlite` decides it
+  (DEPLOYMENT.md "When migrate says No sources table").
 - Esports results fall into `other` — a topic of their own, or `steam`?
 
 ## Documentation

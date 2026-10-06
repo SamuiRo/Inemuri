@@ -503,6 +503,7 @@ discordapp adds slash commands and buttons; every reply is visible only to the c
 | `npm start` | Starts the full application. |
 | `npm run seed` | Seeds sources from `src/config/sources.json`. |
 | `npm run seed:fresh` | Clears all sources and reseeds them. |
+| `npm run setup` | Builds the database from the configs in one go: bootstrap, migrate, seed from `sources.json` (`-- --knowledge <file>` imports the knowledge base, `-- --new` starts from an empty database and moves the old one to `database/backups/`). Refuses without `src/config/sources.json`. Safe to repeat. |
 | `npm run db:bootstrap` | Creates missing tables in an empty database. Run **before** `npm run migrate` on a fresh install — migrations cannot bootstrap from nothing. No-op once the tables exist. |
 | `npm run migrate` | Applies pending schema migrations (takes a backup first). |
 | `npm run migrate:status` | Lists applied and pending migrations. |
@@ -620,9 +621,16 @@ file parses but never arrives.
 ### First run on an empty database
 
 ```bash
+npm run setup          # bootstrap + migrate + seed from sources.json
+npm start
+```
+
+Step by step, `setup` is:
+
+```bash
 npm run db:bootstrap   # sync() creates tables from the models
 npm run migrate        # applies what sync() does not know about
-npm start
+npm run seed           # sources from src/config/sources.json
 ```
 
 The order matters and is not interchangeable. **Migrations cannot create the

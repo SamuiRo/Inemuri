@@ -7,6 +7,30 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.59.0] - 2026-10-06
+
+### Added
+- **`npm run setup`** — build the database from the configs in one command:
+  `db:bootstrap`, `migrate`, `seed` from `sources.json`, optionally
+  `flow knowledge import` (`-- --knowledge <file>`), then `flow preflight`.
+  Safe on an existing database; `-- --new` starts from an empty one and moves
+  the old file to `database/backups/…pre-setup` (nothing deleted). Refuses
+  without `src/config/sources.json`, which would otherwise seed the sample
+  sources into a real database.
+
+### Fixed
+- DEPLOYMENT.md "First install" told a new install to run `npm run migrate`,
+  which fails on an empty database — it is `npm run setup` now.
+- **`npm run migrate` on a database without `sources`.** The first deploy to
+  the VPS failed in `001` with Sequelize's "No description found for
+  sources table". `database.connect()` silently creates a missing SQLite
+  file, so the runner backed up and migrated a brand-new empty database —
+  the service's real one was elsewhere. `migrate` now prints the database
+  path and, before touching anything, stops when `sources` is missing: it
+  says whether the file was just created and names the two causes — the
+  service's database is in another working directory (or `SQLITE_STORAGE`),
+  or it is a fresh install (`npm run setup`).
+
 ## [4.58.0] - 2026-10-04
 
 Everything the first test week on a provisioned Discord server needs, ready

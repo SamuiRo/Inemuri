@@ -112,7 +112,8 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 - **Migrations cannot bootstrap an empty database.** `sources` and
   `source_states` predate the migration system and are created by
   `database.sync()`, not by a migration, so `npm run migrate` on an empty file
-  fails in `002`. A fresh install runs `npm run db:bootstrap` first.
+  fails in `002` (since v4.59.0 it stops with an explanation instead). A fresh
+  install runs `npm run setup` (bootstrap, migrate, seed from `sources.json`).
 - `.github/workflows/ci.yml` runs lint, bootstrap, migrate and tests on push
   and PR. CI has no `.env`, no `sources.json` and no database, which is
   deliberate: it proves a fresh clone starts on the `*.sample.json` fallbacks.
@@ -145,6 +146,7 @@ npm run seed         # seed sources from src/config/sources.json
 npm run seed:fresh   # clear all sources and reseed
 npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations
+npm run setup        # new or existing DB: bootstrap + migrate + seed; -- --new, -- --knowledge <f>
 npm run db:bootstrap # create missing tables (empty DB only; run BEFORE migrate)
 npm run lint         # eslint (flat config, eslint.config.js)
 npm test             # node --test suites under test/

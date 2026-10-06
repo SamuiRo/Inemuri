@@ -115,9 +115,38 @@ async function cmdStatus() {
   await database.disconnect();
 }
 
+/**
+ * Міграції не створюють базу з нуля: `sources` і `source_states` старші за
+ * них і з'являються з `database.sync()` (CLAUDE.md). Без `sources` перша ж
+ * міграція падає на describeTable з повідомленням, яке нічого не пояснює.
+ *
+ * Дві причини, і їх треба розрізнити до будь-яких змін: свіжа установка
+ * (тоді — db:bootstrap) або база не там, де її шукають (робоча тека інша,
+ * ніж у сервісу; SQLITE_STORAGE). connect() тихо створює порожній файл, тож
+ * «файл є» ще не означає «база є».
+ */
+async function guardEmptyDatabase(qi, existedBefore) {
+  const tables = (await qi.showAllTables()).map(String);
+  if (tables.includes("sources")) return true;
+  print(`No "sources" table in ${DB_FILE}${existedBefore ? "" : " — the file did not exist and was just created empty"}.`, "error");
+  print("Nothing was migrated. One of:", "error");
+  print("  • the service's database is elsewhere — the working directory differs from the one the service ran in " +
+    "(pm2 describe <app> → exec cwd), or SQLITE_STORAGE points elsewhere. Copy that database here (service stopped) " +
+    "or run migrate from that directory;", "error");
+  print("  • this is a fresh install — run npm run setup (bootstrap, migrate and seed from sources.json in one go).", "error");
+  return false;
+}
+
 async function cmdMigrate() {
+  const existedBefore = fs.existsSync(DB_FILE);
   await database.connect();
   const qi = database.sequelize.getQueryInterface();
+  print(`Database: ${DB_FILE}`, "info");
+  if (!(await guardEmptyDatabase(qi, existedBefore))) {
+    await database.disconnect();
+    process.exitCode = 1;
+    return;
+  }
   await ensureLedger(qi);
 
   const applied = await appliedSet(qi);
