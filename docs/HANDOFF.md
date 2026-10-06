@@ -6,33 +6,32 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.59.1`; pushed up to `v4.59.0`. 18
-migrations; `npm test` is 623 green `node --test` cases on a throwaway
+`v4.59.2`; pushed up to `v4.59.1`. 18
+migrations; `npm test` is 625 green `node --test` cases on a throwaway
 database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
 tests on every push.
 
 | Part | State |
 |---|---|
 | Classic forwarding | Telegram → Telegram/Discord, unchanged; must keep working through every deploy |
-| TheFlow phases 0–5, 1.5 | Built, run on real data in shadow mode ([THEFLOW.md](THEFLOW.md)). Delivery built and **off** until the destination channels exist |
-| Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Ready for the shadow week** |
+| TheFlow phases 0–5, 1.5 | Built ([THEFLOW.md](THEFLOW.md)). **Live on the VPS since 2026-10-06, delivery on** — every routing rule points at a staff-only test channel, so nothing reaches a public channel yet |
+| Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Test week running** |
 | Taxonomy | `categories.json` v3: v2 (`health`, `mind`, `money`, `markets`; `research`, `report`) + `games`, `p2e`; `meme` |
-| Delivery extras | Ads (`is_ad`) → `#unsorted`; routed posts not in Ukrainian are translated (`translate()`, only for what is sent); `filters.min_length` |
-| Status board | Built (`v4.58.0`): silent sources and channels, one message edited in place; on with `status_destinations` |
-| discordapp | Complete and in production ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); one piece not run live: `/export-chats` to Telegram |
+| Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
+| Status board | On (`v4.58.0`): silent sources and channels, one message edited in place in the staff `status` channel |
+| discordapp | In production with the production bot ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); the operator's server redesign applied 2026-10-06; one piece not run live: `/export-chats` to Telegram |
 
-**Dev copy.** 18 Telegram channels from the operator's list
-(`devtest/Sources/`, git-ignored: INFO/POSTS/screenshot per channel) are in
-`sources.json` and seeded with per-channel filters, all flow-enabled — 15
-new, 3 updated pilots. Three of the new ones were DB-only classic sources: their classic destinations, `polling`
-mode and old filters were kept and merged. Before that: 10 news outlets with
-triage, `triage.json` profile v1, 8 operator examples in the knowledge base,
-`health_destinations` set, delivery off. Corpus: 102 `enriched`, 115
-`pending` (pilot posts waiting for the next run).
+**The VPS** runs `v4.59.1` under pm2 since 2026-10-06. Its database is new
+(`npm run setup -- --new`): sources from `sources.json`, no TheFlow history
+before that day, polling started from the deploy. The old `v4.1.7` database
+was not migrated — it held only sources and polling positions. Deployment
+data is copied by hand; none of it travels with `git pull`
+([DEPLOYMENT.md](DEPLOYMENT.md)).
 
-**The VPS** still runs the pre-TheFlow `v4.1.7`. The operator deploys it
-([DEPLOYMENT.md](DEPLOYMENT.md), "Turning on news intake in shadow mode");
-none of the deployment data travels with `git pull`.
+**Dev copy** (this machine): the same configs; the corpus here (pilot
+posts from 2026-04 onwards) is not on the VPS. Its provisioning state still
+points at messages the test bot posted — the server is now managed from the
+VPS, so do not apply from here.
 
 ## Configuration layout
 
@@ -43,7 +42,7 @@ Deployment data is git-ignored (the repository is public) and read through
 | Local (ignored) | Sample (tracked) | Holds |
 |---|---|---|
 | `sources.json` | `sources.sample.json` | Sources: channels, filters, replacements, `flow`, `feed`, `poll_interval_min` |
-| `routing.json` | `routing.sample.json` | `unsorted_destinations`, `routing`, `health_destinations`, `digest_destinations` |
+| `routing.json` | `routing.sample.json` | `unsorted_destinations`, `routing`, `health_destinations`, `digest_destinations`, `status_destinations` |
 | `triage.json` | `triage.sample.json` | Headline-triage reader profile (NEWS_INTAKE.md §5) |
 | `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
 | `discordapp/servers/*.json`, `messages/**` | `*.sample.*` | discordapp server configs and texts |
@@ -55,36 +54,27 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
 
 ## Next steps
 
-0. **Start the service** — the 18 channels and the v3 prompt load on start.
-   Watch `flow stats` per source for a day: the filters were checked
-   offline against the operator's good/bad examples
-   (`devtest/Sources/FILTERS.proposed.json`), not against live traffic.
-   Re-enrichment of old verdicts under v3 is a separate decision
-   (`flow requeue --status enriched --reset-dedup`, quota cost; the flag
-   re-clusters them, possible only while nothing is delivered).
-1. **Deploy and run the shadow week** (operator). Push `v4.56.0` first — it
-   carries the triage batching fix. On the server: copy the ignored configs,
-   `npm run seed`, `flow knowledge import`, `flow preflight` → Ready, start.
-   Then daily `node src/cli.js flow triage stats` and `flow triage review`.
-2. **After the week:** read the labels, tune `triage.json` (bump its
-   version), set the market cap and corroboration rules (NEWS_INTAKE.md §5).
-3. **Phase 6 step 4** — article text for what passed triage (JSON-LD
+1. **The test week (on the VPS, from 2026-10-06).** Daily: read the staff
+   test channels and `#unsorted` (what lands there and why — the reason is in
+   each post), the `status` message, `node src/cli.js flow stats`,
+   `flow triage stats` and `flow triage review`. The per-channel filters were
+   checked offline against the operator's good/bad examples, not against
+   live traffic — watch for good posts cut and noise let through.
+2. **After the week:** tune `triage.json` (bump its version), set the market
+   cap and corroboration rules (NEWS_INTAKE.md §5); decide where `tools`
+   goes; move the game channels, `claims`, VOYAGE, HARBOR and SANCTUARY out
+   of the staff category into their places with their roles and panel
+   buttons (the plan is in the operator's server skill); route the `games`
+   and `steam` topics, which still fall to `#unsorted`.
+3. **Deduplication thresholds** once several sources produce:
+   `node src/cli.js flow dedup --pairs 30`, then `DEDUP_HIGH`/`DEDUP_LOW`.
+   **Delivery is on, so `flow dedup --reset` (and `flow requeue
+   --reset-dedup`) are refused once a cluster is delivered** — new thresholds
+   apply to new posts only.
+4. **Phase 6 step 4** — article text for what passed triage (JSON-LD
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
-4. **Destination channels — prepared, applied with the deploy.** The server
-   config (git-ignored) creates the test channels in the staff category;
-   the local `routing.json` routes to them with `TODO:<key>` placeholders.
-   On the VPS, with the production bot: follow DEPLOYMENT.md "Turning on
-   delivery to test channels and the status board" — migrate, apply, delete
-   the old texts and panels (posted by the test bot), `discordapp.js ids` →
-   fill the placeholders, `flow preflight` → Ready, `flow preview`, then
-   `FLOW_DELIVERY_ENABLED=true`. The sending account has no Premium, so
-   `TELEGRAM_PREMIUM` stays unset: media posts are budgeted to 1024. The
-   post template is no longer a draft (DELIVERY.md "The template"); the
-   server texts, embed role panels and the announcement in news are in the
-   git-ignored config and go out with the same apply.
-5. **Deduplication thresholds** once several sources produce:
-   `node src/cli.js flow dedup --pairs 30`, set `DEDUP_HIGH`/`DEDUP_LOW`,
-   `flow dedup --reset --run` (only while nothing is delivered).
+5. **Sources for Nikke and Genshin** — their test channels exist and wait for
+   Telegram sources and a `when.source` rule each.
 
 **Accepted as is (operator, 2026-10-03):** two pilot flow sources run pure
 `listener` (they lose posts while the service is down), and
@@ -101,16 +91,13 @@ instances, `flow knowledge import kb.jsonl` after. Reddit needs
 
 ## Open questions
 
-- `sources.json` does not list every source in the database: nine classic
-  sources exist only in `pot.sqlite` (`node src/cli.js list` shows them). `npm run seed`
-  leaves them alone, but `seed:fresh` would delete them — add them to the
-  file before ever running it.
-- Why has one polling pilot source's checkpoint not advanced since
-  2026-05-01 — dead channel, or broken polling? (ROADMAP §1.2, §11)
-- The VPS app-root path, to finish `ecosystem.config.cjs` (`cwd`). The first
-  deploy (2026-10-06) ran migrate in `/home/Inemuri` and found no database
-  there — where the `v4.1.7` service kept its `pot.sqlite` decides it
-  (DEPLOYMENT.md "When migrate says No sources table").
+- On the dev copy, nine classic sources exist only in `pot.sqlite`, not in
+  `sources.json` (`node src/cli.js list` shows them). The VPS database was
+  built from `sources.json`, so they are **not on the VPS** — check whether
+  any of them should be, and add them to the file.
+- Why had one polling pilot source's checkpoint not advanced since
+  2026-05-01 — dead channel, or broken polling? The status board on the VPS
+  now answers it: a dead channel shows up as silent. (ROADMAP §1.2, §11)
 - Esports results fall into `other` — a topic of their own, or `steam`?
 
 ## Documentation
@@ -121,6 +108,19 @@ retired documents that describe a design never built — do not cite them.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-06 — deployed: TheFlow live on the VPS
+
+The VPS moved from `v4.1.7` to `v4.59.1`. The first `npm run migrate` ran
+in a directory with no database and failed opaquely; `v4.58.1`–`v4.59.0`
+made migrate explain an empty database and added `npm run setup`, and the
+VPS database was built new with it. The server redesign was applied with the
+production bot; the first apply failed on the 7 messages the test bot had
+posted (another bot's panels, another bot's persona webhook) — `v4.59.1`
+reposts those instead, and explains a missing Apply button. Routing ids
+filled from `discordapp.js ids`, delivery on to the staff test channels,
+status board on. `v4.59.2`: `ecosystem.config.cjs` runs from its own
+directory, docs brought to the deployed state.
 
 ### 2026-10-04 — the server and routing for the test week
 
@@ -150,54 +150,3 @@ resends when the record fails to save, album text comes from the captioned
 item, shutdown waits for the tick, triage leftovers cannot block retries,
 numeric env vars are validated, and `flow requeue` warns about (or with
 `--reset-dedup` erases) old dedup decisions.
-
-### 2026-10-03 — the first 18 Telegram channels
-
-The operator collected 18 gaming, Steam and crypto channels with good and
-bad examples. Proposed filters were run through the real `MessageFilter`
-and `RegexStage` on the exported posts: footers stripped, giveaways, shop
-ads, fundraisers and review links blacklisted, none of the good examples
-cut. Roughly half of the bad examples are "not interesting", not spam —
-that is calibration, not regex. Operator decisions: `games`, `p2e`, `meme`
-(v3); `is_ad` → `#unsorted`; `min_length` on two channels (60); every
-post not in Ukrainian translated; art posts kept; one channel's own blog
-links cut for now.
-Seeding overwrote the classic destinations of three DB-only sources; they
-were restored from `database/backups/pot.sqlite.pre-news-seed-2026-10-03`
-the same session, nothing was sent in between (the service was down).
-
-### 2026-10-03 — documentation brought up to date
-
-THEFLOW.md, README, ARCHITECTURE and CLAUDE.md said phases 2–5 were
-specification and phase 1 dormant; they now carry the real status (phases
-0–5 built, phase 6 steps 1–3). HANDOFF was 443 lines: rewritten as a short
-current picture, the session record moved to SESSION_LOG.md. The operator
-accepted the two preflight warnings as non-critical.
-
-### 2026-10-03 — ready for the shadow week
-
-Pushed to `origin` (v4.55.1, fast-forward). Triage now waits for a full batch
-or 20 minutes instead of calling the model on every tick — that alone would
-have spent the daily quota. `flow preflight` checks a deployment end to end;
-DEPLOYMENT.md lists every file git does not carry. The ten agreed outlets
-were checked live (all respond, fresh items), added to the local
-`sources.json` and seeded; the poller loads all ten with triage on.
-
-### 2026-10-03 — taxonomy v2, deployment data out of git
-
-`categories.json` v2: topics `health`, `mind`, `money`, `markets`, signals
-`research`, `report`; render and digest know them. The repository is public,
-so the triage profile became deployment data: `triage.json` is git-ignored
-and loaded through `localConfig` with `triage.sample.json` (neutral) as the
-fallback; tests use the sample; docs and taxonomy examples no longer retell
-the operator's example posts. The rule is in CLAUDE.md. Nothing was pushed
-before this — the local branch was 90 commits ahead of `origin`.
-
-### 2026-10-03 — news intake step 3
-
-Headline triage: `discovered_items` (migration `017`), `src/module/theflow/triage/`,
-`gateway.triage()`, `src/config/triage.json`, `flow triage stats|review`,
-a triage toggle in `SourceBuilder.html`. The operator's interest profile and
-eight example posts are in place; markets count in both directions. Live on
-NYPost: 252 of 596 headlines dropped by rule, 50 judged in one call, 3–4
-passed.

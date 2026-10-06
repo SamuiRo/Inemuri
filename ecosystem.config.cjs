@@ -17,10 +17,12 @@ module.exports = {
       script: "src/inemuri.js",
 
       // MUST be the app root. dotenv resolves `.env` relative to
-      // process.cwd(); starting from the wrong directory yields a process
-      // with no Telegram credentials and no obvious reason why.
-      // >>> set this to the checkout path on the VPS <<<
-      cwd: "/opt/inemuri",
+      // process.cwd(), and the database is <cwd>/database/pot.sqlite;
+      // starting from the wrong directory yields a process with no Telegram
+      // credentials, or a fresh empty database, and no obvious reason why.
+      // __dirname is the checkout this file lives in, wherever that is —
+      // a hardcoded path here once disagreed with the real one.
+      cwd: __dirname,
 
       // Load-bearing from phase 1 onward: cluster mode would start a second
       // process, a second enrichment worker, and silently double every AI

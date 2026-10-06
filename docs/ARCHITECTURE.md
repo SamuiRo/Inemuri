@@ -261,7 +261,8 @@ key — with no key the worker never starts and `pending` posts accumulate. One
 tick runs triage (phase 6), vision, enrich, deduplication and the delta call,
 in that order, as a chained `setTimeout` that cannot overlap itself. Verdicts
 (`topic` / `signal_type` / `confidence` / `analysis` / `embedding`) are read
-by resolve and delivery, which stay off in shadow mode.
+by resolve and delivery; delivery is off by default (shadow mode) until
+`FLOW_DELIVERY_ENABLED=true`.
 
 **Deduplication (phase 3, tiers 1–2).** `src/module/theflow/dedup/` runs in
 the enrich worker's tick after enrichment: `DedupCore.js` is pure (keys,

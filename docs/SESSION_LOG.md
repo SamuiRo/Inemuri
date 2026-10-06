@@ -4,6 +4,57 @@ Newest first. [HANDOFF.md](HANDOFF.md) keeps only the latest entries; when it
 gets a new one, the oldest of them moves here. For what each version shipped,
 see [CHANGELOG.md](CHANGELOG.md).
 
+### 2026-10-03 — the first 18 Telegram channels
+
+The operator collected 18 gaming, Steam and crypto channels with good and
+bad examples. Proposed filters were run through the real `MessageFilter`
+and `RegexStage` on the exported posts: footers stripped, giveaways, shop
+ads, fundraisers and review links blacklisted, none of the good examples
+cut. Roughly half of the bad examples are "not interesting", not spam —
+that is calibration, not regex. Operator decisions: `games`, `p2e`, `meme`
+(v3); `is_ad` → `#unsorted`; `min_length` on two channels (60); every
+post not in Ukrainian translated; art posts kept; one channel's own blog
+links cut for now.
+Seeding overwrote the classic destinations of three DB-only sources; they
+were restored from `database/backups/pot.sqlite.pre-news-seed-2026-10-03`
+the same session, nothing was sent in between (the service was down).
+
+### 2026-10-03 — documentation brought up to date
+
+THEFLOW.md, README, ARCHITECTURE and CLAUDE.md said phases 2–5 were
+specification and phase 1 dormant; they now carry the real status (phases
+0–5 built, phase 6 steps 1–3). HANDOFF was 443 lines: rewritten as a short
+current picture, the session record moved to SESSION_LOG.md. The operator
+accepted the two preflight warnings as non-critical.
+
+### 2026-10-03 — ready for the shadow week
+
+Pushed to `origin` (v4.55.1, fast-forward). Triage now waits for a full batch
+or 20 minutes instead of calling the model on every tick — that alone would
+have spent the daily quota. `flow preflight` checks a deployment end to end;
+DEPLOYMENT.md lists every file git does not carry. The ten agreed outlets
+were checked live (all respond, fresh items), added to the local
+`sources.json` and seeded; the poller loads all ten with triage on.
+
+### 2026-10-03 — taxonomy v2, deployment data out of git
+
+`categories.json` v2: topics `health`, `mind`, `money`, `markets`, signals
+`research`, `report`; render and digest know them. The repository is public,
+so the triage profile became deployment data: `triage.json` is git-ignored
+and loaded through `localConfig` with `triage.sample.json` (neutral) as the
+fallback; tests use the sample; docs and taxonomy examples no longer retell
+the operator's example posts. The rule is in CLAUDE.md. Nothing was pushed
+before this — the local branch was 90 commits ahead of `origin`.
+
+### 2026-10-03 — news intake step 3
+
+Headline triage: `discovered_items` (migration `017`), `src/module/theflow/triage/`,
+`gateway.triage()`, `src/config/triage.json`, `flow triage stats|review`,
+a triage toggle in `SourceBuilder.html`. The operator's interest profile and
+eight example posts are in place; markets count in both directions. Live on
+NYPost: 252 of 596 headlines dropped by rule, 50 judged in one call, 3–4
+passed.
+
 ### 2026-10-03 — news intake step 2
 
 `sitemap` and `wpjson` discovery (migration `016`, `src/sources/feeds/discovery.js`),

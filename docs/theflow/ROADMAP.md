@@ -25,6 +25,10 @@ Read from the VPS backup of 2026-06-07 (`pot.sqlite`, `sources.json`,
 `cronjob.config.json`, `cronjobs.js`). The `.env` files in that backup were not
 opened.
 
+> **Superseded (2026-10-06).** The VPS runs `v4.59.1` with a database built
+> new from the configs (`npm run setup -- --new`); the section below
+> describes it as it was before TheFlow.
+
 **The VPS runs a pre-TheFlow version.** Its database has three tables —
 `sources`, `sqlite_sequence`, `source_states`. There is no `flow` column, no
 `posts`, no `clusters`, and no migration has ever been applied there. The
@@ -911,6 +915,9 @@ Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 �
 > `#unsorted`, and a matching rule with no destinations is skipped. Every
 > result carries a `reason`. Not yet wired into a delivery path — that is 5.4.
 > 5.1 (the channels) is still the operator's and still gates enabling any of it.
+> **Done (2026-10-06):** the operator's server has test channels for every
+> routed topic in its staff category, `routing.json` points at them, and
+> delivery is on on the VPS.
 
 > **5.3–5.6 built (v4.47.0), off by default.** `src/module/theflow/delivery/`:
 > `render.js` (pure — DELIVERY.md's mechanism, with a **draft** template in
@@ -1421,7 +1428,7 @@ articles a day per outlet, over 90% irrelevant.
 | 14.2 | Discovery through `sitemap` and `wpjson`, as settings of the existing feed poller | M |
 | 14.3 | `discovered_items` + triage: rules, then a batched LLM over headlines | L |
 | 14.4 | Article fetch for what passed triage (JSON-LD → `<p>`), plus sampled rejects | M |
-| 14.5 | Alert on silent sources; poll intervals tuned from real data | S |
+| 14.5 | Alert on silent sources; poll intervals tuned from real data | S — silent sources: **done** as the status board (v4.58.0, `src/module/status/`); intervals open |
 
 > **14.1 done (v4.52.0).** `src/module/theflow/knowledge/`: `snapshot.js`
 > (pure — post + label → row, `contentHash`), `exchange.js` (pure — the JSONL

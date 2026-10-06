@@ -205,7 +205,7 @@ The file is JSONL. The first line is a header, every following line one example:
 | 2 | Discovery through `sitemap` and `wpjson` as settings of the existing poller — **done (v4.53.0)** | minor |
 | 3 | `discovered_items` + triage (rules + batched LLM over headlines) — **done (v4.54.0)** | minor |
 | 4 | Article fetch (JSON-LD → `<p>`) for what passed triage, plus the sampled rejects | minor |
-| 5 | Alert on silent sources, poll intervals tuned from real data | patch |
+| 5 | Alert on silent sources, poll intervals tuned from real data | patch — the alert half is the status board (v4.58.0, every source, not only news); intervals open |
 
 Step 1 comes first: it changes nothing visible, and without it triage would have
 nothing to learn from.

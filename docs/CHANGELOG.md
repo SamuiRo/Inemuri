@@ -7,6 +7,24 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.59.2] - 2026-10-07
+
+### Changed
+- `ecosystem.config.cjs` runs the app from the directory it lives in
+  (`cwd: __dirname`) instead of a hardcoded `/opt/inemuri` that nobody had
+  set — the mismatch behind the first deploy's empty-database migrate. A pm2
+  app created earlier keeps its old `cwd` until it is deleted and started
+  again from the file (DEPLOYMENT.md, pm2 notes).
+
+### Documentation
+- Everything brought to the deployed state: TheFlow live on the VPS since
+  2026-10-06 with delivery on to staff-only test channels, a database built
+  by `npm run setup -- --new`, the server redesign applied with the
+  production bot. HANDOFF rewritten around the test week (older session
+  entries moved to SESSION_LOG); THEFLOW, README, CLAUDE.md and ARCHITECTURE
+  no longer say delivery is off; ROADMAP §1 marked superseded and §5.1 done;
+  the silent-source half of phase 6 step 5 recorded as the status board.
+
 ## [4.59.1] - 2026-10-06
 
 ### Fixed

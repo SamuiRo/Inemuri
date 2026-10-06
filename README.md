@@ -726,19 +726,21 @@ firehose into a stream of validated posts — translating them to a canonical
 language, categorizing them, extracting structured entities, deduplicating
 events across channels, and routing by content instead of by source.
 
-**Status (v4.56.0).** Every phase up to 5, and vision (1.5), is built and has
-run on real data in shadow mode:
+**Status (v4.59).** Every phase up to 5, and vision (1.5), is built; the
+operator's deployment runs it live since 2026-10-06, delivering to test
+channels first:
 
 | Phase | What it does | State |
 |---|---|---|
 | 0 | `flow` flag per source, `posts` table, regex stage, ingest | Built |
 | 1 | LLM gateway and enrichment: canonical English, topic, signal, confidence | Built; starts only with a provider key in `.env` |
 | 1.5 | Screenshots transcribed (`flow.vision.enabled`, off by default) | Built |
-| 2 | Resolve, render, delivery to your channels | Built, **off** (`FLOW_DELIVERY_ENABLED=false`) until the channels exist |
+| 2 | Resolve (by topic, signal or source; shared channels with `also`), Ukrainian embed template, delivery to your channels | Built; off by default (`FLOW_DELIVERY_ENABLED`) |
 | 3 | Deduplication across sources, edits to delivered messages | Built; thresholds still to calibrate |
 | 3.5 | Reddit, RSS/Atom, news sitemaps, WordPress API as sources | Built (Reddit needs OAuth credentials) |
 | 4 | Entity extraction: codes, links, amounts, events | Built |
 | 5 | Few-shot from your labels, scheduled digest, history search | Built; reactions deferred |
+| — | Status board: silent sources and delivery channels, one message edited in place | Built (`status_destinations`) |
 | 6 | News intake: knowledge base, headline triage | Steps 1–3 built — [NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md) |
 
 Sources without `flow.enabled` behave exactly as before; enable it per source

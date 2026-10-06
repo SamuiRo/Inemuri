@@ -12,9 +12,10 @@ phase 0.5 rollout (ROADMAP §2.3) but applies to every deploy after it.
 
 - Node.js 22+ on the VPS.
 - pm2 installed globally (`npm i -g pm2`).
-- The repository checked out at a fixed path — call it `$APP_ROOT`
-  (e.g. `/opt/inemuri`). Set it once in
-  [`ecosystem.config.cjs`](../ecosystem.config.cjs) → `cwd`.
+- The repository checked out at a fixed path — call it `$APP_ROOT`.
+  [`ecosystem.config.cjs`](../ecosystem.config.cjs) runs the app from the
+  directory it lives in (`cwd: __dirname`), so there is nothing to set; run
+  every `npm run …` and `node …` command from `$APP_ROOT` too.
 - A populated `.env` in `$APP_ROOT` (never committed — see `.env.example`).
 - The current runtime `database/pot.sqlite` in place.
 
@@ -176,8 +177,8 @@ database lives in `<working directory>/database/pot.sqlite`, so:
    `find / -name pot.sqlite -not -path "*/backups/*" 2>/dev/null`.
 2. If it is in another directory: stop the service, copy that file to
    `database/pot.sqlite` here (or run everything from that directory), then
-   `npm run migrate`. Point `cwd` in `ecosystem.config.cjs` at the directory
-   you settle on.
+   `npm run migrate`. Start the service with `pm2 start ecosystem.config.cjs`
+   from that directory, so pm2 and the commands use the same database.
 3. Or start clean: `npm run setup -- --new` builds a new database from the
    configs (see First install). For a deployment that never ran TheFlow the
    old database holds only sources, which `sources.json` recreates, and
@@ -206,9 +207,11 @@ taken automatically at the start of each `npm run migrate` run.
 - The config file is [`ecosystem.config.cjs`](../ecosystem.config.cjs) —
   `.cjs`, because the project is `"type": "module"` and pm2 loads a
   `.js` ecosystem file as CommonJS.
-- `cwd` must be `$APP_ROOT`: `dotenv` resolves `.env` relative to
-  `process.cwd()`. Starting from the wrong directory gives a process with no
-  credentials and no obvious reason why.
+- `cwd` is the checkout the file lives in (`__dirname`): `dotenv` resolves
+  `.env` and the database path relative to `process.cwd()`. A process
+  started elsewhere would get no credentials or a new empty database. A pm2
+  app created before `v4.59.2` with another `cwd` keeps it until
+  `pm2 delete inemuri && pm2 start ecosystem.config.cjs && pm2 save`.
 - `instances: 1`, `exec_mode: "fork"` are load-bearing from phase 1 onward:
   pm2 cluster mode would start a second process — and, once the enrichment
   worker exists, a second worker that silently doubles every AI call

@@ -1,11 +1,12 @@
 # TheFlow
 
-> **Status (v4.56.0):** phases 0–5 and 1.5 are built and have run on real
-> data in shadow mode; phase 6 (news intake) has steps 1–3 built — the
-> knowledge base, sitemap/WordPress discovery and headline triage. Delivery is
-> built and **off** (`FLOW_DELIVERY_ENABLED=false`) until the destination
-> channels exist. Open: deduplication threshold calibration (§6.8), phase 6
-> steps 4–5 (article text, silent-source alerts), reactions (§5.7, deferred).
+> **Status (v4.59):** phases 0–5 and 1.5 are built and live on the VPS since
+> 2026-10-06, delivery on to staff-only test channels for a test week before
+> public ones; phase 6 (news intake) has steps 1–3 built — the knowledge base,
+> sitemap/WordPress discovery and headline triage. Silent sources are watched
+> by the status board (Inemuri-wide, `src/module/status/`). Open:
+> deduplication threshold calibration (§6.8), phase 6 step 4 (article text)
+> and the poll-interval half of step 5, reactions (§5.7, deferred).
 > Without a primary provider key the worker does not start and flow sources
 > only accumulate `pending` posts. This file is the entry point; per-task
 > status lives in [theflow/ROADMAP.md](theflow/ROADMAP.md), the version record
@@ -163,8 +164,9 @@ outbound network calls" invariant. `has_media` is recorded at ingest;
 priority queue, fallback matrix), `categories.json` v1, and the enrichment
 worker are all built — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3 for the
 full breakdown per task. Verdicts are written to `posts`; the resolve stage
-and delivery exist (phase 2) but delivery stays off in shadow mode, and the
-worker itself does not start without a primary provider API key in `.env`.
+and delivery exist (phase 2) — delivery is off by default (shadow mode) and on
+in the deployment since 2026-10-06 — and the worker itself does not start
+without a primary provider API key in `.env`.
 `categories.json` is at v3 (news topics and signals; `games`, `p2e`, `meme` — TAXONOMY.md).
 
 The provider decisions that used to block this phase are settled (§3.1):
@@ -177,12 +179,14 @@ Exit gate: a week of comparing verdicts against your own judgment
 (`node src/cli.js flow review` writes the labels) before enabling enforcement.
 Without it there is no basis for trusting the classification.
 
-### Phase 2 — content-based routing ✅ built, delivery off
+### Phase 2 — content-based routing ✅ built, delivering to test channels
 
 The resolve stage, lazy media download, the `#unsorted` channel. Classic
-forwarding keeps running in parallel. Built (v4.24–v4.47): resolve, the
-render template, delivery records, `flow preview`. Delivery waits for the
-destination channels (ROADMAP §5.1) and stays off until then.
+forwarding keeps running in parallel. Built (v4.24–v4.58): resolve with
+routing by source and `also` rules, the Ukrainian embed template, delivery
+records, `flow preview`. On the VPS since 2026-10-06 delivery is on, with
+every rule pointing at a staff-only test channel; public channels follow
+after the test week.
 
 This is where TheFlow first becomes useful day to day.
 
@@ -214,8 +218,8 @@ Large news outlets as sources, delivering only what matters to the reader —
 (`knowledge_examples`, portable through `flow knowledge export|import`),
 discovery through news sitemaps and the WordPress API, and headline triage
 (`discovered_items`, a reader profile in the git-ignored `triage.json`,
-`flow triage stats|review`). Next: the shadow week, then article text for
-what passed (step 4).
+`flow triage stats|review`). The test week runs on the VPS since
+2026-10-06; next, article text for what passed (step 4).
 
 ### Phase 1.5 — vision for screenshots (was phase 6) ✅ implemented
 
