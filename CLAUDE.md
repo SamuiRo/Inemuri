@@ -53,6 +53,9 @@ conventions — load the matching one when working on a specific server.
   English; there is no migration backlog left.
 - Code comments in existing files are Ukrainian. Match the surrounding file
   rather than mixing languages within one file.
+- Docs describe the current state; history goes to `docs/CHANGELOG.md` and
+  `docs/SESSION_LOG.md`, not into the specs. `docs/theflow/ROADMAP.md`
+  section numbers are cited by code comments — keep them stable.
 - `docs/.archive/` is git-ignored and holds retired documents. **Do not read it
   for current behaviour and do not cite it** — most of it describes a design
   that was never built (a Google Sheets config provider, a Rule Engine, tables
@@ -124,10 +127,11 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   `SQLITE_STORAGE` at it and runs `node --test --test-concurrency=1`. The
   suites that write to SQLite refuse to run against `database/pot.sqlite`
   (`test/support/testDatabase.js`), so run a single file as
-  `npm test -- test/x.test.js`, never bare `node --test`. They cover the pure/unit layers —
-  `RegexStage`, `FlowIngest` helpers, media resolver, the AI schema/prompt,
-  providers, the gateway internals and fallback matrix, the quota ledger and
-  the enrich worker, and discordapp. CI runs them on push and PR.
+  `npm test -- test/x.test.js`, never bare `node --test`. They cover the pure
+  layers (regex stage, schemas, prompts, dedup core, resolve, render,
+  parsers, discordapp planner) and, through the throwaway database, the
+  stages that read and write SQLite (`*-db.test.js`, dedup, triage,
+  knowledge, delivery, the enrich worker). CI runs them on push and PR.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
 - **The repository is public.** Deployment data never goes into git:

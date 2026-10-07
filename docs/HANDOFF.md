@@ -6,17 +6,16 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.59.2`; pushed up to `v4.59.1`. 18
-migrations; `npm test` is 625 green `node --test` cases on a throwaway
-database (never `database/pot.sqlite`); CI runs lint, bootstrap, migrate and
-tests on every push.
+`v4.59.3`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 625 green
+`node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
+runs lint, bootstrap, migrate and tests on every push.
 
 | Part | State |
 |---|---|
 | Classic forwarding | Telegram → Telegram/Discord, unchanged; must keep working through every deploy |
 | TheFlow phases 0–5, 1.5 | Built ([THEFLOW.md](THEFLOW.md)). **Live on the VPS since 2026-10-06, delivery on** — every routing rule points at a staff-only test channel, so nothing reaches a public channel yet |
 | Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Test week running** |
-| Taxonomy | `categories.json` v3: v2 (`health`, `mind`, `money`, `markets`; `research`, `report`) + `games`, `p2e`; `meme` |
+| Taxonomy | `categories.json` v3: 11 topics, 14 signals ([theflow/TAXONOMY.md](theflow/TAXONOMY.md)) |
 | Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
 | Status board | On (`v4.58.0`): silent sources and channels, one message edited in place in the staff `status` channel |
 | discordapp | In production with the production bot ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); the operator's server redesign applied 2026-10-06; one piece not run live: `/export-chats` to Telegram |
@@ -100,14 +99,35 @@ instances, `flow knowledge import kb.jsonl` after. Reddit needs
   now answers it: a dead channel shows up as silent. (ROADMAP §1.2, §11)
 - Esports results fall into `other` — a topic of their own, or `steam`?
 
+- `package.json` says `"license": "ISC"`, the `LICENSE` file is MIT — the
+  operator decides which is meant (README now just points to `LICENSE`).
+
 ## Documentation
 
 Everything under `docs/` is English. `docs/.archive/` is git-ignored and holds
 retired documents that describe a design never built — do not cite them.
+`theflow/ROADMAP.md` keeps its section numbers (code comments cite them);
+done work is a line per task there, details in CHANGELOG.
 
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-07 — documentation audit
+
+Every document checked against the code. Fixed what was wrong: README's
+quick start (`npm run seed` on an empty database → `npm run setup`), the
+ARCHITECTURE repo map (a dozen missing modules, a non-existent file), the
+LLM gateway contract (six methods, quota per `provider:model`, consumers),
+TAXONOMY's v1-era example and the resolve order (`ad`), DEDUPLICATION's
+"Discord edit needs adding", DATA_MODEL's missing tables and migrations,
+media.md's file-size limit, NEWS_INTAKE's unbuilt entity allow-list and
+`body` knob, DISCORDAPP's status. Removed what was history or repetition:
+ROADMAP 1545 → ~400 lines (section numbers kept), DATA_MODEL's per-migration
+prose (now a table), DISCORDAPP's work plan, DEPLOYMENT's one-off rollout
+procedures (now one "Turning on TheFlow features"). Found, not fixed: the
+license mismatch above; `src/config/appearance.config.json` is read by
+nothing.
 
 ### 2026-10-06 — deployed: TheFlow live on the VPS
 
@@ -136,17 +156,3 @@ messages — the old copies are deleted by hand. Then the texts: the delivery
 template in Ukrainian with codes, events and diagnostics as embed fields,
 role panels as embeds (new generic option), the status board in Ukrainian,
 and the server texts plus an announcement in news (git-ignored).
-
-### 2026-10-04 — audit of TheFlow, three fixes
-
-An audit of the whole flow path before the shadow week. Two critical bugs,
-both reproduced before fixing: concurrent `findOrCreate` transactions lost a
-third of Telegram flow posts to `SQLITE_BUSY` (now `IMMEDIATE`, plus retries
-that keep the polling checkpoint), and a provider-reported daily quota was
-ignored, which would have turned the pending queue `failed` (now refused and
-deferred). Media captions are budgeted to 1024 (`TELEGRAM_PREMIUM`, the
-operator has no Premium). `v4.57.3` closed the rest: delivery no longer
-resends when the record fails to save, album text comes from the captioned
-item, shutdown waits for the tick, triage leftovers cannot block retries,
-numeric env vars are validated, and `flow requeue` warns about (or with
-`--reset-dedup` erases) old dedup decisions.

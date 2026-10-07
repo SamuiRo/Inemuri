@@ -1,4 +1,4 @@
-> **Role:** Specification of the discordapp subsystem — decisions, module layout, feature contracts, work plan · **Audience:** Anyone implementing or changing Inemuri's Discord server management
+> **Role:** Specification of the discordapp subsystem — decisions, module layout, feature contracts · **Audience:** Anyone implementing or changing Inemuri's Discord server management
 
 # discordapp — Discord server management
 
@@ -12,11 +12,11 @@ without rewriting its logic.
 The bot is **private**: it serves only the operator's own servers, several of
 them, and is never offered for public install.
 
-> **Status: complete, in production (v4.42.3).** Every step of the work plan is
-> done. Provisioning was run on a live test server and then on the operator's
-> main server: a full rebrand of an existing server — 86 changes, history
-> kept, a clean plan afterwards. What it deliberately does not do is listed in
-> [Status and known limitations](#status-and-known-limitations).
+> **Status: in production** with the production bot on the operator's server
+> (redesign applied 2026-10-06 from the VPS). Commands: `/daily`, `/search`,
+> `/export-chats`, `/provision plan|apply|export`, plus role-panel buttons.
+> Not yet run live: `/export-chats` to Telegram. Deliberate gaps:
+> [Known limitations](#known-limitations).
 >
 > **Running a server with it day to day:** [PROVISIONING.md](PROVISIONING.md) —
 > the loop, recipes, taking over an existing server, troubleshooting. This
@@ -62,8 +62,12 @@ src/module/teapot/models/DiscordResource.js   # provisioning state (migrations 0
 src/config/discordapp/               # git-ignored deployment data + *.sample
   servers/<name>.json
   messages/*.md
-scripts/discordapp.js                # check | apply | export from a terminal
+scripts/discordapp.js                # check | apply | export | ids from a terminal
 ```
+
+`/daily` (`commands/daily.js`, admin) builds the daily report with the cron
+job's handler and emits it as `message.received`; it goes to the
+`cronjob.config.json` destinations exactly as the scheduled run does.
 
 ### Command module contract
 
@@ -118,7 +122,7 @@ normal operation:
 
 | When | Permissions |
 |---|---|
-| Always | `ViewChannel`, `ReadMessageHistory`, `SendMessages`, `EmbedLinks`, `AttachFiles`, `ManageRoles` |
+| Always | `ViewChannel`, `ReadMessageHistory`, `SendMessages`, `EmbedLinks`, `AttachFiles`, `ManageRoles`, `ManageThreads` (private archived threads for `/export-chats`) |
 | During `/provision apply` | `Administrator`, through a separate role (e.g. `Inemuri Setup`) the operator assigns to the bot before applying and removes afterwards |
 
 Three rules follow from how Discord checks permissions:
@@ -165,9 +169,8 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   channel headings, one header line per message
   `[2026-09-29 14:02] author: text`, with reply, attachment and reaction
   markers. **Nothing is truncated** — neither the text nor embeds, which are
-  written whole with their author, title, description, fields and footer
-  (v4.40.3; before, an embed was one line cut at 200 characters, so bot posts
-  and Inemuri's own forwards came out cut). **JSON**: the full structure with ids, reply targets, attachments,
+  written whole with their author, title, description, fields and footer.
+  **JSON**: the full structure with ids, reply targets, attachments,
   reactions and thread parentage.
 - The file is written to the git-ignored `exports/` directory and, when
   `DISCORD_EXPORT_TELEGRAM_CHAT` is set, also sent to that Telegram chat
@@ -178,7 +181,7 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   call Telegram itself), so its failures land in the same log. Telegram's
   limit is 2 GB, so nothing is compressed. Attachment URLs inside the export
   are signed CDN links and expire.
-- No progress updates (v4.38.1): Discord already shows the deferred reply as
+- No progress updates: Discord already shows the deferred reply as
   "thinking…", and every update would be one more request. An interaction
   token lives 15 minutes; a run longer than that still writes its files to
   disk and logs their names — the reply is what is lost.
@@ -566,7 +569,9 @@ node scripts/discordapp.js check <guildId> [config]
 It reports the bot's identity, where its role sits and what it lacks, the
 registered slash commands, whether Message Content works, and the provisioning
 plan. `node scripts/discordapp.js apply <guildId> [config]` shows the plan;
-with `--yes` it applies it, exactly like the Apply button.
+with `--yes` it applies it, exactly like the Apply button. `export` writes the
+server as a config; `ids` prints the Discord ids of managed resources by
+config key, from this database's state — what `routing.json` needs.
 
 ## Configuration
 
@@ -579,69 +584,34 @@ with `--yes` it applies it, exactly like the Apply button.
 | `DISCORD_UPLOAD_LIMIT_MB` | `20` | Largest file Discord delivery sends as an attachment. |
 | `DISCORD_EXPORT_TELEGRAM_CHAT` | empty | Telegram chat id or `@username` that also receives `/export-chats` files. Empty = disk only. |
 
-## Status and known limitations
-
-Complete as of v4.40.1: every step below is done, 100+ `node --test` cases
-cover it, provisioning (create, adopt, archive, restore, edit in place,
-AutoMod, export round trip, `archiveUnmanaged`) was run against a live test
-server, and the operator exercised the slash commands and buttons there.
+## Known limitations
 
 Deliberately not done — each is a small, separate change if it is ever needed:
 
-- **Role panels hold at most 25 roles** (buttons only). A select menu for
-  larger panels was specified but not built.
+- **Role panels hold at most 25 roles** (buttons only); a select menu for
+  larger panels is not built.
 - **No audit log channel.** Actions are logged to the process log only. A
   command running past the 15-minute interaction token (a very large export)
   loses its reply; its files are still on disk and named in the log.
 - **Messages are appended, never inserted.** A message added between existing
-  ones in the config is posted at the end of its channel — Discord cannot
-  insert. Messages are not pinned.
+  ones is posted at the end of its channel — Discord cannot insert. Messages
+  are not pinned.
 - **Server settings are not provisioned**: rules / updates / system channel
   choice, onboarding, verification level. Provisioning does respect the
   channels the server uses (`archiveUnmanaged` keeps them).
 - **AutoMod**: the `member-profile` rule type is not supported. A rule
-  Discord created itself may refuse edits from bots (404 on the test server;
-  accepted on the main server), and on a Community server the mention-spam
-  rule cannot be deleted at all — drop such a rule from the config and set it
-  by hand if the edit fails.
+  Discord created itself may refuse edits from bots, and on a Community
+  server the mention-spam rule cannot be deleted — drop such a rule from the
+  config and set it by hand if the edit fails.
 - **Forum tags** are not provisioned.
-- **Overflow archive names** are `<archive name> 2`, which sits outside a
-  decorative frame such as `┍ … ┑`.
+- **Overflow archives** (`<archive name> 2`, …) sit outside a decorative
+  frame such as `┍ … ┑`, and keep the archive rights they were created with —
+  changing the archive roles later does not resync them.
 - **Plain emoji only** on panel buttons; custom emoji ids differ per server.
-- **Overflow archives** (`ARCHIVE 2`, …) keep the archive rights they were
-  created with; changing the archive roles later does not resync them.
-- **`/export-chats` to Telegram** was built on the normal delivery path but
+- **Provisioning state is per database.** Applying from another instance or
+  with another bot reposts every managed message (PROVISIONING.md).
+- **`/export-chats` to Telegram** is built on the normal delivery path but
   has not been run live yet.
 
-`/search` (theflow/ROADMAP.md §9.1) was added in v4.46.0, with the bus's
-request/reply for asking the core. Natural next steps: anything above that
-practice asks for.
-
-## Work plan
-
-| # | Step | Status |
-|---|---|---|
-| 0 | This specification | Done (v4.30.2) |
-| 1 | REST-only delivery, `DiscordGateway`, `DiscordApp` skeleton: soft start, per-guild registration, guild allowlist, fail-closed guard, ephemeral registry | Done (v4.31.0) |
-| 2 | `/export-chats` | Done (v4.32.0) |
-| 3 | Provisioning config schema and validator, pure planner with tests, `/provision plan` with permission preflight | Done (v4.33.0) |
-| 4 | State migration, applier, import, archive and restore, `/provision apply` with confirmation | Done (v4.34.0) — migration and import landed with step 3 |
-| 5 | Messages from `.md` edited in place, role panels, opt-in groups | Done (v4.35.0) |
-| 6 | AutoMod as a resource | Done (v4.37.0) |
-| 7 | `/provision export` | Done (v4.38.0) |
-
-After the plan, from the operator's use of the test server:
-
-| Version | Change |
-|---|---|
-| v4.36.0 | `scripts/discordapp.js check \| apply` — setup check and provisioning from a terminal |
-| v4.37.0 | AutoMod: Discord's own rules cannot be edited (found live); failures are explained and not recorded as managed |
-| v4.38.0 | Export round trip found three bugs (state keys, neutral overwrites, unknown permission bits) — fixed |
-| v4.38.1 | No progress edits; the applier re-reads the server only after a phase that changed something |
-| v4.39.0 | `/export-chats` to disk and Telegram; nothing attached in Discord |
-| v4.40.0 | `archiveUnmanaged` |
-| v4.40.1 | Plan lists archived and hidden resources apart from untouched ones |
-| v4.41.0 | `adopt` by id — rename on first import, same-named resources |
-| v4.42.0 | Several embeds per message (`---`), `{{#key}}` / `{{@key}}` links, personas posting through the bot's own webhook |
-| v4.42.2 | Plan fingerprint stable across reads — apply refused every time on a server with many overwrites |
-| v4.42.3 | Exclusive role panel: switching roles lost the new role; roles now change one call each. [PROVISIONING.md](PROVISIONING.md) operator guide |
+The per-version history of discordapp is in [CHANGELOG.md](CHANGELOG.md)
+(v4.30.2–v4.43.0, v4.58.0, v4.59.1).

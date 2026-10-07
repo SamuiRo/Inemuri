@@ -4,6 +4,20 @@ Newest first. [HANDOFF.md](HANDOFF.md) keeps only the latest entries; when it
 gets a new one, the oldest of them moves here. For what each version shipped,
 see [CHANGELOG.md](CHANGELOG.md).
 
+### 2026-10-04 — audit of TheFlow, three fixes
+
+An audit of the whole flow path before the shadow week. Two critical bugs,
+both reproduced before fixing: concurrent `findOrCreate` transactions lost a
+third of Telegram flow posts to `SQLITE_BUSY` (now `IMMEDIATE`, plus retries
+that keep the polling checkpoint), and a provider-reported daily quota was
+ignored, which would have turned the pending queue `failed` (now refused and
+deferred). Media captions are budgeted to 1024 (`TELEGRAM_PREMIUM`, the
+operator has no Premium). `v4.57.3` closed the rest: delivery no longer
+resends when the record fails to save, album text comes from the captioned
+item, shutdown waits for the tick, triage leftovers cannot block retries,
+numeric env vars are validated, and `flow requeue` warns about (or with
+`--reset-dedup` erases) old dedup decisions.
+
 ### 2026-10-03 — the first 18 Telegram channels
 
 The operator collected 18 gaming, Steam and crypto channels with good and

@@ -86,46 +86,45 @@ threshold does not drift between languages**: a Korean and an English post
 about the same event sit close together after canonicalization. This is the
 main payoff of the "translation first" decision.
 
-Starting threshold values — these must be verified against real phase 0 data,
-they are not constants to take on faith:
+Thresholds (`DEDUP_HIGH`, `DEDUP_LOW`) are **not calibrated yet** — they
+need cross-source pairs from the corpus (ROADMAP §6.8,
+`flow dedup --pairs 30`):
 
-| Threshold | Start | Consequence of getting it wrong |
+| Threshold | Current | Consequence of getting it wrong |
 |---|---|---|
 | `HIGH` | 0.90 | Too low collapses distinct events and you lose news |
 | `LOW` | 0.75 | Too high lets duplicate spam through |
+
+Once anything is delivered, `flow dedup --reset` is refused, so new
+thresholds apply to new posts only.
 
 Computation is brute-force cosine over the window. A few thousand vectors take
 single-digit milliseconds in a plain JavaScript loop. No vector database
 required.
 
-### Tier 3 — LLM adjudication of the gray zone
+### Tier 3 — LLM adjudication of the gray zone (not built)
 
-Only for `LOW < s < HIGH`. That is a few percent of traffic, not the whole
-stream.
-
-**Until tier 3 is enabled, the gray zone is treated as a new event** and flagged
-for review. Publishing a duplicate by mistake is annoying; swallowing a real
-story by mistake is considerably worse.
+Planned for `LOW < s < HIGH` only — a few percent of traffic. **Until it
+exists, the gray zone is a new event** with `dedup.gray = true`, counted by
+`flow dedup`. Publishing a duplicate is annoying; swallowing a real story is
+worse. Build it once the logs show how much traffic the gray zone carries.
 
 ## Deduplication window
 
 A single global window does not work: a promo code is current for hours, market
-analysis for days. The window is set per category in `categories.json`, and a
+analysis for days. The window is set per **signal** in `categories.json`, and a
 source can override it via `flow.dedup_window_hours`.
 
-| Category | Starting window |
+| Signal | Window |
 |---|---|
-| `promo_code`, `freebie` | 24 h |
-| `event`, `launch`, `patch` | 48 h |
-| `analysis`, `opinion` | 72 h |
 | `outage`, `security` | 6 h |
-| `giveaway_result`, `stream` | 24 h — classified once, routed nowhere |
+| `promo_code`, `freebie`, `giveaway_result`, `stream`, `meme` | 24 h |
+| `event`, `launch`, `patch`, `report` | 48 h |
+| `analysis`, `opinion`, `research` | 72 h |
 
-`security`, `giveaway_result` and `stream` come from the v1 taxonomy drafted
-against the real sources — [ROADMAP.md](ROADMAP.md) appendix A. A hack is news
-for hours, not days: a fresh report about the same exchange a week later is a
-different incident, which is why `security` shares the short window with
-`outage` rather than the analysis window.
+A hack is news for hours, not days: a fresh report about the same exchange a
+week later is a different incident, which is why `security` shares the short
+window with `outage`.
 
 A cluster with `closed: true` accepts no new members.
 
@@ -191,52 +190,33 @@ The result is written to `posts.adds` (`relation`, `adds[]` with `kind`,
 
 ### Step 3 — delivering the addition
 
-```text
-clusters.delivered  ->  for each destination
-        |
-editMessage(channel, message_id, text + addition block)
-        |
-clusters.appends_count++
-```
+Every delivered copy in `clusters.delivered` is re-rendered whole and edited
+through the adapter's `editMessageData()` (Telegram and Discord) — the
+mechanism is in [DELIVERY.md](DELIVERY.md). Rules:
 
-Rules to build in from the start:
-
-- **Cap on additions.** Past `appends_count >= 3`, stop appending — the message
-  becomes unreadable. Only the counter continues.
-- **Length cap.** If an addition would exceed the platform limit, send it as a
-  reply to the original instead of editing.
-- **A failed edit is not a failed delivery.** Message deleted, permissions lost,
-  window expired — fall back to a separate reply.
-- **`corrects` and `denies` are never suppressed.** This is the worst possible
-  failure of the system: the event is cancelled while a cheerful announcement
-  still stands. A retraction is always delivered, even when the addition cap is
-  exhausted.
+- **Cap on additions.** At most three (`MAX_APPENDS`) per cluster are edited
+  in; after that only the counter grows.
+- **A failed edit is not a failed delivery.** Message deleted, permissions lost
+  — fall back to a reply carrying the re-rendered message.
+- **`corrects` and `denies` are never suppressed**, cap or no cap: they are
+  edited in **and** sent as a reply, because an edit notifies nobody. The worst
+  failure of this system is a cancelled event with a cheerful announcement
+  still standing.
+- **`security` is never suppressed** — a `same` answer keeps it `linked`.
 
 ### Replacing the canonical post
 
-If `richness(B)` is substantially higher than `richness(A)` — twice, as a
-starting point — B becomes the new canonical:
-`clusters.canonical_post_id = B.id` and `richness` is updated. The already-sent
-message is **rewritten in full** rather than appended to.
-
-## Platform support
-
-| Platform | Editing | State |
-|---|---|---|
-| Telegram | `TelegramDestination.editMessage()` | **Already implemented**, `src/destinations/telegram/TelegramDestination.js:751` |
-| Discord | — | **Needs to be added** to `DiscordDestination` |
-
-Telegram delivery goes through GramJS (a user MTProto client) rather than the
-Bot API, so bot editing restrictions do not apply here. The practical limits for
-specific channels are worth verifying during phase 3.
+If `richness(B)` is at least twice `richness(A)`, B becomes the canonical
+(`clusters.canonical_post_id`, `richness` updated) and a delivered message is
+rewritten from it.
 
 ## What to log
 
-Implemented as `posts.dedup` (migration `011`), reported by
-`node src/cli.js flow dedup`. Without this, thresholds cannot be tuned:
+`posts.dedup` (migration `011`), reported by `node src/cli.js flow dedup`.
+Without this, thresholds cannot be tuned:
 
 - the similarity value `s` behind every decision;
-- which tier made the decision (1, 2, or 3);
+- which tier made the decision;
 - `relation` and `adds` for every `linked` post;
 - how many posts collapsed per day, per category.
 

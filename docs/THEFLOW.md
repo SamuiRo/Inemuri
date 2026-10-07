@@ -1,16 +1,11 @@
 # TheFlow
 
-> **Status (v4.59):** phases 0–5 and 1.5 are built and live on the VPS since
-> 2026-10-06, delivery on to staff-only test channels for a test week before
-> public ones; phase 6 (news intake) has steps 1–3 built — the knowledge base,
-> sitemap/WordPress discovery and headline triage. Silent sources are watched
-> by the status board (Inemuri-wide, `src/module/status/`). Open:
-> deduplication threshold calibration (§6.8), phase 6 step 4 (article text)
-> and the poll-interval half of step 5, reactions (§5.7, deferred).
-> Without a primary provider key the worker does not start and flow sources
-> only accumulate `pending` posts. This file is the entry point; per-task
-> status lives in [theflow/ROADMAP.md](theflow/ROADMAP.md), the version record
-> in [CHANGELOG.md](CHANGELOG.md).
+> **Status:** phases 0–5 and 1.5 are built and live on the VPS since
+> 2026-10-06, delivering to staff-only test channels for a test week before
+> public ones; phase 6 (news intake) has steps 1–3. Open: deduplication
+> threshold calibration (ROADMAP §6.8), phase 6 step 4 (article text) and
+> poll intervals, reactions (§5.7, deferred). Per-task status:
+> [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## What TheFlow is
 
@@ -76,20 +71,22 @@ Existing sources are untouched until explicitly switched over.
 
 ```text
 STAGE 1 — INGEST (synchronous, fast, no outbound network)
-  parse -> text_replacements -> regex stage -> INSERT posts (pending)
+  parse -> text_replacements -> regex stage (blacklist, noise, repost…) -> INSERT posts (pending)
+  news source with triage: -> discovered_items (pending) instead
                                                      |
   ------------------------------ seam: everything below reads from the database
                                                      |
-STAGE 1.5 — VISION (optional, only on sources that enable it)
-  image-only post -> downscale -> hash -> cache -> transcribe -> text_ocr
-                                                     |
-STAGE 2 — ENRICH (worker, async, queued and rate limited)
-  SELECT pending -> gateway.enrich() -> gateway.embed() -> UPDATE (enriched)
+STAGE 2 — ENRICH WORKER (one tick, in this order, rate limited)
+  triage headlines -> passes become posts
+  vision (sources that enable it) -> text_ocr
+  enrich + embed -> enriched
+  deduplicate (tiers 1–2) -> cluster, link_role, maybe suppressed
+  delta call for linked posts -> adds / corrects / denies
                                                      |
   ------------------------------ seam
                                                      |
-STAGE 3 — FLOW (delivery)
-  deduplicate -> resolve destinations -> download media -> send / edit
+STAGE 3 — DELIVERY (own timer, off unless FLOW_DELIVERY_ENABLED)
+  resolve destinations -> translate -> lazy media -> render -> send / edit / reply
 ```
 
 Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
@@ -110,141 +107,24 @@ Details: [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md)
 
 ## Phases
 
-Each phase is useful on its own and does not require the next one.
+Each phase is useful on its own and does not require the next one. The task
+breakdown with versions is [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
-> The ordered task breakdown, with files, effort and exit gates, lives in
-> [theflow/ROADMAP.md](theflow/ROADMAP.md). Phases added there after this list
-> was written: **0.5 (foundation: migrations, schema generalization)**, **3.5
-> (Reddit and news adapters)** and **6 (news intake, §14)**; **vision moved to
-> phase 1.5**, straight after the gateway. The phase numbered 6 here
-> originally (vision) is retired — today's phase 6 is news intake.
+| Phase | What it gives | State |
+|---|---|---|
+| 0 — persistence | `flow` flag per source, `posts` table, regex stage, idempotent ingest. A corpus to tune prompts and thresholds on — useful even without AI | Built |
+| 0.5 — foundation | Migrations, platform-neutral schema, media resolver seam, tests, `flow stats` | Built |
+| 1 — enrichment | LLM gateway (Gemini primary, OpenRouter text fallback), `categories.json`, enrich worker, `flow review` labels | Built; starts only with a provider key |
+| 1.5 — vision | Screenshots transcribed into `text_ocr` ([VISION.md](theflow/VISION.md)) | Built; off on every source |
+| 2 — routing and delivery | Resolve by topic, signal or source, `#unsorted`, Ukrainian template, translation, lazy media, `flow preview` | Built; delivering to staff test channels |
+| 3 — deduplication | Tiers 1–2, clusters, the `linked` mechanism and the delta call that edits a delivered message | Built; thresholds uncalibrated, tier 3 not built |
+| 3.5 — feeds | Reddit, RSS/Atom, news sitemaps, WordPress API | Built; Reddit needs OAuth credentials |
+| 4 — extraction | Promo codes, links, amounts, events, each anchored to the source text | Built |
+| 5 — feedback and digests | Few-shot from labels, scheduled digest, history search | Built; reactions deferred |
+| 6 — news intake | Knowledge base, discovery, headline triage ([NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)) | Steps 1–3 built; article fetch next |
 
-### Phase 0 — persistence without AI ✅ implemented
-
-The `posts` table, ingestion writing everything raw, the `flow.enabled` flag on
-sources. No AI calls at all.
-
-Produces a corpus of real data for tuning prompts and thresholds offline.
-**Useful even if the AI plan is abandoned entirely** — post history is needed
-for search and digests in any scenario.
-
-Without this phase, similarity thresholds and category definitions have to be
-guessed.
-
-What landed:
-
-- `Source.flow` JSON column (default `{ enabled: false, ... }`), plus
-  `getFlowConfig()` / `isFlowEnabled()` / `isVisionEnabled()` on the model.
-  `flow` is managed declaratively through `sources.json` (the seeder merges
-  partial config with defaults).
-- `posts` and `clusters` tables — `src/module/teapot/models/Post.js` and
-  `Cluster.js`, full field set from [DATA_MODEL.md](theflow/DATA_MODEL.md).
-- `src/module/theflow/RegexStage.js` — the deterministic pre-AI stage:
-  rejection (`skipped_blacklist` / `skipped_empty` / `skipped_noise`),
-  candidate extraction, normalized-text hashing.
-- `src/module/theflow/FlowIngest.js` — stage 1: regex stage → repost check
-  over a window → idempotent `INSERT posts`. No outbound network calls.
-- `TelegramSourceListener._filterAndProcess()` branches on
-  `source.isFlowEnabled()`: replacements are shared, then flow sources persist
-  to `posts` (blacklist-only, whitelist disabled) instead of `emit` + media
-  download. Classic forwarding is byte-for-byte unchanged.
-- Migration: `001-theflow-phase0` via `npm run migrate` — idempotent (creates
-  the schema on a fresh database, adopts it on one that already has it). The
-  runner backs up before applying and refuses `NODE_ENV=development`.
-
-Deviation from spec: `image_hash` is **not** written during ingest. Recording it
-there would require downloading the image, which breaks the "ingestion makes no
-outbound network calls" invariant. `has_media` is recorded at ingest;
-`image_hash` is filled by a separate pass — `scripts/backfill-image-hash.js`
-(dHash via `sharp`, rate-limited, resumable).
-
-### Phase 1 — gateway plus enrichment in shadow mode ✅ implemented
-
-`LLMGateway` (provider registry, RPM/RPD limits, cache, circuit breaker,
-priority queue, fallback matrix), `categories.json` v1, and the enrichment
-worker are all built — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §3 for the
-full breakdown per task. Verdicts are written to `posts`; the resolve stage
-and delivery exist (phase 2) — delivery is off by default (shadow mode) and on
-in the deployment since 2026-10-06 — and the worker itself does not start
-without a primary provider API key in `.env`.
-`categories.json` is at v3 (news topics and signals; `games`, `p2e`, `meme` — TAXONOMY.md).
-
-The provider decisions that used to block this phase are settled (§3.1):
-Gemini is primary for text, embeddings and vision, with OpenRouter as a
-text-only fallback, and the free-tier limits are measured rather than guessed.
-The worker still does not start without a primary key in `.env`, so a
-deployment with no key ingests into `pending` and stops there.
-
-Exit gate: a week of comparing verdicts against your own judgment
-(`node src/cli.js flow review` writes the labels) before enabling enforcement.
-Without it there is no basis for trusting the classification.
-
-### Phase 2 — content-based routing ✅ built, delivering to test channels
-
-The resolve stage, lazy media download, the `#unsorted` channel. Classic
-forwarding keeps running in parallel. Built (v4.24–v4.58): resolve with
-routing by source and `also` rules, the Ukrainian embed template, delivery
-records, `flow preview`. On the VPS since 2026-10-06 delivery is on, with
-every rule pointing at a staff-only test channel; public channels follow
-after the test week.
-
-This is where TheFlow first becomes useful day to day.
-
-### Phase 3 — deduplication, tiers 1 and 2 ✅ built, thresholds open
-
-Exact entity matching, then embeddings with a per-category window. The `linked`
-mechanism for posts that arrive late. Built (v4.45, v4.48), with the delta
-call that edits a delivered message; the HIGH/LOW thresholds wait for
-cross-source posts to calibrate on (§6.8).
-
-Removes the main pain: duplicate spam.
-
-### Phase 4 — entity extraction ✅ built
-
-Promo codes, links, amounts and events into structured JSON: regex candidates
-confirmed by the model, every value anchored to the original text (v4.50).
-
-### Phase 5 — digests and feedback ✅ built, reactions deferred
-
-Built on the existing `CronScheduler`. Labels from `flow review` become
-few-shot examples (v4.51), now stored in the portable knowledge base
-(phase 6). The scheduled digest goes to `digest_destinations`. Reaction
-capture (§5.7) is optional and deferred.
-
-### Phase 6 — news intake 🔶 steps 1–3 built
-
-Large news outlets as sources, delivering only what matters to the reader —
-[theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md). Built: the knowledge base
-(`knowledge_examples`, portable through `flow knowledge export|import`),
-discovery through news sitemaps and the WordPress API, and headline triage
-(`discovered_items`, a reader profile in the git-ignored `triage.json`,
-`flow triage stats|review`). The test week runs on the VPS since
-2026-10-06; next, article text for what passed (step 4).
-
-### Phase 1.5 — vision for screenshots (was phase 6) ✅ implemented
-
-Transcription of image-only posts on selected sources, so that screenshots of
-tweets and announcements stop being invisible to the pipeline. See
-[theflow/VISION.md](theflow/VISION.md).
-
-`VisionStage` runs inside the worker, between ingest and enrichment — never
-during ingest, which makes no outbound calls. It takes photos and
-image-documents (a screenshot sent as a file, to dodge Telegram's
-compression), downscales, hashes perceptually, and reuses a near-identical
-image's transcription instead of paying for it twice. The result lands in
-`posts.text_ocr` before enrichment runs, so a failed enrichment retry does not
-re-transcribe. Enabled per source with `flow.vision.enabled`, off everywhere
-by default.
-
-Originally placed last, to avoid tuning transcription quality and classification
-quality simultaneously with no way to tell which one produced a bad result. It
-moved to 1.5 because vision is required, not optional, and because storing
-`text_ocr` separately from `text_en` answers the same question the ordering was
-meant to answer — see [theflow/ROADMAP.md](theflow/ROADMAP.md) §4.
-
-`has_media` is already recorded at ingest, and `image_hash` is filled by
-`scripts/backfill-image-hash.js`. Their per-source ratio is what decides which
-channels get `vision.enabled`.
+Classification exit gate: verdicts compared with your own judgment
+(`flow review`) often enough to route on — not a fixed number of days.
 
 ## Out of scope
 
@@ -266,14 +146,12 @@ channels get `vision.enabled`.
 
 | Question | State |
 |---|---|
-| Display language | English as canonical is settled. Enrichment returns a one-line `summary_uk`; a post not in Ukrainian is **delivered in Ukrainian** through a separate `translate()` call made only for routed posts (v4.57.0, DELIVERY.md «Translation») — inside the enrichment call the model translated half a post or nothing |
-| Quota against real volume | ~~Verify provider RPD before phase 1~~ **Measured (v4.30.0).** Free-tier limits are per model: the complete/vision model allows RPD 500 / RPM 15, the embedding model RPD 1000 / RPM 100. A text post costs one complete call plus one embedding, a screenshot post two complete calls — roughly 250–500 posts a day. As predicted, the daily limit binds first, and it resets on Pacific midnight |
-| Similarity thresholds | Can only be tuned on real data. This is the direct argument for phase 0 |
-| Deduplication window | Differs per category: a promo code is current for hours, market analysis for days |
-| Moving to a paid tier | Free tiers are fine while tuning. Thanks to the gateway, switching later is an adapter swap rather than a pipeline rewrite |
-| Vision provider | ~~May be a third provider~~ **Decided (v4.25.0–v4.30.0).** The same Gemini model serves complete and vision, so both draw on one budget, as the provider itself counts them. The capability seam stays: a separate vision provider is a config change, not a code change |
-| AI-assisted screening | **Built for news sources (v4.54–v4.56):** headline triage in batches, worker-side, against a reader profile ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). Extending it to classic sources stays open (ROADMAP §13.8) |
+| Similarity thresholds | Can only be tuned on cross-source pairs from the live corpus (ROADMAP §6.8) |
+| Market news volume | Materiality rules, corroboration and a daily cap — after the test week (NEWS_INTAKE.md §5) |
+| AI screening of classic sources | Headline triage exists for news; extending it to Telegram sources is open (ROADMAP §13.8) |
+| Moving to a paid tier | Free tiers are fine while tuning; switching is a config change thanks to the gateway |
 
-The **engineering** open questions — batch claiming, embedding identity, the
-delivery template, retention, stall detection — are tracked separately in
-[theflow/ROADMAP.md](theflow/ROADMAP.md) §13.
+Settled and recorded where they live: display language (canonical English,
+delivery in Ukrainian through a separate `translate()` — DELIVERY.md),
+quota (measured free-tier limits — LLM_GATEWAY.md), vision provider (the same
+Gemini model — VISION.md).

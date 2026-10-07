@@ -1,8 +1,7 @@
 # Deployment
 
 Inemuri runs as a single Node process under **pm2** on a VPS. This document is
-the deploy and schema-migration procedure. It is written for the TheFlow
-phase 0.5 rollout (ROADMAP §2.3) but applies to every deploy after it.
+the install, deploy and schema-migration procedure.
 
 > A migration that runs *after* the new code has started is a runtime failure
 > in the ingest path — the one place that must never stop. The order below is
@@ -17,7 +16,6 @@ phase 0.5 rollout (ROADMAP §2.3) but applies to every deploy after it.
   directory it lives in (`cwd: __dirname`), so there is nothing to set; run
   every `npm run …` and `node …` command from `$APP_ROOT` too.
 - A populated `.env` in `$APP_ROOT` (never committed — see `.env.example`).
-- The current runtime `database/pot.sqlite` in place.
 
 ## First install
 
@@ -118,53 +116,39 @@ Two failure modes otherwise, both nasty:
 `sync({ force: true })` and recreates tables). Keep `NODE_ENV=production` in
 the environment and in `ecosystem.config.cjs`.
 
-## Turning on news intake in shadow mode
+## Turning on TheFlow features
 
-The first deploy of TheFlow phase 6 (news sources with headline triage,
-v4.52–v4.56). On top of the steps above:
+Each switch is independent; do them in this order on a new deployment.
 
-1. `.env`: `GEMINI_API_KEY` set; `FLOW_DELIVERY_ENABLED` absent or `false` —
-   that *is* shadow mode. Triage knobs are in `.env.example`
-   (`FLOW_TRIAGE_*`); the defaults are meant to be kept.
-2. Copy `src/config/triage.json` and the news entries of `sources.json`
-   (each `"platform": "rss"`, `"feed": { …, "triage": true }`,
-   `"flow": { "enabled": true }`); `npm run seed`.
-3. `routing.json`: `health_destinations` set, so a stall or failure reaches
-   you; no `digest_destinations` while in shadow mode.
-4. Copy the knowledge JSONL; `node src/cli.js flow knowledge import <file>`.
-5. `node src/cli.js flow preflight` → Ready; `pm2 start inemuri`.
-6. In the log: `[FEEDS] polling N feed source(s)`, then a `baseline` line per
-   source (the first poll only records what exists — nothing old is
-   ingested), then from the next polls `[TRIAGE] … decided, … passed`.
-7. Daily: `node src/cli.js flow triage stats` and `flow triage review`.
+**Enrichment (shadow mode).** `.env`: `GEMINI_API_KEY` set,
+`FLOW_DELIVERY_ENABLED` absent or `false`. `routing.json`:
+`health_destinations` set, so a stall or failure reaches you. Flip
+`flow.enabled` on the sources, `npm run seed`, restart. Verdicts are written,
+nothing is sent; read them with `flow stats` and `flow review`.
 
-Quota: triage asks the model at most once per full batch of 50 headlines or
-once per 20 minutes for a partial one — roughly 90 calls a day for ten
-outlets, out of the 500 a day `gemini-3.5-flash-lite` allows, shared with
-enrich.
+**News sources with headline triage.** Copy `src/config/triage.json` and the
+news entries of `sources.json` (`"platform": "rss"`,
+`"feed": { …, "triage": true }`, `"flow": { "enabled": true }`); import the
+knowledge JSONL (`flow knowledge import <file>`); `npm run seed`; restart. In
+the log: `[FEEDS] polling N feed source(s)`, a `baseline` line per source (the
+first poll ingests nothing old), then `[TRIAGE] … decided, … passed`. Quota:
+roughly 90 triage calls a day for ten outlets, out of the 500 a day the
+complete model allows, shared with enrichment.
 
-## Turning on delivery to test channels and the status board
+**A Discord server for the channels.** Provision it (PROVISIONING.md): give
+the bot Administrator and a role above the roles it manages,
+`node scripts/discordapp.js check <guildId> <config>`, `apply … --yes`, then
+`check` again — the plan must come back empty. On an instance that never
+provisioned this server, every managed message is posted again: delete the
+old copies by hand. `node scripts/discordapp.js ids <guildId>` prints the ids
+to put into `routing.json` in place of any `TODO:<key>` placeholders.
 
-`v4.58.0` adds routing by source (`when.source`), shared channels (`also`)
-and the status board. A first deploy that also provisions a Discord server
-with a different bot than the one that provisioned it before:
-
-1. `npm run migrate` (service stopped) — `018` adds `source_states.last_seen_at`
-   and `status_messages`.
-2. Copy `routing.json` with its rules. Channels that do not exist yet carry
-   `TODO:<key>` placeholders.
-3. Provision the server (docs/PROVISIONING.md): give the bot Administrator and
-   a role above the roles it manages, `node scripts/discordapp.js check <guildId> <config>`,
-   then `apply … --yes`, then `check` again — it must come back empty.
-4. Delete the old copies of the provisioned texts and role panels by hand: on
-   a new instance every managed message is posted again (PROVISIONING.md).
-5. `node scripts/discordapp.js ids <guildId>` and replace every `TODO:<key>`
-   in `routing.json` with its id.
-6. `node src/cli.js flow preflight` → Ready (it fails while a placeholder is
-   left), then `node src/cli.js flow preview --ignore-age --limit 10`.
-7. `FLOW_DELIVERY_ENABLED=true` only when every rule points at a channel you
-   are happy to see filled; start. The status board posts about a minute
-   after the start.
+**Delivery.** `flow preflight` → Ready (it fails while a placeholder is left),
+then `flow preview --ignore-age --limit 10` to see what would go where. Set
+`FLOW_DELIVERY_ENABLED=true` only when every rule points at a channel you are
+happy to see filled; restart. Posts older than 24 h are never sent. With
+`status_destinations` set, the status board posts about a minute after the
+start.
 
 ## When migrate says "No sources table"
 
@@ -212,10 +196,9 @@ taken automatically at the start of each `npm run migrate` run.
   started elsewhere would get no credentials or a new empty database. A pm2
   app created before `v4.59.2` with another `cwd` keeps it until
   `pm2 delete inemuri && pm2 start ecosystem.config.cjs && pm2 save`.
-- `instances: 1`, `exec_mode: "fork"` are load-bearing from phase 1 onward:
-  pm2 cluster mode would start a second process — and, once the enrichment
-  worker exists, a second worker that silently doubles every AI call
-  (ROADMAP §13.1).
+- `instances: 1`, `exec_mode: "fork"` are load-bearing: pm2 cluster mode
+  would start a second process — a second Telegram session and a second
+  enrich worker that silently doubles every AI call (ROADMAP §13.1).
 - Useful: `pm2 logs inemuri`, `pm2 restart inemuri`, `pm2 describe inemuri`.
 
 ## Checklist

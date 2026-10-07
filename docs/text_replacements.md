@@ -27,10 +27,10 @@ Three properties worth knowing:
 2. **Patterns compile once.** Every regex is compiled at startup and cached.
 3. **Cost.** An O(1) cache lookup per message, plus one pass per pattern.
 
-For a TheFlow-enabled source the branch after preprocessing differs — the
-post is written to `posts` instead of being forwarded — but preprocessing
-itself is identical, and `posts.raw_text` stores the text **after**
-replacements. That matters: it is the text the model sees and the text
+The same applies to Telegram and feed sources. For a TheFlow-enabled source
+the branch after preprocessing differs — the post is written to `posts`
+instead of being forwarded — but preprocessing itself is identical, and
+`posts.raw_text` stores the text **after** replacements. That matters: it is the text the model sees and the text
 verbatim validation checks against. See
 [theflow/ARCHITECTURE.md](theflow/ARCHITECTURE.md).
 
@@ -346,29 +346,17 @@ const detailed = messageFilter.checkMessageDetailed(source, "Test ━━━━�
 // { passed, reason, originalText, processedText }
 ```
 
-## Schema changes
+## Changing the rules
 
-`text_replacements` is a JSON column on `sources` and needs no migration to
-change its contents — it is configuration, not schema.
-
-Adding or altering a **column** is different: apply it as a numbered
-migration under `database/migrations/` and run `npm run migrate`. Do not rely
-on `sync({ alter: true })` against a database that holds real data — SQLite
-rebuilds the whole table. See `CLAUDE.md` § Operational cautions.
-
-Sources seeded before the column existed have `text_replacements` as `null`;
-`Source.prototype.preprocessText()` treats that as disabled and returns the
-text unchanged.
+`text_replacements` is a JSON column on `sources`: changing it is
+`sources.json` → `npm run seed` → restart, no migration. A `null` value means
+disabled.
 
 ## Troubleshooting
 
 **Filters behave as though the old configuration is still in place.**
-Compiled patterns are cached per source id. Clear the cache and reload:
-
-```javascript
-messageFilter.clearCache();          // or clearCache(sourceId)
-await telegramListener.reloadWhitelist();
-```
+Patterns are compiled at startup and cached per source id: after
+`npm run seed`, restart the service.
 
 **A pattern seems to be ignored.** It probably failed to compile — an invalid
 regex is logged by `compileReplacements()` and dropped, and the remaining
@@ -411,10 +399,3 @@ getCacheStats()
 source.preprocessText(messageText)  // replacements only
 source.passesFilter(messageText)    // replacements, then filters
 ```
-
-## History
-
-Initial version added the `text_replacements` column to the `Source` model,
-support for both literal and regex patterns, caching of compiled patterns,
-integration into `TelegramSourceListener`, and the guarantee that
-preprocessing runs before filtering.

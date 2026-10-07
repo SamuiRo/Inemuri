@@ -3,1543 +3,394 @@
 > Related: [../THEFLOW.md](../THEFLOW.md) · [ARCHITECTURE.md](ARCHITECTURE.md) ·
 > [DATA_MODEL.md](DATA_MODEL.md) · [TAXONOMY.md](TAXONOMY.md) ·
 > [DEDUPLICATION.md](DEDUPLICATION.md) · [LLM_GATEWAY.md](LLM_GATEWAY.md) ·
-> [VISION.md](VISION.md)
+> [VISION.md](VISION.md) · [DELIVERY.md](DELIVERY.md) · [NEWS_INTAKE.md](NEWS_INTAKE.md)
 
-The other documents in this directory say **what** TheFlow is. This one says
-**what to build, in what order, and how to know a step is finished**.
+The other documents say **what** TheFlow is. This one tracks **what is built,
+what is open, and why** — per task, with the version that shipped it. Section
+numbers are stable: code comments cite them (`ROADMAP §6.6`). What each
+version changed in detail is in [../CHANGELOG.md](../CHANGELOG.md).
 
-Effort marks are rough: `S` ≈ half a day, `M` ≈ 1–2 days, `L` ≈ 3–5 days.
+## Open work
+
+| # | Task | Waits for |
+|---|---|---|
+| — | Test week on the VPS (from 2026-10-06): read the staff channels, `#unsorted`, the status board, `flow triage review` | The operator |
+| §6.8 | Dedup threshold calibration | Cross-source pairs in the live corpus |
+| §14.4 | Article fetch for what passed triage, plus sampled rejects | — |
+| §14.5 | Poll intervals per source from real volume | A week of data |
+| NEWS_INTAKE §5 | Market rules: materiality, corroboration, daily cap | Test-week labels |
+| §6 | Tier 3: LLM adjudication of the dedup gray zone | Gray-zone volume from `flow dedup` |
+| §5.7 | Reaction capture → labels | Optional, deferred; probe first (§13.5) |
+| §13.8 | AI screening of classic (Telegram) sources | Not specified |
 
 ## 0. Decisions this plan is built on
 
 | Decision | Consequence |
 |---|---|
-| **Migrations are allowed.** The architecture had simply not needed them | A migration runner lands in phase 0.5; every schema change after it is an ordinary reviewable step |
-| **Vision is required**, not conditional | It moves from phase 6 to **phase 1.5**, straight after the gateway. The former phase 6 is retired |
-| **Reddit and open news sites are coming** as sources | The schema is generalized **now**, while the corpus is small. Adapters come later, after deduplication |
-| **Providers: Gemini plus OpenRouter** | Fallback exists from day one; tiering is a model-id change. One capability gap needs checking — see 3.1 |
-
-## 1. Actual state of the deployed system
-
-Read from the VPS backup of 2026-06-07 (`pot.sqlite`, `sources.json`,
-`cronjob.config.json`, `cronjobs.js`). The `.env` files in that backup were not
-opened.
-
-> **Superseded (2026-10-06).** The VPS runs `v4.59.1` with a database built
-> new from the configs (`npm run setup -- --new`); the section below
-> describes it as it was before TheFlow.
-
-**The VPS runs a pre-TheFlow version.** Its database has three tables —
-`sources`, `sqlite_sequence`, `source_states`. There is no `flow` column, no
-`posts`, no `clusters`, and no migration has ever been applied there. The
-TheFlow phase 0 code exists only in the repository.
-
-That is a cleaner starting point than a partially migrated production database,
-and it changes one thing in the plan: on the VPS, migration `001` **creates** the
-phase 0 schema; on the development copy, which already has it, the same
-migration **adopts** it. Both paths must work from the same file.
-
-### 1.1 The 14 sources
-
-All active. 8 polling, 6 listener (`mode` absent in `sources.json` defaults to
-`listener`).
-
-Channel names and ids live in the git-ignored `sources.json`, never here; this
-plan refers to sources by their shape. Labels `S1`–`S8` below are this
-document's own, ordered by volume, and mean nothing outside it.
-
-| Cluster | Sources |
-|---|---|
-| Steam / games | 4 — one `polling`, three `listener` |
-| Crypto / trading | 5 — three `polling`, two `listener` |
-| Airdrops / farming | 4 — three `polling`, one `listener` |
-| Mixed | 1 `polling` |
-
-Five facts from this data that change the plan:
-
-**a. Listener-only sources have no checkpoint.** `SourceState.getOrCreate()` is
-called only on the polling path (`TelegramSourceListener.js:148`), and the
-backup confirms it: state rows exist for the 8 polling sources and for none of
-the 6 listener ones. While the process is down, a listener source loses those
-messages permanently — there is nothing to resume from.
-
-For classic forwarding that is a missed forward. For TheFlow it is a hole in the
-corpus, which is worse, because the corpus is the thing being built.
-**Every flow source should run `polling` or `both`, never pure `listener`.**
-
-**b. Everything goes to one destination.** All 14 sources route to a single
-Telegram chat and a single Discord channel (the deployment's own ids, in
-`src/config/routing.json`). That one firehose *is* the problem TheFlow exists to
-solve — and it means the phase 2 routing matrix has no channels to route into
-yet. Creating them is a prerequisite, not a detail.
-
-**c. The blacklists describe the taxonomy already.** Four sources carry
-hand-maintained blacklists, and their contents are consistent: they block
-giveaway-winner announcements, contests and discounts, stream announcements
-and stream links, and release announcements. (The lists themselves are
-deployment data and stay in the git-ignored `sources.json`.)
-
-These are not per-channel quirks — they are **signal types you do not want**,
-maintained by hand in four separate places. This is direct evidence for the
-taxonomy in appendix A, and one of the clearest wins TheFlow can deliver: one
-`giveaway_result` signal replaces four hand-kept blacklists.
-
-**d. `case_sensitive` is `false` on all 14 sources.** The case-sensitivity
-mismatch flagged in the previous revision of this plan is therefore **latent,
-not active** — it cannot bite until someone sets `case_sensitive: true`. It
-drops from "defect" to "hardening", and moves to 2.8.
-
-**e. No source uses keywords.** Every `filters.keywords` is empty. The decision
-to disable the whitelist for flow sources costs nothing here, and the blacklists
-carry over into the regex stage unchanged.
-
-Two smaller items worth cleaning up in passing: the `[Sponsored]…[/Sponsored]`
-and `@techchannel` replacement pair is copy-pasted into 12 sources and almost
-certainly never matches anything; and one source carries an empty-pattern
-replacement (`"pattern": ""` with `is_regex: true`), which is junk config even
-though it is a harmless no-op.
-
-### 1.2 Measure the real volume today, without waiting
-
-`source_states.last_message_id` is a Telegram per-channel sequence number. The
-backup pins its value for 8 channels at 2026-06-07:
-
-| Source | Cluster | `last_message_id` at 2026-06-07 |
-|---|---|---|
-| S1 | crypto | 12283 |
-| S2 | airdrop | 8196 |
-| S3 | airdrop | 5027 |
-| S4 | crypto | 4353 |
-| S5 | airdrop | 3789 |
-| S6 | steam | 3031 |
-| S7 | crypto | 2745 |
-| S8 | mixed | 2675 |
-
-This backup is the most recent one, so there is no second snapshot to diff
-against — but none is needed. **GramJS can read the current last message id for
-each channel directly**, and each row carries its own baseline date in
-`updatedAt`. One pass gives real messages-per-day per channel, today:
-
-```text
-messages/day  =  (current_id - baseline_id) / days_since(row.updatedAt)
-```
-
-Using each row's own `updatedAt` rather than the backup date matters — the rows
-were written between 2026-05-01 and 2026-06-07, so a single shared denominator
-would understate the busy channels and wildly overstate S3. Task 2.1 does
-this.
-
-The figure counts every message in the channel, deleted and service messages
-included, so it is an upper bound rather than an exact post count. For sizing a
-provider tier that is the right direction to be wrong in.
-
-One anomaly the same table already shows: **S3 has not advanced since
-2026-05-01**, more than a month before the backup, while every other polling
-source updated within two days of it. Either the channel is dead or polling for
-it is broken. Worth checking before it is considered for the pilot.
-
-## 2. Phase 0.5 — foundation
-
-Everything here is a prerequisite for something later, and none of it needs AI,
-a corpus, or an unmade decision. Do it first and completely.
-
-### 2.1 Volume estimate (`S`) — do this before anything else
-
-> **Done (v4.3.1).** `scripts/estimate-volume.js` is written. It still needs to
-> be *run* against the live Telegram session to produce the numbers — that is an
-> operator step, not a code step. `--save-baselines` records a baseline for the
-> listener sources so a re-run in a few days covers all fourteen.
-
-`scripts/estimate-volume.js` — for each source, read the current last message id
-from Telegram (`getMessages` with `limit: 1`), diff it against that source's
-`source_states` row, divide by the days since that row's `updatedAt`, and print
-messages/day per channel plus the total.
-
-It answers "how much traffic will reach the AI" in one run, from data that
-already exists — no waiting, no second snapshot, no TheFlow running.
-
-Three details that decide whether the number is usable:
-
-- **Per-row baselines.** Each `source_states` row has its own `updatedAt`; do not
-  divide everything by the backup date.
-- **Listener sources have no row.** Six of the fourteen produce no estimate this
-  way. Take their current id now as a fresh baseline and re-run the script in a
-  few days, or accept that the eight polling sources are a representative
-  sample — they include the three busiest channels.
-- **Rate limiting.** Fourteen `getMessages` calls with the existing
-  `POLLING_CHANNEL_DELAY_MS` pause between them. This is a script, not a hot
-  path.
-
-Multiply the result by 2 requests per post (`enrich` + `embed`), subtract what
-the regex stage rejects and what the cache absorbs, and compare against the RPD
-of the model ids from 3.1. That comparison is the whole input to the provider
-decision.
-
-### 2.2 Migration runner (`M`)
-
-> **Done (v4.4.0).** `scripts/migrate.js` (`npm run migrate` /
-> `npm run migrate:status`), `database/migrations/001-theflow-phase0.js`
-> wrapping the old one-off script, `schema_migrations` ledger, one backup per
-> run, `NODE_ENV=development` refusal. `scripts/migrate-theflow-phase0.js` and
-> the `sequelize-cli` dependency are removed. `.gitignore` now un-ignores
-> `database/migrations/` (the rest of `database/` stays ignored). Verified on
-> the dev copy: `001` adopts the existing schema and re-runs clean.
-
-`sequelize-cli` is in `package.json`, unused, and fits badly with ESM — its
-migrations are CJS and it wants its own config loader. A hand-rolled runner is
-about 80 lines and matches how the rest of the project is built.
-
-```text
-database/migrations/
-├── 001-theflow-phase0.js       # create on the VPS, adopt on the dev copy
-├── 002-generalize-sources.js
-├── 003-source-cursor.js
-└── ...
-scripts/migrate.js              # npm run migrate, npm run migrate:status
-```
-
-Requirements:
-
-- `schema_migrations` table (`name` PK, `applied_at`);
-- each migration exports `up({ sequelize, queryInterface })`. **Forward-only**,
-  no `down()` — recovery on a database holding the corpus is a restore from
-  backup, not a reverse migration;
-- **one backup per batch** into `database/backups/` before the first migration
-  of a run, as `migrate-theflow-phase0.js` already does;
-- refuses to run under `NODE_ENV=development`;
-- `npm run migrate:status` prints applied and pending — run it on the VPS before
-  every deploy.
-
-**Migration `001` is the existing script, wrapped, not rewritten.**
-`scripts/migrate-theflow-phase0.js` is already idempotent, already takes its own
-backup, and already refuses development mode. It handles the VPS case (create)
-and the dev case (adopt) correctly today. Wrap it, record it in
-`schema_migrations`, and delete the standalone `npm run migrate:theflow` script.
-
-Drop the `sequelize-cli` dependency.
-
-### 2.3 Deploy the current code to the VPS (`M`)
-
-> **Partly done (v4.9.1).** [`ecosystem.config.cjs`](../../ecosystem.config.cjs)
-> and [`docs/DEPLOYMENT.md`](../DEPLOYMENT.md) are written — the deploy order,
-> the stop-before-migrate rule, rollback, and the pm2 config with its `.cjs` /
-> `cwd` / `fork` gotchas. **The actual deploy is the operator's**: set
-> `ecosystem.config.cjs` → `cwd` to the VPS checkout path, then run the
-> procedure. Nothing else in phase 0.5 is verifiable against production until
-> that is done.
-
-The VPS is several versions behind, on pre-TheFlow code. Nothing else in this
-plan can be verified against production until that is closed, and there is no
-deployment documentation in the repository at all.
-
-The service runs under pm2. Order matters and is not negotiable:
-
-```bash
-pm2 stop inemuri            # 1. stop first — see below
-cp database/pot.sqlite ~/pot.sqlite.2026-09-04   # 2. back up off-box too
-git pull && npm ci          # 3. deploy code
-npm run migrate:status      # 4. inspect, then apply
-npm run migrate
-pm2 start inemuri           # 5. start
-pm2 logs inemuri --lines 100
-```
-
-**Stop pm2 before migrating.** Two failure modes otherwise, both nasty: the
-running process holds the SQLite file while `ALTER TABLE` runs, and pm2 restarts
-on crash — so a process that fails against a half-applied schema restarts into
-the same failure in a loop, writing garbage to the log and hammering Telegram
-reconnects.
-
-Then verify classic forwarding **before** any source is switched to flow mode.
-
-Two pm2 details worth pinning down in an `ecosystem.config.cjs`:
-
-- **The file must be `.cjs`.** The project is `"type": "module"`, and pm2 loads
-  an `ecosystem.config.js` as CommonJS — it fails on an ESM project.
-- **`cwd` must be the app root.** `dotenv` resolves `.env` relative to
-  `process.cwd()`, so `pm2 start src/inemuri.js` from the wrong directory starts
-  a process with no Telegram credentials and no obvious reason why.
-
-```js
-// ecosystem.config.cjs
-module.exports = {
-  apps: [{
-    name: "inemuri",
-    script: "src/inemuri.js",
-    cwd: "/path/to/Inemuri",
-    instances: 1,
-    exec_mode: "fork",
-    env: { NODE_ENV: "production" },
-    time: true,
-  }],
-};
-```
-
-`instances: 1` and `exec_mode: "fork"` are load-bearing from phase 1 onward:
-cluster mode would start a second process, a second enrichment worker, and
-silently double every AI call — see 13.1. `NODE_ENV` is set explicitly because
-the development path uses `force: true` and recreates tables. Add `pm2 save` and `pm2 startup` so a reboot
-brings it back.
-
-Write the whole procedure into `docs/DEPLOYMENT.md` as part of this task. A
-migration that runs after the new code has started is a runtime failure in the
-ingest path — the one place that must never stop.
-
-### 2.4 Generalize the schema for non-Telegram sources (`M`)
-
-> **Done (v4.5.0).** Migrations `002-generalize-sources.js` and
-> `003-source-cursor.js`; `Post` and `SourceState` models updated;
-> `Post.ingest` keys on `(source_id, external_id)`; `FlowIngest` writes
-> `platform`, `external_id`, `media_ref`, `entities` (serialized to a plain
-> array), `title`/`author` (null for Telegram); `scripts/backfill-image-hash.js`
-> re-fetches via `media_ref` instead of `message_id`; DATA_MODEL.md rewritten.
-> Verified on the dev copy: migrations apply and re-run idempotently, JSON
-> columns round-trip as objects, ingest idempotency holds on the new key, and a
-> fresh `sync()` from the models produces the same schema the migrations leave.
->
-> **Deviation:** `message_id` keeps its `NOT NULL` and stays populated for
-> Telegram rather than becoming nullable — nothing *reads* it, and a later
-> migration DROPs it outright when the first non-Telegram adapter lands (§7).
-> This keeps every migration a plain `ADD COLUMN` / index op with no SQLite
-> table rebuild (§12).
-
-The change that must not be deferred. `posts` is Telegram-shaped in four places,
-and each breaks on Reddit or RSS:
-
-| Now | Problem |
-|---|---|
-| `message_id` INTEGER | Reddit ids are `t3_abc123`; an article's identity is its URL |
-| UNIQUE `(channel_id, message_id)` | `channel_id` is a Telegram concept |
-| Lazy media re-fetch assumes `channel_id` + `message_id` via GramJS | No such path for an RSS item |
-| No `title` field | A news headline is the highest-signal text there is; Telegram has none |
-
-Migration `002-generalize-sources.js`:
-
-| Change | Detail |
-|---|---|
-| `+ posts.platform` STRING NOT NULL DEFAULT `'telegram'` | Backfilled |
-| `+ posts.external_id` STRING | Universal item identity. Backfill `CAST(message_id AS TEXT)` |
-| `+ posts.external_url` STRING NULL | Canonical link. For Reddit and news also a **tier 1 dedup key** |
-| `+ posts.title` TEXT NULL | Headline, separate from body |
-| `+ posts.author` STRING NULL | Reddit author, article byline |
-| `+ posts.media_ref` JSON NULL | What stage 3 needs to fetch media later, per platform |
-| `+ posts.entities` JSON NULL | Original MTProto entities. Delivery composes text from offsets, not Markdown — without this, stage 3 has to re-parse `text_md`, which is lossy. Cannot be recovered later without re-fetching from Telegram. See [DELIVERY.md](DELIVERY.md) |
-| `+ posts.embedding_model` STRING NULL, `+ posts.embedding_dim` INTEGER NULL | Vectors from different models are not comparable — see 13.2 |
-| UNIQUE `(source_id, external_id)` | Replaces `(channel_id, message_id)` |
-| `message_id` nullable, no longer written | Dropped in a later migration once nothing reads it. SQLite on the VPS is 3.44.2, so `DROP COLUMN` is available |
-
-`media_ref` is what removes the Telegram assumption from stage 3:
-
-```jsonc
-{ "kind": "telegram", "channel_id": "-100…", "message_id": 12345, "grouped_id": null }
-{ "kind": "url", "urls": ["https://…/image.jpg"] }
-```
-
-Keep `channel_id` as a denormalized column — it is still the fast Telegram
-lookup key — but stop treating it as part of an item's identity.
-
-Migration `003-source-cursor.js`: `SourceState.last_message_id` INTEGER is
-Telegram-only. Add `cursor` JSON, backfill `{ "last_message_id": <value> }`, and
-let each adapter define its own cursor shape — RSS stores a guid plus timestamp,
-Reddit stores a fullname.
-
-**Done when:** `FlowIngest` writes `platform`, `external_id`, `media_ref`,
-`entities`, and `title`; Telegram behaves identically; nothing reads
-`posts.message_id`; and **[DATA_MODEL.md](DATA_MODEL.md) describes the schema this
-migration leaves behind** — it is the reference every later phase reads.
-
-### 2.5 Media resolver seam (`S`)
-
-> **Done (v4.6.0).** `src/module/theflow/media/` — `MediaResolver` singleton
-> registry keyed on `media_ref.kind`, `TelegramMediaResolver`, and `index.js`
-> that registers the Telegram one. Not yet wired into a delivery path (there
-> isn't one until phase 2); phase 2 imports the singleton. `UrlMediaResolver`
-> is one `register("url", …)` line in phase 3.5.
-
-```js
-// src/module/theflow/media/MediaResolver.js
-register(kind, resolver)          // kind = media_ref.kind ("telegram" | "url" | …)
-async resolve(post) -> [{ type, buffer, filename, mimeType, fileSize, duration, width, height }]
-```
-
-`TelegramMediaResolver` re-fetches by `media_ref` through GramJS `getMessages`
-(a 10-wide id window for albums, filtered by `grouped_id`), parses media with
-`TelegramMessageParser.parseMedia`, then reuses `TelegramMediaDownloader` —
-no new download logic. `UrlMediaResolver` arrives in phase 3.5. Half a day now
-turns phase 3.5 into an adapter instead of a refactor of the delivery path.
-
-### 2.6 Delivery, edit, and feedback plumbing (`S` each)
-
-> **Done (v4.7.0).**
-> - `MessageRouter.sendToDestination()` returns
->   `{ platform, channel_id, message_id, sent_at }` (or `null`);
->   `routeMessage()` collects them into `delivered[]`, returns it, and adds it
->   to the `message.routed` event. Identity comes from a new
->   `adapter.describeSent(sent, destinationId)` (Telegram/Discord override it;
->   the router has a fallback). Classic forwarding ignores the return.
-> - `BaseDestinationAdapter`: `get capabilities()` (`{ edit: false }` by
->   default), `describeSent()` (→ `null`), and `editMessage()` that throws
->   unless overridden. Telegram/Discord declare `{ edit: true }`;
->   `DiscordDestination.editMessage()` implemented (string → `{ content }`,
->   object → passthrough to `Message#edit`). Telegram's now takes a string or a
->   GramJS edit payload.
-> - `post_feedback` table + `PostFeedback` model + migration `004-post-feedback`.
-
-- **Deliveries must return what they sent.** `clusters.delivered` is
-  `[{platform, channel_id, message_id, sent_at}]`, and the `linked` mechanism
-  cannot edit a message whose id was never recorded. Both adapters already
-  return the sent message; `MessageRouter.sendToDestination()` discards it and
-  returns a boolean. Return the identity and propagate it.
-- **`DiscordDestination.editMessage()`.** Telegram has it
-  (`src/destinations/telegram/TelegramDestination.js:751`); Discord does not, and
-  phase 3 appends on both. Declare `editMessage()` on `BaseDestinationAdapter` as
-  an explicitly optional capability so the delivery path can check rather than
-  assume.
-- **`post_feedback` table.** New table, trivial migration. It exists this early
-  because `flow:review` (3.7) starts writing labels during phase 1 shadow mode,
-  turning verdict-checking you have to do anyway into a labelled dataset.
-
-### 2.7 Test harness (`M`)
-
-> **Done (v4.8.0).** `npm test` = `node --test` (bare discovery of
-> `test/*.test.js`, no dependency, `.gitignore` no longer excludes `/test`).
-> Suites so far — everything pure that exists today:
-> `test/regex-stage.test.js` (all four rejection paths, the rejection order,
-> the five candidate extractors, normalize/hash), `test/flow-ingest-helpers.test.js`
-> (`_serializeEntities`, `_buildMediaRef`, `_hasRealMedia`, `_toDate`),
-> `test/media-resolver.test.js` (registry dispatch, `TelegramMediaResolver`
-> single/album with injected fakes). 23 tests, `npm test` exits 0. The
-> phase-1 units (schema/verbatim validation, cosine/`richness`, resolve,
-> `render`, quota ledger) get their suites as they land.
-
-`npm test` exits 1. That was tolerable while the codebase was I/O glue; it stops
-being tolerable at phase 1.
-
-| Unit | Why |
-|---|---|
-| `RegexStage.evaluate()` | Pure function, four rejection paths, five candidate extractors |
-| Schema validation | Must reject malformed model output rather than write it to the corpus |
-| Verbatim validation | The entire anti-hallucination guarantee is this one check |
-| Cosine similarity, `richness()` | Numeric, easy to get subtly wrong, impossible to eyeball |
-| Routing resolve | Priority order and `when` matching over `categories.json` |
-| `render()` | Pure by design ([DELIVERY.md](DELIVERY.md)): offset rebasing across segments, the addition cap, truncation per platform, unverified marking, and that a `denies` survives every cap |
-| Quota ledger, circuit breaker | State machines whose failure mode is a burned daily quota |
-
-`node --test` — built into Node 22, no new dependency. `npm test` becomes
-`node --test test/`. The goal is not coverage; it is that these units fail loudly
-instead of silently corrupting the corpus.
-
-### 2.8 `flow:stats`, `flow:export`, and hardening (`M`)
-
-> **Done (v4.9.0).**
-> - `node src/cli.js flow stats` — corpus rate, then TOTAL and per-source:
->   status histogram, `skipped_repost` share, `raw_text` length (avg / max /
->   buckets), `has_media && len < 200` share, `candidates.*` non-empty rate
->   with samples. Aggregated in JS from one lean query; degrades to a notice
->   on an empty corpus.
-> - `node src/cli.js flow export [--out f] [--limit n] [--status a,b]` —
->   JSONL, one row per line, sanitized: no `channel_id` / `message_id` /
->   `external_id` / `media_ref` / `entities` / enrichment fields; keeps
->   content, `candidates`, `text_hash`, source name.
-> - Hardening: `caseSensitive` threaded `MessageFilter → FlowIngest →
->   RegexStage.evaluate()` — the blacklist no longer silently misses when a
->   source sets `case_sensitive: true` (test added). `sources.sample.json`
->   stripped of the `[Sponsored]…` / `@techchannel` no-op pair and the
->   empty-pattern replacement.
-> - **Operator step left:** the same no-op replacements are copy-pasted across
->   ~12 sources in the live `src/config/sources.json` (git-ignored) and its VPS
->   copy — drop them there by hand, like the pilot config in 2.9.
-
-`flow:stats` (runs on the VPS) — per source and total: posts per day, histogram
-over `status`, share of `skipped_repost`, length distribution of `raw_text`,
-share of `has_media = true AND length(raw_text) < 200` (which decides vision per
-source), and how often each `candidates.*` list is non-empty with samples.
-
-That last one matters: `PROMO_RE` is `\b[A-Z0-9]{5,20}\b` filtered to "contains
-a digit and a letter", which on real text also matches tickers, order numbers,
-and shouty words. False positives cost tokens rather than correctness — the model
-confirms candidates, it does not trust them — but the rate must be priced in.
-
-`flow:export` — sanitized JSONL sample for local prompt work.
-
-Hardening, same task: carry `caseSensitive` into `RegexStage` (latent bug, see
-1.1d); drop the copy-pasted no-op replacements and the empty pattern in 1.1.
-
-### 2.9 Enable the pilot (`S`)
-
-Concrete recommendation from 1.1, all polling so restarts cannot punch holes:
-
-| Source | Why |
-|---|---|
-| **S1** | Highest message id — the volume baseline |
-| **S2** | Second highest, airdrop domain, a likely screenshot channel |
-| **S6** | Steam drops with the richest blacklist — the `promo_code` / `freebie` case |
-| **S8** | Giveaway noise — the material `#unsorted` will be made of |
-| **S5** *(optional)* | Overlaps S2 and S3 — the cross-source repost case |
-
-Leave the Steam listener channels forwarding classically. If a screenshot-heavy
-channel turns out to be listener-mode, switch it to `both` rather than
-`polling` — that keeps latency and gains a checkpoint.
-
-Do **not** include S3 until the stale checkpoint from 1.2 is explained.
-
-> **Editor ready (v4.14.0).** `SourceBuilder.html` now has a TheFlow section
-> per source — the toggle, `topics` chips, `min_confidence`,
-> `dedup_window_hours`, and the `vision` sub-object — plus the two warnings a
-> JSON file cannot give you (flow sources ignore the whitelist; phase 1 shadow
-> mode means `destinations` go unused). Its platform dropdown no longer offers
-> the three values the seeder rejects. An untouched default `flow` block is
-> omitted from the output, so classic sources stay clean.
-
-Import the live `src/config/sources.json` into the editor, switch the pilot
-sources on, export, and reseed. The remaining work here is **operator
-judgement, not code**: which channels, and reading what comes out.
-
-> **Done (v4.30.1) — configured, not yet observed.** Three sources are
-> flow-enabled in the git-ignored config and seeded: a promo-code /`freebie`
-> channel, a meme-heavy one, and a giveaway-noise one. Vision is on for the
-> promo-code channel only — it posts codes as screenshots, which is the case
-> 1.5 exists for — and off on the meme-heavy one, where OCR of a meme is
-> noise. `filters.reject_shouty` is on for the two whose ritual posts it
-> targets, checked first against saved real posts so no useful post matched.
->
-> Two deviations from the recommendation above, both deliberate:
->
-> - The pilot was chosen by **filter tuning material** — channels whose noise
->   was already characterised post by post — rather than by message volume.
->   Volume sizing (2.1) still has to run.
-> - **Two of the three are `listener` mode**, which 1.1a argues against: a
->   listener source loses everything posted while the process is down, and for
->   a corpus that is a hole, not a missed forward. Switch them to `both`
->   before treating the corpus as complete.
->
-> Nothing has flowed yet — source config is read at startup, so this takes
-> effect on the next restart. What remains is reading `flow stats` and
-> `flow review`.
-
-### Phase 0.5 exit criteria
-
-- VPS running current code, `npm run migrate:status` clean, classic forwarding
-  verified unchanged;
-- `scripts/estimate-volume.js` has produced real messages/day per channel;
-- a flow post ingests with `platform`, `external_id`, `media_ref`, no
-  `message_id`;
-- `npm test` passes and covers `RegexStage`;
-- the pilot sources are producing rows and `flow:stats` has been read once.
-
-## 3. Phase 1 — gateway and enrichment in shadow mode
+| **Migrations are allowed** | A forward-only runner; every schema change is a reviewable step (§12) |
+| **Vision is required**, not conditional | Phase 1.5, straight after the gateway |
+| **Reddit and news sites are sources** | The schema was generalized early (§2.4), adapters came after deduplication |
+| **Providers: Gemini plus OpenRouter** | Fallback from day one; tiering is a model-id change |
+
+## 1. The deployed system before TheFlow
+
+**Superseded (2026-10-06):** the VPS runs a database built new from the
+configs (`npm run setup -- --new`). Findings from the 2026-06-07 backup that
+still shape decisions:
+
+- **a. A `listener`-only source has no checkpoint** — what it posts while the
+  process is down is lost. For TheFlow that is a hole in the corpus: flow
+  sources should run `polling` or `both`. (Two pilot sources still run pure
+  `listener`; accepted by the operator 2026-10-03, `flow preflight` warns.)
+- **b. Everything went to one destination** — the firehose TheFlow exists to
+  split. The topic channels now exist (§5.1).
+- **c. Hand-kept blacklists described signal types** (winner announcements,
+  streams) — hence `giveaway_result` and `stream` (appendix A).
+
+### 1.2 One polling source that did not advance
+
+One polling source's checkpoint had not moved since 2026-05-01 — a dead
+channel or broken polling. The status board now answers it: a dead channel
+shows up as silent.
+
+## 2. Phase 0.5 — foundation · done
+
+| # | Task | Version | Notes |
+|---|---|---|---|
+| 2.1 | `scripts/estimate-volume.js` — messages/day per source from the checkpoint delta | v4.3.1 | One-off; needs a Telegram session. `--save-baselines` covers listener sources on a re-run |
+| 2.2 | Migration runner: `scripts/migrate.js`, `schema_migrations`, backup per run, refuses `development` | v4.4.0 | `sequelize-cli` dropped |
+| 2.3 | `ecosystem.config.cjs`, [DEPLOYMENT.md](../DEPLOYMENT.md) | v4.9.1, v4.59.2 | Deployed 2026-10-06 |
+| 2.4 | Platform-neutral `posts` (migrations 002, 003) | v4.5.0 | Identity is `(source_id, external_id)`; `message_id` dropped in 014 |
+| 2.5 | Media resolver seam (`src/module/theflow/media/`) | v4.6.0 | `UrlMediaResolver` added in phase 3.5 |
+| 2.6 | `sendToDestination()` returns `{ platform, channel_id, message_id, sent_at }`; adapter `capabilities`, `editMessage()`; `post_feedback` (004) | v4.7.0 | |
+| 2.7 | `node --test` harness | v4.8.0 | Now `scripts/run-tests.js` on a throwaway database |
+| 2.8 | `flow stats`, `flow export`; `case_sensitive` reaches the regex stage | v4.9.0 | |
+| 2.9 | Pilot sources enabled | v4.30.1 | Chosen by filter-tuning material, not volume |
+
+## 3. Phase 1 — gateway and enrichment · done
 
 Spec: [LLM_GATEWAY.md](LLM_GATEWAY.md), [TAXONOMY.md](TAXONOMY.md).
 
-### 3.1 Provider capability check (`S`) — first
-
-> **Decided (v4.25.0).** **Gemini is primary for text, vision and embeddings;
-> OpenRouter is the fallback for text only.** One provider covering all three
-> capabilities was the deciding factor — it also unblocks phase 1.5, since the
-> vision provider question is answered.
->
-> Checked against `ai.google.dev` on 2026-09-13, and what it changed:
->
-> - **`text-embedding-004` was shut down on 2026-01-14** and was the config
->   default. It did not fail loudly: a 404 classifies as `bad_response`, so the
->   breaker stayed shut, but `quota.bump()` runs *before* the request — every
->   post burned RPD on a guaranteed 404 and ended with `embedding = null`. The
->   default is now `gemini-embedding-2`, dimension pinned at 768 (the model's
->   own default is 3072). `task_type` is not sent: embedding-2 rejects it.
-> - **Gemini resets RPD at midnight Pacific, not UTC**, while the quota ledger
->   keyed on the UTC date. Exhausting at 06:00 UTC (23:00 PDT) marked Gemini
->   spent for the whole UTC day, so after Google restored the quota at 07:00
->   the gateway still refused the provider for ~17 hours. `ProviderQuota.today()`
->   now takes a zone, and each provider carries `quotaTimeZone`.
-> - **Free-tier RPM/RPD are not published** — only visible per project in AI
->   Studio. Read from the pilot project on 2026-09-13 (v4.30.0), they changed
->   two decisions:
->   - **`gemini-2.5-flash` and every Flash 3.x model have RPD 20** on the free
->     tier. The default moved to **`gemini-3.5-flash-lite` (RPD 500, RPM 15)**,
->     verified with live calls to return schema-valid JSON and to read a code
->     correctly from an image, so it serves both enrich and vision.
->   - **Limits are per model** (each model is its own row), so the ledger now
->     counts per `provider:model` instead of per provider. One shared counter
->     had charged every embedding against flash-lite's 500, halving throughput,
->     although `gemini-embedding-2` has its own RPD 1000 / RPM 100. Vision on
->     the complete model still shares that model's counter, as Google does.
->
->   The measured free-tier values are now the defaults.
->
-> **OpenRouter does expose `/embeddings`** (OpenAI-compatible), closing the
-> open question below — and it is **deliberately unused**. 13.2 already forbids
-> comparing vectors across models, so a fallback embedding would not corrupt
-> dedup; it would make the post *invisible* to it, sitting in a vector space the
-> rest of the corpus is never searched in. A `null` is backfillable by the same
-> model. `OPENROUTER_EMBED_MODEL` stays empty on purpose, and startup warns if
-> more than one embedding model is configured.
-
-| Capability | Gemini | OpenRouter |
+| # | Task | Version |
 |---|---|---|
-| `complete` structured output | `responseSchema` | `response_format: json_schema` — support varies **per model id**, verify each |
-| `vision` | yes | yes, on vision-capable model ids |
-| `embed` | yes | **verify** — OpenRouter is a chat-completions gateway and may not expose embeddings at all |
+| 3.1 | Provider capability check | v4.25.0, v4.30.0 |
+| 3.2 | Providers: `BaseProvider`, `GeminiProvider`, `OpenAICompatProvider` | v4.11.0 |
+| 3.3 | Schemas and structural + verbatim validation (`schemas.js`, no `ajv`) | v4.10.0 |
+| 3.4 | Enrich prompt with the nonced untrusted block | v4.10.0 |
+| 3.5 | `LLMGateway`: capability routing, RPM bucket, persistent RPD ledger (005), breaker, cache, priority queue, fallback matrix, tiering, shedding | v4.12.0 |
+| 3.6 | `categories.json` v1 and `EnrichWorker` | v4.10.0, v4.12.0 |
+| 3.7 | `flow review` | v4.13.0 |
 
-If OpenRouter has no embeddings, `embed()` has exactly one provider and
-deduplication becomes a single point of failure. Acceptable, but handled
-explicitly rather than discovered in phase 3:
+### 3.1 What the capability check decided
 
-- when `embed()` is unavailable the worker still writes the verdict and leaves
-  `embedding` NULL — the post becomes `enriched`, not `failed`;
-- deduplication degrades to tier 1, which still works;
-- `scripts/backfill-embeddings.js` fills the gaps when the provider returns.
+- **Gemini is primary for text, vision and embeddings; OpenRouter is a
+  text-only fallback.** OpenRouter's `/embeddings` exist and stay unused: a
+  fallback vector would sit in another model's space, invisible to dedup and
+  search; a `null` can be backfilled by the same model.
+- **`text-embedding-004` was shut down on 2026-01-14** and failed silently
+  (404 after the quota bump). Default: `gemini-embedding-2` pinned at 768
+  dimensions; `task_type` is not sent.
+- **Gemini resets RPD at Pacific midnight**, so the ledger takes a per-provider
+  time zone (`quotaTimeZone`).
+- **Free-tier limits are per model** and only visible in AI Studio:
+  `gemini-2.5-flash` and Flash 3.x have RPD 20, so the default is
+  `gemini-3.5-flash-lite` (RPD 500, RPM 15) for enrich and vision; the ledger
+  counts per `provider:model`.
+- Still open: an OpenRouter complete model id with `json_schema` support and a
+  key — `LLM_FALLBACK=openrouter` has none; accepted by the operator
+  (2026-10-03): when Gemini's quota runs out, TheFlow waits for the reset.
 
-Vision is checked in the same pass, and may land on a **third provider**: the
-gateway routes per capability, so a vendor used for nothing but `vision()` is an
-ordinary configuration. Free vision tiers exist and are the right choice while
-the gates are being tuned. Record per candidate: RPD, maximum input resolution
-and bytes, accepted formats, and whether a per-transcription confidence signal
-is returned — see [VISION.md](VISION.md) §"Choosing a vision provider".
+### 3.6 Fixes the live runs forced
 
-Record measured RPD and RPM per model id against the real volume from 2.1.
+- **v4.43.1** — no Gemini enrich call had ever succeeded: `responseSchema`
+  rejected `["string","null"]` unions (HTTP 400). `GeminiProvider` translates
+  the schema; replay with `flow requeue`.
+- **v4.44.1** — a per-minute 429 was read as the daily quota (only `quotaId`
+  tells them apart), the bucket allowed 2×RPM in the first minute, retries
+  ignored `retryDelay`, a gate refusal burned an attempt.
+- **v4.57.2** — a provider-reported daily quota is now final for the day; a
+  quota error that survives retries is deferred, never an attempt.
 
-### 3.2 Provider layer (`M`)
+Classification exit gate: verdicts you agree with often enough to route on,
+measured through `flow review` — not a fixed number of days.
 
-> **Done (v4.11.0).** `src/services/ai/providers/` — `BaseProvider`
-> (`complete()` / `embed()` / `vision()` + `capabilities()`, and
-> `classifyHttpError()`, the shared mapper that turns an HTTP failure into the
-> `kind` the gateway's fallback matrix branches on: `rate_limit` / `quota`
-> (a 429 is split by body text — `daily|per day|quota exceeded|
-> resource_exhausted` means the day is gone, anything else is a rate limit) /
-> `server` / `network` / `bad_response`), `GeminiProvider`
-> (`:generateContent` + `:embedContent`, `responseSchema` for structured
-> output) and `OpenAICompatProvider` (base-URL parameterized, `embed()` only
-> when `embedModel` is configured). `capabilities()` is derived from the API
-> key plus the configured model ids, so an unconfigured capability simply is
-> not advertised and the gateway routes around it. The HTTP client is `axios`,
-> injectable through the constructor's third argument (that seam is what lets
-> the gateway and worker suites run against fakes), with the per-call timeout
-> passed as an axios request option.
-> `test/ai-providers.test.js` covers it.
+## 4. Phase 1.5 — vision · done (v4.25.1–v4.29.0)
 
-```text
-src/services/ai/providers/
-├── BaseProvider.js          # complete() / embed() / vision() + capabilities()
-├── GeminiProvider.js
-└── OpenAICompatProvider.js  # base-URL parameterized: OpenRouter, Qwen, others
-```
+Spec: [VISION.md](VISION.md). Off on every source. Where the build departed
+from the plan:
 
-Each provider declares `capabilities()`; the gateway routes each capability to a
-provider that has it. Vision and text need not come from the same vendor, and
-with OpenRouter, tiering to a stronger model is a model-id change.
+- **The cache matches by Hamming distance (≤ 10), not hash equality** — a
+  recompressed repost lands 4–7 bits away, so an exact key would miss nearly
+  every repost.
+- **Provenance has three outcomes** — in the text → verified; only in OCR →
+  kept, `verified: false`; neither → discarded. Otherwise every screenshot
+  code would have been dropped.
+- **Media types and the album cap apply before download**, so vision never
+  pulls a video to discard it.
+- **A shed returns the claim** (`Post.releaseClaim()`); before, a few sheds
+  made a post `failed` on its first real error.
+- Image documents (`image/png|jpeg|webp`, ≤ 20 MB) are transcribed, format
+  checked by magic bytes before decoding.
 
-### 3.3 Schemas and validation (`M`)
+## 5. Phase 2 — content-based routing · done, delivering to test channels
 
-> **Done (v4.10.0).** `src/services/ai/schemas.js`: `enrichResponseSchema(taxonomy)`
-> (JSON-Schema with enums filled from categories.json, for provider structured
-> output), `validateStructural(obj, taxonomy)`, `validateVerbatim(obj, rawText)`,
-> and `validateEnrichResponse()` (structural then verbatim). Hand-rolled, no
-> `ajv`. `test/ai-schemas.test.js` covers it.
->
-> **Scope call:** verbatim strips only literal quotes — `extracted.promo_codes[].code`
-> and `entities.tickers[]` (case-insensitive `raw_text` membership). `entities.project`
-> is **not** stripped: a project name is an identification that is legitimately
-> transliterated or translated away from the source spelling, and false-rejecting
-> a real one is worse than keeping a wrong one the reader sees in context.
+Spec: [TAXONOMY.md](TAXONOMY.md), [DELIVERY.md](DELIVERY.md).
 
-`src/services/ai/schemas.js`. Hand-roll the validator rather than adding `ajv`:
-the schema is small and fixed, the interesting checks are custom anyway, and it
-stays testable.
+| # | Task | State |
+|---|---|---|
+| 5.1 | Destination channels | Done 2026-10-06: test channels in the staff category; public channels after the test week |
+| 5.2 | Resolve stage (`ResolveStage.js`) | v4.24.0; `when.source` and `also` rules v4.58.0 |
+| 5.3 | `#unsorted` on every fallthrough, with the reason | v4.47.0 |
+| 5.4 | Flow delivery: render, lazy media, send; the template | v4.47.0; Ukrainian embed template v4.58.0; translation v4.57.0 |
+| 5.5 | Deliveries recorded in `clusters.delivered`, `posts.delivery` (013) | v4.47.0 |
+| 5.6 | `enriched` → `routed` / `unsorted` | v4.47.0 |
+| 5.7 | Reaction capture → `post_feedback` | **Deferred** (operator, 2026-10-02): `flow review` is the label source; revisit after the §13.5 probe |
 
-1. **Structural** — required fields, correct types, and `topic` / `signal_type`
-   are members of the **closed enums** from `categories.json`. A value outside
-   the enum is a validation failure, never a new category.
-2. **Verbatim** — every field claiming to quote the source must appear in
-   `raw_text`: promo codes, tickers, links, names. Failures are discarded, not
-   corrected.
+Two rules that held: **lazy media is as much the point as routing** (a
+duplicate never triggers a download), and **`MessageRouter` was not
+refactored** — resolve fills `destinations`, classic forwarding is untouched.
 
-An invalid response is a failure, not data: the post stays `pending`, `attempts`
-increments, `last_error` records why.
+Exit gate: posts arrive in the right channels, `#unsorted` is small enough to
+read daily, and what lands there says which description to fix.
 
-### 3.4 Prompts (`M`)
-
-> **Done (v4.10.0).** `src/services/ai/prompts/enrich.js`:
-> `buildEnrichPrompt({ text, candidates, textOcr, taxonomy })` → `{ system,
-> user, responseSchema, settings }`. Taxonomy descriptions injected from
-> categories.json; `text_en` first; `summary_uk` optional; `ENRICH_CALL_SETTINGS
-> = { temperature: 0 }`. The source text (and OCR text, when it exists) sits
-> inside a per-call nonced `<<<UNTRUSTED …>>>` block the model is told to treat
-> as data — built now, while `text_ocr` is still empty. `prompts/delta.js` and
-> `prompts/vision.js` come with phases 3 and 1.5. `test/enrich-prompt.test.js`
-> covers it. Explicit timeout is a call setting the gateway (3.5) applies.
-
-`prompts/enrich.js` — taxonomy injected from `categories.json`,
-`temperature: 0`, structured output, explicit timeout.
-
-Field order is load-bearing: **`text_en` first**. The model normalizes to
-English and every later field describes that canonical representation.
-`summary_uk` is optional in the same call — a few output tokens, no extra
-request.
-
-Build the untrusted-content delimiter block **now**, while `text_ocr` is still
-empty. Retrofitting it after you have started trusting the output is worse.
-
-### 3.5 `LLMGateway` (`L`)
-
-> **Done (v4.12.0).** `src/services/ai/LLMGateway.js` + `internal.js`
-> (`TokenBucket`, `CircuitBreaker` — default threshold 1 per the matrix,
-> `TtlCache`). Capability routing over `order = [LLM_PRIMARY, LLM_FALLBACK]`;
-> per-provider RPM bucket; persistent RPD via `ProviderQuota` (migration 005);
-> per-provider breaker; TTL+size cache keyed on normalized input + taxonomy
-> version; 3-lane priority queue with a concurrency cap; the full fallback
-> matrix (`rate_limit` → retry same; `quota` → mark exhausted + next;
-> `server`/`network` → breaker + next; `bad_response` → one retry + next);
-> tiering separate from fallback; shed below the reserve returns
-> `{ shed: true }`, never `failed`. `embed()` returns `null` when no provider
-> advertises the capability (degrade to tier 1). `test/llm-gateway.test.js` +
-> `test/ai-internal.test.js`.
-
-```js
-await gateway.enrich(input,  { priority: "critical" })
-await gateway.embed(text,    { priority: "critical" })
-await gateway.vision(image,  { priority: "normal" })
-```
-
-| Part | Note |
-|---|---|
-| Provider registry | Capability-based routing |
-| Token bucket per provider | RPM |
-| **Quota ledger** | RPD, **persisted in a table** |
-| Circuit breaker per provider | Open on timeout / 5xx / network, periodic probe |
-| TTL + size-capped cache | Key = hash of normalized input; model it on `TelegramDeduplicator` |
-| Priority queue, concurrency capped | `critical` / `normal` / `low` |
-| Fallback matrix | One branch per row of the table in LLM_GATEWAY.md |
-
-**The quota ledger must be persistent.** An in-memory RPD counter resets on
-restart, so after a crash the gateway believes it has a full allowance and drives
-into the wall it was built to avoid. A `provider_quota` table (`provider`,
-`day_utc`, `count`, `exhausted_at`) survives restarts. The counter is **per
-provider, not per capability** — enrich, embed, and vision share one allowance.
-
-Two distinctions that are cheap to keep and expensive to lose:
-
-- **Fallback ≠ tiering.** Fallback is the same task on another provider because
-  the first is unavailable; tiering is escalation to a stronger model because the
-  result is uncertain. Separate config. Conflating them means escalating to the
-  expensive model on every `429`.
-- **Shed ≠ error.** Below the reserve threshold, `low` and `normal` work is
-  deferred and the caller is told; the post stays `pending`. A shed call must
-  never mark a post `failed`.
-
-### 3.6 `categories.json` v1 and the enrichment worker (`M` + `M`)
-
-> **`categories.json` v1 done (v4.10.0).** `src/config/categories.json` —
-> topics `steam / airdrop / crypto / tools / other`, the 11 signals from
-> appendix A (incl. `security`, `giveaway_result`, `stream`),
-> `dedup_window_hours` on each **signal** (DEDUPLICATION.md's table is
-> signal-keyed; TAXONOMY.md's example showing it on topics is the stale
-> illustrative set). `routing: []` and `unsorted_destinations` = the current
-> firehose — the correct shadow-mode config until the phase 2 channels exist.
-> Loaded as `CATEGORIES` from `app.config.js`; `test/categories.test.js` pins
-> the shape.
->
-> **`EnrichWorker` done (v4.12.0).** `src/module/theflow/EnrichWorker.js`:
-> chained `setTimeout` tick (no overlap), `Post.claimPending(batch)` bumps
-> `attempts` in one statement before the gateway call (§13.1, no `enriching`
-> status), `gateway.enrich` → `gateway.embed(text_en)` → `UPDATE ... enriched`
-> with `model_used` + `taxonomy_version` + embedding BLOB. Shed leaves the post
-> `pending`; a gateway error retries until `ENRICH_MAX_ATTEMPTS` then `failed`
-> with `last_error`; a missing embedding still yields `enriched`. Imports only
-> `posts` + config — no Telegram/Discord/bus. Wired into `src/inemuri.js`
-> behind `ENRICH_WORKER_ENABLED` + a primary-provider key.
-> `test/enrich-worker.test.js`.
-
-Write `categories.json` v1 now, from **appendix A** — which is derived from the
-real channel mix and the existing blacklists, not from the spec's generic
-example. Version it `1`. It does not need to be right; it needs to exist so
-verdicts can be produced and compared.
-
-`src/module/theflow/EnrichWorker.js`:
-
-```text
-timer -> Post.takePending(batch)
-      -> [phase 1.5: vision if gated, persisted immediately]
-      -> gateway.enrich(raw_text + title + text_ocr, candidates)
-      -> validate (structural, then verbatim)
-      -> gateway.embed(text_en)
-      -> UPDATE status='enriched', model_used, taxonomy_version, ...
-```
-
-- **Claiming (13.1).** The tick is a chained `setTimeout`, scheduled after the
-  batch resolves, so ticks cannot overlap by construction and a slow provider
-  throttles the worker instead of stacking batches. Claiming is one statement —
-  `UPDATE posts SET attempts = attempts + 1 WHERE id IN (…) AND status='pending'`,
-  the affected-row count being the result — wrapped in `Post.claimPending(limit)`
-  so a lease can replace it later without touching the call site. Note that
-  `attempts` increments **at claim time, before the gateway call**: a crash
-  mid-call then counts toward the cap instead of producing a row that is retried
-  forever, and if that row is what killed the process, forever means a restart
-  loop.
-- `model_used` and `taxonomy_version` on **every** verdict — without them, a
-  month later there is no telling a prompt regression from a provider switch.
-- Attempts capped; on exhaustion the post becomes `failed` and **stays** with
-  `last_error`, replayable after the prompt is fixed.
-- The worker imports only `posts` and `LLMGateway` — never Telegram, Discord, or
-  the event bus. That boundary keeps a later extraction into its own process
-  cheap.
-- Wired into `src/inemuri.js` behind `ENRICH_WORKER_ENABLED` plus a primary-
-  provider API key. There is no `LLM_SHADOW_MODE` flag: in phase 1 shadow mode
-  is structural — the worker writes verdicts and no reader of them exists yet.
-  The switch belongs with the routing consumer, in phase 2.
-
-> **Fixed after the pilot (v4.43.1).** The first live day showed that no
-> Gemini enrich call had ever succeeded: `responseSchema` is an OpenAPI
-> subset and rejected the schema's `["string", "null"]` unions (HTTP 400 on
-> every call). `GeminiProvider` now translates it and pins `propertyOrdering`.
-> The earlier "verified with live calls to return schema-valid JSON" (3.1) had
-> used a simpler schema. Replay is `node src/cli.js flow requeue`.
-
-> **Fixed after the first real run (v4.44.1).** A per-minute 429 was read as
-> the daily quota (Gemini says `RESOURCE_EXHAUSTED` on both; only `quotaId`
-> tells them apart), the bucket allowed 2×RPM in the first minute, retries
-> ignored `retryDelay`, and a gate refusal (breaker open, quota spent) burned
-> a post's attempt. All four fixed; see CHANGELOG 4.44.1.
-
-### 3.7 `flow:review` (`S`)
-
-> **Done (v4.13.0).** `node src/cli.js flow review [--limit n] [--topic t]`.
-> Walks `enriched` posts that have no `post_feedback` row yet, shows
-> `raw_text` / `text_en` / `topic` / `signal_type` / `confidence` /
-> `model_used` / `taxonomy_version`, and takes a one-key verdict
-> (`g` good / `n` noise / `w` wrong_topic — with an optional note / `s` skip /
-> `q` quit) into `post_feedback`. Input is read through readline's async
-> iterator, so it also works with `flow review < answers.txt`.
-
-Shows an enriched post — `raw_text`, `text_en`, `topic`, `signal_type`,
-`confidence`, `model_used` — and takes a one-key verdict into `post_feedback`.
-It makes shadow mode productive instead of a week of squinting at SQLite, and it
-is the only thing in phase 1 that produces the few-shot examples phase 5 needs.
-
-### Phase 1 checkpoint and exit
-
-**Checkpoint, after a few hundred verdicts:** read everything classified `other`
-or headed for `#unsorted`. Whatever keeps landing there is either a missing
-category or a description that is too narrow. Rewrite `categories.json`, bump
-`version` to 2; `taxonomy_version` keeps the old verdicts interpretable.
-
-**Exit gate:** verdicts you agree with often enough to route on, measured through
-`flow:review` — not a fixed number of days. Routing stays off until then.
-
-## 4. Phase 1.5 — vision, in shadow
-
-> **Done (v4.25.1–v4.28.0).** Built against the plan below, with four things the
-> plan did not anticipate:
->
-> - **The cache is keyed by Hamming distance, not hash equality.** Measured: a
->   recompressed repost lands 4–7 bits from the original, different screenshots
->   15–23, so an exact key would have missed nearly every repost and the
->   "largest single saving" would never have happened. Threshold 10.
-> - **Verbatim validation would have discarded every code from a screenshot**,
->   since it checked against `raw_text` only. Provenance now has three outcomes
->   (text → verified, OCR only → kept but `verified: false`, neither →
->   discarded), which is also what hazard 1 below requires.
-> - **The media resolver downloaded every type before the caller could filter**,
->   so vision would have pulled whole videos to discard them. `types` and the
->   album cap now apply before download.
-> - **A shed consumed a retry.** `claimPending` increments `attempts`; a shed
->   left the post `pending` without giving it back, so a post shed a few times
->   became `failed` on its first real error. Vision sheds first under quota
->   pressure, which made this likely. `Post.releaseClaim()` returns the attempt.
->
-> `sharp` was upgraded to 0.35.4 first, because vision makes it decode images
-> from channels. Screenshots sent as files (`image/png|jpeg|webp` documents,
-> ≤ 20 MB) are transcribed since v4.29.0, with the format checked by magic
-> bytes before decoding — the MIME type is the sender's claim, and a mislabelled
-> SVG was otherwise rendered. **Nothing is enabled**: every source
-> has `flow.vision.enabled = false`, and the gate refuses to run until an
-> operator turns it on for a source.
-
-Spec: [VISION.md](VISION.md). Runs inside the enrichment worker, before
-`enrich()`, never during ingestion.
-
-**Gates, cheapest first (`S`):** `source.isVisionEnabled()`, off by default and
-chosen from the image-only share in `flow:stats` → `length(raw_text) >
-vision.text_threshold` (≈200) skips decorative images → perceptual hash already
-seen (**the largest single saving**; screenshots are reposted as heavily as
-text) → `vision.max_images_per_post` (≈2).
-
-**Local processing (`M`).** `sharp` is already a dependency
-(`src/shared/utils.js:177`). Downscale to the provider's optimal dimensions
-before sending — an image costs hundreds to thousands of tokens by resolution,
-and screenshots stay legible after significant reduction. Compute the dHash on
-the downscaled grayscale copy, reusing the implementation already in
-`scripts/backfill-image-hash.js`.
-
-**Cache and persistence (`S`).** A `vision_cache` table keyed by `image_hash` →
-`text_ocr`, with a TTL sweep; persistent for the same reason as the quota
-ledger. **Persist `text_ocr` and `vision_used` immediately after the vision call,
-before `enrich()` runs** — if enrichment then fails and retries, the
-transcription is not paid for twice. This is why vision needs no new status:
-`text_ocr IS NOT NULL` plus `vision_used` is the marker.
-
-**Two hazards, both free to close (`S`).**
-
-- *Entities from images cannot be verified.* Verbatim validation compares against
-  `raw_text`, and OCR text was never there. Every entity from a transcription
-  carries `source: "ocr"`, `verified: false`, is marked unverified on delivery,
-  and **never outranks a verified entity in tier 1 deduplication**. A
-  confidently delivered wrong promo code is worse than none.
-- *Prompt injection through images.* OCR output goes into the enrich prompt
-  inside the untrusted delimiter block from 3.4, labelled as transcribed
-  content, never as instructions.
-
-**Exit:** vision stays in shadow alongside classification. Because `text_ocr` is
-stored separately from `text_en`, you can tell which of the two produced a bad
-verdict — the concern that originally pushed vision to last is answered by the
-schema instead of by the ordering. Check transcription quality per source and
-disable vision where OCR is noise.
-
-## 5. Phase 2 — content-based routing
-
-Spec: [TAXONOMY.md](TAXONOMY.md), [ARCHITECTURE.md](ARCHITECTURE.md) "Stage 3 — Flow".
-
-| # | Task | Files | Effort |
-|---|---|---|---|
-| 5.1 | **Create the destination channels** — see 1.1b; today there is exactly one | — | S |
-| 5.2 | Resolve stage: `topic` + `signal_type` + `confidence` → destinations | `ResolveStage.js` | M |
-| 5.3 | `#unsorted`, wired to every fallthrough | `categories.json` | S |
-| 5.4 | Flow delivery: `render()` per [DELIVERY.md](DELIVERY.md), `MediaResolver.resolve(post)`, then send. **The template is designed here** | `FlowDelivery.js` | M |
-| 5.5 | Record deliveries into `clusters.delivered` (needs 2.6) | | S |
-| 5.6 | Status transitions `enriched` → `routed` / `unsorted` | | S |
-| 5.7 | Reaction capture → `post_feedback` — **optional, deferred (operator, 2026-10-02).** Convenience only: `flow review` stays the label source and already feeds the enrich prompt. Revisit once delivery channels (5.1) carry real posts, after the §13.5 probe | | M |
-
-> **5.2 done (v4.24.0).** `src/module/theflow/ResolveStage.js` — `resolve()`
-> and `validateRouting()`, pure, reading `ROUTING` (routing.json) rather than
-> `categories.json`. `test/resolve-stage.test.js` covers every rule below plus
-> the two gaps it had to fill: a topic outside `flow.topics` goes to
-> `#unsorted`, and a matching rule with no destinations is skipped. Every
-> result carries a `reason`. Not yet wired into a delivery path — that is 5.4.
-> 5.1 (the channels) is still the operator's and still gates enabling any of it.
-> **Done (2026-10-06):** the operator's server has test channels for every
-> routed topic in its staff category, `routing.json` points at them, and
-> delivery is on on the VPS.
-
-> **5.3–5.6 built (v4.47.0), off by default.** `src/module/theflow/delivery/`:
-> `render.js` (pure — DELIVERY.md's mechanism, with a **draft** template in
-> one `TEMPLATE` object) and `FlowDelivery.js` (selects canonical posts that
-> passed dedup, plus `failed` ones for `#unsorted`; resolve → lazy media →
-> render per platform → the existing `MessageRouter.routeMessage`, unchanged;
-> `posts.status` → `routed`/`unsorted`, `posts.delivery` log, migration `013`;
-> `clusters.delivered` appended). `FLOW_DELIVERY_ENABLED` is the shadow-mode
-> switch §3.6 deferred to here and stays `false`: until the §5.1 channels
-> exist, `unsorted_destinations` is the old firehose chat. Posts older than
-> `FLOW_DELIVERY_MAX_AGE_HOURS` (24) are never sent — marked `too_old` — so
-> switching it on cannot flood a channel with a source's history. A sent
-> cluster is never sent again. `node src/cli.js flow preview [--id] [--ignore-age]`
-> prints what would go where, and is where the template gets designed.
-> `DiscordDestination` gained optional `messageData.embed` (colour, footer,
-> author link); classic forwarding does not set it.
->
-> **Still open:** 5.1 (channels), the final template (5.4 — the operator's),
-> 5.7 (reactions).
-
-Resolve is a pure function and is tested as one: rules in descending `priority`,
-first match wins, a single value equals a one-element array in `when`, and
-`confidence` below `flow.min_confidence` forces `#unsorted` regardless of what
-matched.
-
-Two things not to get wrong:
-
-- **Lazy media is as much the point as routing.** A post deduplicated away in
-  phase 3 must never have triggered a video download. Prove the resolver path
-  here, before phase 3 depends on it.
-- **Do not refactor `MessageRouter`.** Its contract is that `destinations` is
-  already resolved; the resolve stage fills that field, `source.destinations`
-  remains the classic path. Classic forwarding keeps running untouched.
-
-**Exit gate:** posts arrive in the right channels, `#unsorted` is small enough to
-read daily, and what lands there tells you which description to fix.
-
-## 6. Phase 3 — deduplication, tiers 1 and 2
+## 6. Phase 3 — deduplication, tiers 1 and 2 · done, thresholds open
 
 Spec: [DEDUPLICATION.md](DEDUPLICATION.md).
 
-| # | Task | Effort |
+| # | Task | State |
 |---|---|---|
-| 6.1 | Settle the `skipped_repost` question below | M |
-| 6.2 | Tier 1: exact match on promo code, normalized URL, `external_url`, `text_hash` | M |
-| 6.3 | Tier 2: brute-force cosine over the per-category window | M |
-| 6.4 | Cluster lifecycle: create, join, `members_count`, `closed` | M |
-| 6.5 | `richness()` and the cheap gate | S |
-| 6.6 | Delta call and the `linked` append path, with the caps | L |
-| 6.7 | Decision logging: `s`, tier, `relation`, daily collapse rate per category | S |
-| 6.8 | Threshold calibration from real pairs | M |
+| 6.1 | Scope of the ingest-time repost check | v4.45.0 — per source (below) |
+| 6.2 | Tier 1: verified promo code, normalized URL, `external_url`, `text_hash`, ticker + date | v4.45.0, v4.50.0 |
+| 6.3 | Tier 2: cosine over the per-signal window, other sources only | v4.45.0 |
+| 6.4 | Cluster lifecycle | v4.45.0 |
+| 6.5 | `richness()` and the cheap gate | v4.45.0 |
+| 6.6 | Delta call; edits, corrections and denials of delivered messages | v4.48.0 |
+| 6.7 | Decision log `posts.dedup` (011), `flow dedup` | v4.45.0 |
+| 6.8 | **Threshold calibration** | **Open** |
 
-> **6.1–6.5 and 6.7 done (v4.45.0).** `src/module/theflow/dedup/` —
-> `DedupCore.js` (pure: tier 1 keys, URL normalization, cosine, `richness()`,
-> the gate, windows, `decide()`) and `DedupStage.js` (I/O, runs in the enrich
-> worker's tick right after enrichment). Migration `011` adds `posts.dedup`
-> (the decision log) and `clusters.embedding_model` / `embedding_dim`.
-> `node src/cli.js flow dedup` reports the daily collapse rate per signal and
-> the `s` histogram; `--run` backfills, `--reset` recomputes after a
-> threshold change (refused once anything is delivered), `--pairs n` prints
-> the pairs around the thresholds for 6.8. Settled along the way:
->
-> - **6.1: option 1.** The ingest-time repost check is scoped to the source.
-> - **Tier 2 skips the post's own source by default**
->   (`DEDUP_TIER2_SAME_SOURCE`). The first run on the pilot corpus — one
->   source — merged nine pairs at s 0.90–0.95, **all wrong**: giveaways of
->   different skins and results of different tournament days, written from
->   the same channel template. A close post from the same channel is the next
->   issue of a series; tier 2 is for the same event from another channel.
->   Tier 1 (exact text, code, URL) still applies within a source.
-> - **Tier 1 keys:** only `verified` promo codes (an OCR code never collapses
->   posts, §4 hazard 1), and no URL a source puts into ≥ 3 posts in 14 days —
->   a channel signature as a key would merge everything the channel writes.
-> - **`closed`** is set relative to the oldest undecided post, not the clock,
->   so a backfill can still join the clusters of its own time.
-> - Gate-passed joins are `linked` with no `adds` until the delta call (6.6);
->   `security` is never suppressed.
->
-> **6.6 done (v4.48.0).** `prompts/delta.js` + `LLMGateway.delta()` (priority
-> `normal`, sheds before enrich; cached by the pair; verified with one live
-> call — a moved start time came back `corrects` with both facts and their
-> Ukrainian text). `dedup/DeltaStage.js` runs in the worker tick after dedup:
-> `same` → duplicate/suppressed (never for `security`), `adds` → stays linked,
-> `corrects`/`denies` → `correction`, `denies` closes the cluster. In
-> `FlowDelivery`, updates run before new posts each tick: an addition
-> re-renders and edits every delivered message, at most `MAX_APPENDS` (3) per
-> cluster, then only counts; a correction or denial edits **and** sends a reply
-> (an edit does not notify), with no cap; a failed edit falls back to a reply
-> with the re-rendered message; a new canonical in a delivered cluster rewrites
-> it. Adapters: `editMessageData()` on both (compose as `sendMessage` does);
-> `replyTo` passed through on Telegram, `message_reference` on Discord; Discord
-> identities keep the embed's CDN `image_url` so an edit does not drop the
-> picture; a Telegram album's identity is now its first message (was `null`).
->
-> **Still open:** 6.8 needs cross-source pairs, and the corpus has none yet — the other two
-> flow-enabled sources had produced no post by 2026-09-30. HIGH 0.90 / LOW
-> 0.75 are uncalibrated for cross-source matches.
+### 6.1 — the repost check is per source
 
-### 6.1 — settle before writing tier 1
+A global `text_hash` check marked the same text on a *second* channel
+`skipped_repost` — a terminal status, never clustered, so "also reported by
+N" undercounted exactly the cheapest duplicates. The ingest check is scoped to
+the source; cross-source copies are enriched (the gateway cache makes the call
+free) and join the event in tier 1.
 
-`FlowIngest` checks `text_hash` **globally**, across all sources, and marks a
-match `skipped_repost` — a terminal status: never enriched, never assigned a
-`cluster_id`, never counted.
+Also settled in v4.45.0: **tier 2 skips the post's own source** by default
+(`DEDUP_TIER2_SAME_SOURCE`) — on the one-source pilot it merged nine pairs at
+s 0.90–0.95, all wrong (the same channel template, different items);
+**boilerplate URLs** (in ≥ 3 posts of a source in 14 days) are not keys;
+**`closed`** is relative to the oldest undecided post, so a backfill can join
+clusters of its own time.
 
-Within one channel that is correct. For the same story appearing word-for-word
-on a second channel it is not — that is precisely the tier 1 case, and "also
-reported by N more channels" is a feature. As written, `members_count`
-undercounts exactly the duplicates that were cheapest to detect. The overlap
-between the three airdrop sources (1.2) makes this immediate, and
-news sites in phase 3.5 make it severe.
+### 6.6 — keeping a delivered message current
 
-1. **Scope the ingest-time check to the source**, and let stage 3 tier 1 handle
-   cross-source hash matches with proper cluster attribution.
-2. Keep the global check, and attach `cluster_id` and `link_role: 'duplicate'`
-   to the skipped row so the count stays honest.
-
-Option 1 is cleaner: ingest keeps doing one thing and all cluster logic lives in
-one place. It costs one extra row through enrichment per cross-source repost,
-which the gateway cache absorbs — identical normalized text is a cache hit, not
-a second call.
+`prompts/delta.js`, `LLMGateway.delta()` (`normal`, cached by the pair) and
+`dedup/DeltaStage.js`: `same` → duplicate, suppressed (never for `security`);
+`adds` → linked; `corrects` / `denies` → `correction`, `denies` closes the
+cluster. Delivery handles updates before new posts each tick (DELIVERY.md).
 
 ### 6.8 — thresholds are measured
 
-`HIGH = 0.90` and `LOW = 0.75` are starting points. Calibrate on known-duplicate
-and known-distinct pairs from the corpus and see where the distributions
-actually separate. Log the similarity `s` behind every decision from day one —
-without it there is nothing to calibrate against. The daily collapse rate per
-category is the health metric: too many collapses means `HIGH` is too low and
-news is being lost.
+`HIGH = 0.90` and `LOW = 0.75` are starting points. Calibrate on
+known-duplicate and known-distinct cross-source pairs
+(`flow dedup --pairs 30`) and see where the distributions separate; the daily
+collapse rate per signal is the health metric — too many collapses means
+`HIGH` is too low and news is being lost. With delivery on, `flow dedup
+--reset` is refused once a cluster is delivered, so new thresholds apply to
+new posts only.
 
 ### Non-negotiable
 
-Three things are never suppressed, whatever the dedup gate or the append cap
-says:
+Never suppressed, whatever the gate or the cap says:
 
-- `corrects` and `denies` — a cancelled event with a cheerful announcement still
-  standing is the worst failure this system can produce;
-- **anything with `signal_type: security`** — a second channel reporting the same
-  exchange hack may be the one that names the contract to stay away from, and a
-  `denies` on a hack rumour is exactly the retraction you must see;
-- the gray zone, until tier 3 exists: it is treated as a **new event** and
-  flagged. Publishing a duplicate is annoying, swallowing a real story is worse.
+- `corrects` and `denies` — a cancelled event with a cheerful announcement
+  still standing is the worst failure this system can produce;
+- anything with `signal_type: security` — a second report may name the
+  contract to stay away from;
+- the gray zone, until tier 3 exists: a **new event**, flagged.
 
-Security is also where first-wins is at its most valuable and its most
-dangerous: the fastest report of a hack is the one you want, and it is also the
-one most likely to be a rumour. That combination is precisely what the
-`linked` / `corrects` / `denies` mechanism exists for — publish immediately,
-and let the correction always through.
+## 7. Phase 3.5 — Reddit and news sources · done (v4.49.0)
 
-## 7. Phase 3.5 — Reddit and news sources
-
-> **Done (v4.49.0).** `src/sources/feeds/`: `parsers.js` (pure: RSS 2.0 and
-> Atom through cheerio in XML mode, the Reddit `/new` listing, `selectNew()`
-> against the cursor), `http.js` (`HostThrottle` — a minimum interval per
-> host, 7 s for Reddit, 2 s elsewhere; `fetchFeed()` — descriptive User-Agent,
-> conditional GET, size cap, 304/401/403/429/503 as answers; `RedditAuth` —
-> app-only OAuth) and `FeedPoller.js` (per-source schedule, cursor
-> `{ ts, seen, etag, lastModified }` in `SourceState.cursor`, first poll is a
-> baseline, then replacements → TheFlow or classic forwarding exactly like
-> Telegram). `UrlMediaResolver` registered for `media_ref.kind: "url"`.
-> `sources.platform` accepts `reddit` and `rss`; migration `014` drops
-> `posts.message_id` as §2.4 planned. `title` is a separate field of the
-> enrich prompt, and part of the verbatim check.
->
-> Found live on 2026-09-30: **Reddit answers 403 to unauthenticated requests
-> from the dev machine — `.json` and `.rss` alike.** Reddit therefore needs
-> `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` (a "script" app); without them a
-> Reddit source logs one warning with that hint and retries every 6 h. The
-> OAuth path is tested against fakes only — no credentials exist yet. A
-> Steam news RSS feed parsed correctly live.
-
-After deduplication, deliberately: news sites republish each other constantly,
-and adding them earlier multiplies the noise the system exists to remove. With
-the schema generalized in 2.4 and the resolver seam in 2.5, this is adapters and
-nothing else.
-
-| # | Task | Effort |
+| # | Task | Where |
 |---|---|---|
-| 7.1 | `RedditSourceAdapter` — polling; `external_id` = fullname, `external_url` = permalink, `title` populated | M |
-| 7.2 | `RssSourceAdapter` — feed polling; `external_id` = guid or URL, cursor in `SourceState.cursor` | M |
-| 7.3 | `UrlMediaResolver` for `media_ref.kind: "url"` | S |
-| 7.4 | Per-platform rate limiting and polite fetching | S |
-| 7.5 | Source config shape for the new platforms | S |
+| 7.1 | Reddit and RSS/Atom polling; `external_id` = fullname / guid or URL; cursor in `SourceState.cursor` | `FeedPoller.js`, `parsers.js` |
+| 7.2 | Source config shape: `platform: "rss" \| "reddit"` | `Sourceseeder.js` |
+| 7.3 | `UrlMediaResolver` for `media_ref.kind: "url"` | `theflow/media/` |
+| 7.4 | Per-host rate limiting and polite fetching | `http.js` |
 
-- **No new dependencies.** `axios` covers Reddit's JSON endpoints; `cheerio`
-  parses RSS and Atom in XML mode as well as HTML.
-- **Feed content only at first.** Full-article extraction from the page has its
-  own failure modes — paywalls, boilerplate, layout drift — and should not be
-  bundled into getting the adapter working.
-- **`title` is high-signal.** For news and Reddit it usually carries the whole
-  event. Pass it to `enrich()` as a distinct field, not concatenated into the
-  body.
-- Poll politely, respect rate limits and each site's terms, prefer official feeds
-  and APIs over scraping.
-- Both are polling-only, so the existing cursor pattern and
-  `POLLING_CHANNEL_DELAY_MS` apply unchanged.
+`src/sources/feeds/`: pure parsers (RSS 2.0, Atom, the Reddit listing),
+`http.js` (per-host throttle — 7 s Reddit, 2 s elsewhere; conditional GET;
+size cap; `RedditAuth` app-only OAuth), `FeedPoller.js` (per-source schedule,
+cursor in `SourceState.cursor`, first poll is a baseline). Feed content only —
+no page fetching (that is §14.4). `title` is a separate enrich field and part
+of the verbatim check.
 
-## 8. Phase 4 — entity extraction
+**Reddit answers 403 to unauthenticated requests** (found 2026-09-30), so it
+needs `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`; without them a source logs
+one warning and retries every 6 h. The OAuth path is tested against fakes
+only.
 
-> **Done (v4.50.0).** Enrich prompt version 2 (`ENRICH_PROMPT_VERSION`,
-> written to every verdict as `analysis.prompt_version`). `extracted` gains
-> `links[]` (`url`, closed `role`: claim / source / signup / docs / other),
-> `amounts[]` (`text`, `value`, `unit`, `what`) and a real `event` (`name`,
-> `starts_at`, `ends_at`, `date_text`), and promo codes gain `expires_text`.
-> The rule that makes it safe: **a normalized value is kept only with its
-> exact words** — dates cannot be checked verbatim, so their anchor
-> (`date_text`, `expires_text`) is, and without it the date is dropped. URLs
-> and amounts are checked verbatim; OCR-only matches are kept as
-> `verified: false`. A malformed optional item is dropped into `discarded`
-> rather than failing the post. The model gets the post's publication date,
-> outside the untrusted block, to resolve dates written without a year. Tier 1
-> gains the "ticker + date" key (`evt:ABC:2026-10-05`) — from text tickers
-> and an anchored event date only; `render()` shows the event under the lead.
-> Two live calls on real posts: a Major start and a giveaway deadline in
-> Moscow time came back correct and anchored. The 102 existing verdicts are
-> prompt 1 — `flow requeue --status enriched --prompt-below 2` re-extracts
-> them.
+## 8. Phase 4 — entity extraction · done (v4.50.0)
 
-Regex candidates confirmed by the model, every verbatim field validated against
-`raw_text`, OCR-derived entities carrying `source: "ocr"`, `verified: false`.
-Strengthens tier 1 considerably — the argument for doing it after phase 3 — and
-requires 1–3 settled, or extraction runs over unsorted noise. `L`.
+Enrich prompt v2: `links[]` with a closed `role`, `amounts[]`, a real `event`,
+promo-code expiry. **A normalized value is kept only with its exact words**
+(`date_text`, `expires_text`), which are checked verbatim; a malformed
+optional item goes to `discarded` instead of failing the post. The model gets
+the publication date to resolve dates without a year. Tier 1 gained the
+ticker + date key. Older verdicts re-extract with
+`flow requeue --status enriched --prompt-below 2`.
 
-## 9. Phase 5 — digests and feedback
+## 9. Phase 5 — digests and feedback · done (v4.51.0), reactions deferred
 
-> **Done (v4.51.0), except reactions (§5.7).**
->
-> - **Few-shot from labels.** `src/module/theflow/FewShot.js` turns
->   `post_feedback` into examples: `good` labels (one per signal first, up to
->   `FLOW_FEWSHOT_GOOD`, 4) and `wrong_topic` labels **with a note** (up to
->   `FLOW_FEWSHOT_WRONG`, 3); the latest label of a post wins; re-read at most
->   hourly, so new `flow review` labels apply without a restart. The examples
->   are source text, so they go into the user message as data in their own
->   nonced block (`prompts/fewshot.js`), never into the system prompt. The
->   set's hash is part of the gateway cache key and is recorded as
->   `analysis.fewshot`. One live call: an example noted "esports results are
->   other/opinion" steered a new tournament post to `other/opinion`.
-> - **Digest.** `src/module/theflow/digest/Digest.js`, scheduled on the
->   existing `CronScheduler` (`FLOW_DIGEST_CRON`, default 09:00 server time,
->   last `FLOW_DIGEST_HOURS` = 24) to `digest_destinations` in `routing.json`;
->   not scheduled without them. What gets in is decided by rules — canonical
->   posts only, enriched or routed, not `other`, not below the source's
->   `min_confidence`, not `is_ad`, not `giveaway_result` / `stream`. A
->   deterministic score (cluster size, signal weight, confidence) only orders
->   posts within a section; `security` is its own section, first.
->   `node src/cli.js flow digest` previews it.
+- **Few-shot from labels** (`FewShot.js`): `good` labels, diverse by signal,
+  and `wrong_topic` labels with a note, as data in a nonced block; re-read
+  hourly; the set's hash is part of the cache key. Since v4.52.0 it reads the
+  knowledge base (§14.1).
+- **Digest** (`digest/Digest.js`) on `CronScheduler`: canonical posts only,
+  not `other`, not below `min_confidence`, not ads, not `giveaway_result` /
+  `stream` / `meme`. A deterministic score orders within a section — never
+  decides inclusion; `security` is its own section, first.
 
-Built on the existing `CronScheduler`, which already emits synthetic messages
-onto the same bus (`cronjobs.js` shows the shape). By then `post_feedback` has
-been collecting since phase 1 via `flow:review` and since phase 2 via reactions;
-this phase turns those labels into few-shot examples and adds scheduled digests.
-`M`.
+### 9.1 History search · done (v4.46.0)
 
-A numeric score may order posts **within** a digest. It is never used to decide
-whether to deliver: an LLM's numeric score is not reproducible between calls, and
-the same post will score 6 and 8 across two runs.
+`search/HistorySearch.js`: keyword mode over FTS5 `posts_fts` (012) — every
+word a quoted prefix, bm25 with title and `text_en` above `raw_text`, no
+provider call, works with the quota spent; semantic mode — one `low` embedding,
+cosine over the 20 000 most recent vectors of the same model (a 30-day window
+found nothing on a history-heavy corpus). Results collapse by cluster. Two
+surfaces: `/search` (through `EventBus.request`) and `flow search`.
 
-### 9.1 History search (`M`)
-
-> **Done (v4.46.0).** `src/module/theflow/search/HistorySearch.js`, migration
-> `012` (`posts_fts`, an external-content FTS5 index over `text_en`,
-> `raw_text`, `title`, kept in sync by triggers; `unicode61` case-folds
-> Cyrillic). Two surfaces: `/search` in discordapp, which asks the core over a
-> new `EventBus.request()` so D1 holds, and `node src/cli.js flow search`.
-> Keyword mode quotes every word as a prefix (`"розыгр"*`), ranks with bm25
-> (title and `text_en` above `raw_text`), excludes `skipped_*`, and collapses
-> results by dedup cluster. Semantic mode embeds the query at `low` priority —
-> the gateway's cache makes a repeat free — and compares against the 20 000
-> most recent vectors of the same model, no default date window: the pilot
-> corpus is a channel's history, and a 30-day window found nothing. A
-> Russian query finds English `text_en` — the embedding is multilingual.
-
-The corpus is the reason phase 0 is worth having on its own, and search is what
-makes it readable. Both mechanisms it needs already exist in the project, so this
-is small.
-
-**Surface: a Discord slash command.** `DiscordCommandHandler` already registers
-slash commands, checks a user-id whitelist and handles errors; a search command
-is one entry in the `commands` array. It is also the right surface in practice —
-the question gets asked from a phone and answered in the same place.
-
-**Two tiers, the first with no AI at all:**
-
-1. **Keywords through SQLite FTS5.** A virtual table over `text_en`, `raw_text`
-   and `title`, with ranking. Zero provider requests, works with the quota
-   exhausted, and it honestly covers most real queries — "what was there about
-   Hamster", "mentions of $ARB" are entity lookups, where keywords beat semantics.
-2. **Vectors, for descriptive questions.** One `embed()` at `low` priority, then
-   the same brute-force cosine over the same window as tier 2 deduplication,
-   filtered by `embedding_model` (13.2). Cached by query hash, so a repeat is
-   free.
-
-Filters over `topic`, `signal_type`, date range and source are ordinary SQL on
-the `(topic, signal_type, posted_at)` index, which DATA_MODEL.md already declares
-for exactly this.
-
-It pairs with digests because they share the surface and the queries. One
-argument for not deferring it further: search sharply speeds up taxonomy
-iteration at the phase 1 checkpoint — "everything classified `other` last week
-containing *airdrop*" is otherwise a hand-written SQLite query.
-
-## 10. Sequencing
+## 10. Order of what remains
 
 ```text
-PHASE 0.5  volume estimate -> migration runner -> deploy VPS + migrate
-           schema generalization -> resolver seam -> delivery ids -> Discord edit
-           post_feedback -> tests -> flow:stats/export -> enable pilot
-              |
-              v
-PHASE 1    provider capability check FIRST -> providers -> schemas -> prompts
-           -> gateway -> categories.json v1 (appendix A) -> worker
-           -> shadow mode + flow:review (labels start here)
-              |  checkpoint: rewrite categories.json, bump version
-              v
-PHASE 1.5  vision gates -> downscale + dHash -> cache -> text_ocr; still shadow
-              |
-              v
-PHASE 2    create destination channels -> resolve -> #unsorted
-           -> render template (DELIVERY.md) -> lazy media via resolver
-           -> delivery records
-              |  gate: #unsorted small enough to read daily
-              v
-PHASE 3    6.1 first -> tier 1 -> tier 2 -> clusters -> richness gate
-           -> linked appends -> threshold calibration
-              |
-              v
-PHASE 3.5  Reddit adapter · RSS adapter · URL media resolver
-              |
-              v
-PHASE 4 extraction        PHASE 5 digests + feedback
-              |
-              v
-PHASE 6    knowledge base -> sitemap/wpjson discovery -> headline triage
-           -> article fetch -> silent-source alert   (NEWS_INTAKE.md)
+test week -> triage.json tuned, market rules (NEWS_INTAKE §5)
+          -> public channels, games/steam routing (HANDOFF)
+cross-source posts accumulate -> §6.8 thresholds -> tier 3 if the gray zone is large
+§14.4 article fetch -> §14.5 poll intervals
 ```
 
-The former phase 6 is retired — vision is phase 1.5. Tier 3 LLM adjudication of
-the gray zone stays a follow-on inside phase 3, enabled once 6.7's logs show the
-gray-zone volume.
+## 11. What the operator decides
 
-## 11. What I need from you, and when
+Day-to-day next steps are in [../HANDOFF.md](../HANDOFF.md). Decisions that
+belong to the operator and are still open:
 
-| When | What |
-|---|---|
-| Now | Why S3's checkpoint has not advanced since 2026-05-01 — dead channel or broken polling |
-| Before 2.3 | The app root path on the VPS, for `ecosystem.config.cjs` and `docs/DEPLOYMENT.md` |
-| Before 2.9 | Confirmation that forwarding may pause on the pilot sources, and which channel is the screenshot-heavy one |
-| Before phase 1 | ~~The OpenRouter model ids you intend to use, and whether your account exposes embeddings~~ **Decided v4.25.0:** Gemini primary, OpenRouter text-only fallback; OpenRouter has embeddings but they stay unused (3.1). Still open: the OpenRouter complete model id, which must support `json_schema` output |
-| Before the phase 1 checkpoint | Your own read of `#unsorted`: which categories are missing, which descriptions are too narrow |
-| Before phase 2 | The new destination channels, including `#unsorted` and a `security` channel — today there is only the one firehose chat |
-| Before 5.4 | **The delivery template itself** — the lines, the wording, and the Discord embed layout. [DELIVERY.md](DELIVERY.md) fixes the mechanism and the constraints; what the message actually reads like is yours |
-
-Answered already, recorded here so the plan does not ask twice: the service runs
-under pm2 (`pm2 start inemuri`), the 2026-06-07 backup is the most recent one
-(so 2.1 estimates volume through GramJS rather than through a second snapshot),
-and `security` is a required category (appendix A).
+- after the test week: the triage profile, the market cap and corroboration
+  rules, which channels go public and with which roles;
+- where `tools` goes, and whether esports results become a topic of their own
+  or stay `other`;
+- Telegram sources for the game channels that wait for one;
+- whether to give `LLM_FALLBACK` a model and key, and whether the two pilot
+  `listener` sources should switch to `both`.
 
 ## 12. Migration discipline
 
 - **Forward-only.** Recovery is a restore from the backup the runner takes.
 - **Back up before every batch**, into `database/backups/`.
-- **Never `sync({ alter: true })` against a real database.** SQLite has no real
-  `ALTER`, so Sequelize rebuilds the whole table — a copy, a drop, and a rename,
-  with the corpus at risk in the middle. Explicit `ALTER TABLE … ADD COLUMN`
-  inside a migration instead.
+- **Never `sync({ alter: true })` against a real database.** SQLite has no
+  real `ALTER`, so Sequelize rebuilds the table — copy, drop, rename, with the
+  corpus at risk in the middle. Explicit `ALTER TABLE … ADD COLUMN` instead.
 - **Never `NODE_ENV=development` against a real database.** That path uses
-  `force: true` and recreates tables, destroying sources and corpus alike.
-- **Declared column types matter on SQLite.** A `JSON` column declared `TEXT`
-  comes back as a raw string despite `DataTypes.JSON` on the model — the phase 0
-  script hit this and documents it. `media_ref` and `cursor` get a declared
-  `JSON` type.
-- **`npm run migrate:status` on the VPS before every deploy.** Code that assumes
-  a column the deployed database lacks fails at runtime in the ingest path — the
-  one place that must never stop.
+  `force: true` and recreates tables.
+- **Declare JSON columns as `JSON`.** A `TEXT` column comes back as a raw
+  string despite `DataTypes.JSON` on the model.
+- **`npm run migrate:status` before every deploy**, with the service stopped.
+  Code that assumes a missing column fails in the ingest path.
 
-## 13. Open questions still to close
+## 13. Engineering decisions
 
-§11 tracks what is needed **from you**; [../THEFLOW.md](../THEFLOW.md) tracks the
-product-level questions (display language, thresholds, paid tier). This section
-tracks the **engineering** ones: things unanswered in the documents, not merely
-unimplemented.
+Recorded so the reasoning is not re-derived.
 
-The first two groups are now **settled** and recorded here so the reasoning is
-not re-derived at implementation time; the third is still open. Everything in the
-settled groups is either a field in migration `002` or a rule the code has to
-follow, and both are cheap now and expensive once the corpus has grown.
+**13.1 — claiming: no `enriching` status.** After a crash such rows would stay
+claimed forever and need a sweep. Instead: the tick is a chained `setTimeout`
+(no overlap by construction); `Post.claimPending(limit)` is one
+`UPDATE … SET attempts = attempts + 1 WHERE id IN (…) AND status='pending'`,
+so a process killed mid-call counts toward the cap rather than restart-looping
+on the same row; `instances: 1`, `exec_mode: "fork"` in pm2, or a second
+worker doubles every AI call.
 
-**Closed here, recorded so it is not reopened:** the gateway stays a **module**,
-not a service. Several consumers is the argument for a module; the criterion for
-extraction is a second *process*, and the conditions that would create one are
-now written down in [LLM_GATEWAY.md](LLM_GATEWAY.md) §"A module, not a service".
-The shared quota ledger that a service would have provided is provided by the
-`provider_quota` table instead, which is shared by any process opening the same
-database file.
+**13.2 — embedding identity.** `embedding_model` and `embedding_dim` on
+`posts` and `clusters`; not `model_used`. Vectors are unit length at write
+(cosine = dot product), little-endian `Float32Array` with
+`buffer.length === dim * 4` checked on read; tier 2 and search never compare
+across models; the output dimension is pinned in config.
 
-### Schema — settled, lands in migration 002
+**13.3 — worker constants** (`ENRICH_TICK_MS`, `ENRICH_BATCH_SIZE`,
+`ENRICH_MAX_ATTEMPTS`, cache and reserve) are in LLM_GATEWAY.md
+§Configuration. The brake is the token bucket and the RPD ledger, not the
+timer.
 
-**13.1 — batch claiming: no `enriching` status.** The tempting fix makes things
-worse: after a crash, rows stay in `enriching` forever and need a reclaim sweep.
-With plain `pending`, a crash loses nothing — the rows are simply taken again.
-Instead:
+**13.4 — delivery** is a pure full re-render on every edit, segments with
+rebased entity offsets, corrections as a new message (DELIVERY.md). Only
+`#unsorted` shows `confidence`, `model_used`, `taxonomy_version`.
 
-- the tick is a **chained `setTimeout`**, scheduled after the batch resolves.
-  Overlap becomes impossible by construction rather than by a flag, and a slow
-  provider throttles the worker instead of stacking batches;
-- **`attempts` increments at claim time, before the gateway call.** A process
-  killed mid-call (OOM, `kill -9`, a pm2 restart) then counts toward the cap. Left
-  until failure, a row that kills the process is retried forever — and forever
-  means a restart loop;
-- both live in `Post.claimPending(limit)`: one
-  `UPDATE … SET attempts = attempts + 1 WHERE id IN (…) AND status='pending'`,
-  affected rows being the claim result. Swapping in a lease later is one function
-  body, not a change at the call site;
-- `instances: 1`, `exec_mode: "fork"` in `ecosystem.config.cjs` (2.3). pm2 cluster
-  mode would start a second worker and double every AI call in silence.
+**13.5 — reactions probe (open, optional).** Before §5.7: subscribe to
+`UpdateMessageReactions` on an own channel and see whether the user client
+receives it. If yes, a minimal mapping (👍 `good`, 👎 `noise`, ❓
+`wrong_topic`); if not, a reply carrying a keyword (`reply_to_msg_id` links
+the post). `missed` cannot be a reaction. `flow review` stays primary.
 
-**13.2 — embedding identity.** `embedding_model` and `embedding_dim` on `posts`
-and on `clusters` (a centroid is a vector with the same problem).
-`embedding_model` is **not** `model_used` — that one is the enrichment model.
-Rules: vectors are **normalized to unit length at write time**, so cosine is a
-plain dot product and a whole class of "forgot to divide" bugs disappears;
-little-endian `Float32Array`, with `buffer.length === embedding_dim * 4` as the
-read-time check; tier 2 filters the window by `embedding_model` and never
-compares across models; where the provider allows an explicit output dimension,
-**pin it in config** rather than inheriting a default that can change under you.
+**13.6 — command surface.** Daily, database-backed tools are `src/cli.js
+flow …` subcommands; `scripts/` is for one-off work (migrations, backfills,
+`estimate-volume.js`).
 
-**13.3 — configuration constants.** Listed in
-[LLM_GATEWAY.md](LLM_GATEWAY.md) §Configuration: `ENRICH_TICK_MS`,
-`ENRICH_BATCH_SIZE`, `ENRICH_MAX_ATTEMPTS`, `LLM_CACHE_TTL_MS`,
-`LLM_CACHE_MAX_SIZE`, `LLM_QUOTA_RESERVE`. Tick and batch are **derived from
-measured RPD**, not guessed.
+**13.7 — history search** got a phase: §9.1.
 
-**13.11 — `posts.entities`, found while writing the delivery contract.** Telegram
-formatting travels as MTProto entities with absolute offsets, not as Markdown —
-`parseMode` is unreliable in GramJS for user accounts, which is why the classic
-path passes `formattingEntities` straight through. `FlowIngest` currently stores
-`text_md` and drops `messageData.entities`, so stage 3 would have to re-parse
-Markdown back into entities. One field at ingest, and it is **unrecoverable
-later** without re-fetching from Telegram. See [DELIVERY.md](DELIVERY.md).
+**13.8 — AI screening of the incoming stream (open).** Headline triage
+covers news sources. Extending cheap screening to Telegram sources is not
+specified. Whatever it becomes, it runs **worker-side** (ingest makes no
+outbound calls) and competes for the same RPD as enrichment.
 
-### Contracts — mechanism settled, wording open
+**13.9 — retention: keep everything** (v4.51.1). `raw_text` is an invariant
+and the corpus is the product; an embedding is ~3 KB. Review point: 500k posts
+or 2 GB (`FLOW_STORAGE_REVIEW_ROWS`, `FLOW_STORAGE_REVIEW_GB`) — `flow stats`
+and `flow health` print the size, crossing it warns at startup.
 
-**13.4 — delivery.** The mechanism is now [DELIVERY.md](DELIVERY.md): a pure
-`render(cluster, posts, { platform })` returning `{ text, entities }`, a **full
-re-render on every edit** rather than string appends, segment composition with
-rebased entity offsets, and corrections delivered as a **new message** because an
-edit produces no notification. The template itself — exact lines, wording, emoji,
-and the Discord embed layout — is filled in at phase 2, when the channels from
-5.1 exist and there is real material to look at.
+**13.10 — stall detection** (v4.44.0). `FlowHealth.js`: `enrich_failing`,
+`enrich_stalled` (old `pending`, no progress, quota left), `ingest_silent`;
+alerts on transitions to `health_destinations`; `flow health` in a terminal.
+"Oldest pending" alone is the wrong signal — a provider rejecting every call
+turns posts `failed`, not `pending`.
 
-**13.5 — reactions. Optional (5.7 deferred, 2026-10-02):** run the probe once
-delivery channels carry real posts. Do a short feasibility probe before 5.7 keeps its `M`:
-subscribe to `UpdateMessageReactions` on your own channel and see whether the
-user client receives it at all. If it does, keep the mapping minimal — 👍
-`good`, 👎 `noise`, ❓ `wrong_topic`. `missed` cannot be expressed as a reaction
-in principle, since there is no post to react to. If it does not, the fallback is
-cheaper than polling history: **a reply carrying a keyword** is an ordinary
-message the client already receives, and `reply_to_msg_id` gives the link to the
-post for free. Either way `flow:review` from phase 1 stays the primary label
-source; reactions are convenience, not a dependency.
+**13.11 — `posts.entities`.** Telegram formatting is MTProto entities with
+absolute offsets (GramJS `parseMode` is unreliable for user accounts), so the
+original entities are stored at ingest — they cannot be recovered later
+without re-fetching.
 
-**13.6 — command surface.** Everything interactive or database-backed becomes a
-subcommand of `src/cli.js`, which already bootstraps models and a connection and
-already has `seed` / `list` / `toggle` / `clear`:
+## 14. Phase 6 — news intake and the knowledge base · steps 1–3 done
 
-```bash
-node src/cli.js flow stats | export | review
-```
-
-`scripts/` stays for one-off work that is not part of the daily surface:
-migrations and backfills. **2.1 keeps `scripts/estimate-volume.js`** — it runs
-once, before anything else exists — and the phase 0.5 exit criteria now name the
-script rather than a `flow:volume` command that would never be written.
-
-### Scope questions — no deadline, but open
-
-| # | Question | State |
-|---|---|---|
-| 13.7 | ~~History search has no phase~~ | **Closed.** Specified as §9.1 and placed in phase 5. Two tiers, the first with no AI at all |
-| 13.8 | **AI-assisted screening of the incoming stream.** Distinct from enrichment: cheap triage over everything, potentially including classic sources, in place of or ahead of keyword filtering | Raised, not specified. Whatever it becomes: it runs **worker-side** — stage 1 makes no outbound calls — and it is a gateway consumer at `low` priority, competing for the same RPD as enrichment. Cost it against 2.1 before committing to it |
-| 13.9 | ~~**Retention.** `posts` keeps `raw_text`, `text_en` and an embedding BLOB per row, forever, on a VPS. No pruning, archival or `VACUUM` policy exists~~ | **Decided (v4.51.1): keep everything.** `raw_text` is an invariant (new prompts must run over history) and the corpus is the product; an embedding is ~3 KB a post. The review point is 500k posts or 2 GB (`FLOW_STORAGE_REVIEW_ROWS`, `FLOW_STORAGE_REVIEW_GB`): `flow stats` and `flow health` print the corpus size, and crossing the point is a note there plus one warning at startup — then decide on archiving old embeddings or VACUUM. On 2026-09-30: 297 posts, 2.5 MB |
-| 13.10 | ~~**Stall detection.** If every provider is down for a day, posts accumulate as `pending` and nothing says so; the only signal is running `flow:stats` by hand~~ | **Closed (v4.44.0).** `FlowHealth.js`: `enrich_failing` (failed share in a window), `enrich_stalled` (old `pending` and no progress, quota not spent), `ingest_silent`; alerts on transitions to `health_destinations` in routing.json, `flow health` for a terminal. The pilot showed "oldest `pending` age" alone is the wrong signal — a provider rejecting every call turns posts `failed`, not `pending` |
-
-### Documentation debt
-
-Cleared in this pass: `post_feedback` is no longer marked phase 5, the
-dedup-window table covers `security`, `giveaway_result` and `stream`, VISION.md
-no longer says phase 6, and `README.md` and `docs/ARCHITECTURE.md` no longer call
-TheFlow unimplemented.
-
-**Still outstanding:** DATA_MODEL.md describes the Telegram-shaped `posts` table
-that 2.4 replaces. It is deliberately left until the migration exists rather than
-described ahead of it — which is why **2.4 is not done until DATA_MODEL.md
-matches the schema it leaves behind**.
-
-## 14. Phase 6 — news intake and the knowledge base
-
-Read the large news outlets and deliver only what matters — in the first place
-what moves markets — with the key facts extracted. The specification, with the
-2026-10-03 measurement of 31 outlets behind it, is
-[NEWS_INTAKE.md](NEWS_INTAKE.md). The rule it rests on: **triage on the
+Spec: [NEWS_INTAKE.md](NEWS_INTAKE.md). The rule it rests on: **triage on the
 headline first, fetch the article after** — a news sitemap gives 200–400
 articles a day per outlet, over 90% irrelevant.
 
-| # | Task | Effort |
+| # | Task | State |
 |---|---|---|
-| 14.1 | `knowledge_examples` — portable labelled examples, export/import, backfill from `post_feedback`; few-shot reads it | M |
-| 14.2 | Discovery through `sitemap` and `wpjson`, as settings of the existing feed poller | M |
-| 14.3 | `discovered_items` + triage: rules, then a batched LLM over headlines | L |
-| 14.4 | Article fetch for what passed triage (JSON-LD → `<p>`), plus sampled rejects | M |
-| 14.5 | Alert on silent sources; poll intervals tuned from real data | S — silent sources: **done** as the status board (v4.58.0, `src/module/status/`); intervals open |
+| 14.1 | `knowledge_examples` (015): portable labels, export/import, backfill; few-shot reads it | v4.52.0 |
+| 14.2 | Discovery through `sitemap` and `wpjson` (`sources.feed`, 016); `.xml.gz`, sitemap index → freshest child | v4.53.0 |
+| 14.3 | `discovered_items` (017) + triage: deny-list rule, batched model over headlines, 5% of rejects sampled for review | v4.54.0; profile git-ignored v4.55.0 |
+| 14.4 | **Article fetch** for what passed (JSON-LD `articleBody` → `<p>`), plus the sampled rejects | **Open** |
+| 14.5 | Silent-source alert; poll intervals from real data | Alert done as the status board (v4.58.0, every source); **intervals open** |
 
-> **14.1 done (v4.52.0).** `src/module/theflow/knowledge/`: `snapshot.js`
-> (pure — post + label → row, `contentHash`), `exchange.js` (pure — the JSONL
-> format: header, validation, `content_hash` recomputed on import) and
-> `KnowledgeBase.js` (the only writer: `recordLabel`, `backfillFromFeedback`,
-> `exportKnowledge`, `importKnowledge`, `loadExamples`). Migration `015`
-> creates the table and backfills. `flow review` writes the feedback row and
-> the snapshot in one transaction; `FewShot.js` reads the snapshot, so a
-> requeue no longer changes what a label taught. CLI: `flow knowledge
-> stats|export|import|backfill`.
+## Appendix A — why the taxonomy looks as it does
 
-> **14.2 done (v4.53.0).** `src/sources/feeds/discovery.js` — one strategy
-> per way of finding items (`rss`, `sitemap`, `wpjson`, `reddit`): the URL to
-> ask, the Accept header, the parser. An `rss` source picks one with
-> `sources.feed.discovery` (migration `016`, NULL = RSS/Atom). `parsers.js`
-> gains `parseSitemap` (urlset and sitemap index, newest first, title from
-> `news:title` or the URL slug, `news:keywords` kept for triage) and
-> `parseWpPosts` / `wpPostsUrl` (title and excerpt only — the text is 14.4).
-> The poller follows an index to its freshest child; ETag/Last-Modified are
-> kept for the URL actually parsed (`cursor.url`), so an unchanged index never
-> hides a new child behind a 304. `fetchFeed` reads bytes and unpacks raw
-> gzip (`.xml.gz`) under the same size cap. Checked live against NYPost,
-> Reuters, NYT, Fox, The Hill and TechCrunch — NEWS_INTAKE.md §4.
+The spec's first example (`games · market · crypto · tools · other`) did not
+fit the 14 original channels: three quarters were Steam drops, airdrop
+farming and crypto trading. v1 was drafted from them — topics `steam`,
+`airdrop`, `crypto`, `tools`, `other` — and v2/v3 added news and gaming topics
+(TAXONOMY.md, Versioning).
 
-> **14.3 done (v4.54.0).** `discovered_items` (migration `017`) holds every
-> new article of a source with `feed.triage: true`; `src/module/theflow/triage/`:
-> `TriageQueue` (ingest side — rows, the `deny_sections` rule, no network),
-> `TriageStage` (first in the enrich worker's tick — batches of ~50 headlines
-> to `gateway.triage()`, passes promoted to posts through the feed poller,
-> 5% of model rejects sampled for review), `examples.js` (from the knowledge
-> base), `report.js` (`flow triage stats|review`; review writes `headline`
-> labels). The profile is `src/config/triage.json`, git-ignored since
-> v4.55.0 (`triage.sample.json` is tracked). Live: 252 of 596 NYPost
-> headlines dropped by rule, 50 judged in one call, 3–4 passed
-> (NEWS_INTAKE.md §6).
+**`security`** (hacks, exploits, drains, rug pulls, phishing, compromised
+accounts) is a **signal, not a topic** — an exchange hack is `crypto` +
+`security`, a Steam scam wave `steam` + `security`. It is distinct from
+`outage` ("the service is down" vs "funds or accounts are at risk"). Rules:
+never suppressed by dedup, a short 6 h window, and, when it gets a channel,
+its own rule at the highest priority across every topic. Three of the
+original channels named scam reporting in their titles.
 
-Decided 2026-10-03: the interest profile (NEWS_INTAKE.md §5), the outlet
-list, 5% sampled rejects, taxonomy v2 (shipped in v4.55.0). Open: the shadow
-week (§7), then 14.4.
+**`giveaway_result` and `stream`** exist because several sources kept
+separate blacklists for exactly them: classified once and routed nowhere,
+they let those lists shrink.
 
-## Appendix A — `categories.json` v1, drafted from the real sources
-
-The spec's example (`games · market · crypto · tools · other`) does not fit the
-14 channels. Three quarters of them are Steam drops, airdrop farming, and crypto
-trading, and "airdrop farming" is neither `games` nor `crypto` analysis. The
-blacklists (1.1c) name the signal types you already reject by hand.
-
-**Topics**
-
-| Topic | Covers | Sources |
-|---|---|---|
-| `steam` | Steam and game drops, sales, inventory, releases, patches | The 4 steam / games sources (1.1) |
-| `airdrop` | Testnets, retrodrops, farming tasks, allocations, snapshots | The 4 airdrop sources, plus the highest-volume crypto one |
-| `crypto` | Listings, on-chain specifics, market moves, analysis | The remaining 4 crypto / trading sources |
-| `tools` | Free offers, service discounts, non-obvious technical solutions | any |
-| `other` | Fits nothing above → `#unsorted` | — |
-
-**Signals** — the spec's eight, plus three the real stream demands:
-
-`promo_code · freebie · analysis · event · launch · patch · outage · opinion ·
-security · giveaway_result · stream`
-
-**`security` — hacks, exploits, and scams.** Platform and exchange breaches,
-contract exploits and drains, rug pulls, phishing waves, compromised accounts,
-stolen-funds reports, "do not interact with X" warnings.
-
-It is a **signal, not a topic**, and that is the whole argument for two axes: an
-exchange hack is `crypto` + `security`, a Steam trading scam wave is `steam` +
-`security`, a breached SaaS provider is `tools` + `security`. One topic could
-not hold those together, and three separate topics would fragment the routing.
-
-It is distinct from `outage`, which the spec already has. `outage` is "the
-service is down"; `security` is "funds or accounts are at risk". They fail
-differently, they age differently, and only one of them is urgent enough to
-ignore the confidence threshold.
-
-Three rules follow, and all three should be in place the day `security` is
-added to the enum:
-
-1. **Its own routing rule at the highest priority**, matching
-   `signal_type: security` across *every* topic, before any topic-specific rule.
-2. **Never suppressed by deduplication** — same class as `corrects` and `denies`
-   (§6).
-3. **A short dedup window, 6 h**, matching `outage`. A hack is news for hours,
-   not days, and a fresh report about the same exchange a week later is a
-   different incident.
-
-That this matters is visible in the source list: three of the fourteen channels
-name scam reporting in their own channel titles. Scam and breach reporting
-is already a large share of the incoming stream — it is currently mixed into the
-same firehose as giveaway spam.
-
-`giveaway_result` and `stream` earn their place differently: four sources
-maintain separate blacklists for exactly them — winner announcements and
-stream announcements. As signal types
-they are classified once and routed nowhere, and those four hand-kept lists can
-shrink. That is the first concrete thing TheFlow gives back.
-
-**Dedup windows** — `promo_code` and `freebie` 24 h, `event` / `launch` /
-`patch` 48 h, `analysis` / `opinion` 72 h, `outage` and `security` 6 h. Per
-[DEDUPLICATION.md](DEDUPLICATION.md), and per topic in `categories.json` with a
-per-source override through `flow.dedup_window_hours`.
-
-**Routing** cannot be written until the channels in 5.1 exist. Until then,
-`unsorted_destinations` is the only entry, which is also the correct shadow-mode
-configuration. When those channels are created, `security` is the one that
-justifies a channel of its own before any other: it is the category where a
-missed post has a cost beyond annoyance.
-
-One tension to resolve at the phase 1 checkpoint: one crypto source blacklists
-discount posts, while `tools` is *defined* as discounts and free offers.
-Discounts are noise on one source and signal on another. That is a per-source
-`flow.topics` restriction, not a category description problem — which is exactly
-what the field is for.
+One tension to keep in mind: a discount post is noise on one source and the
+definition of `tools` on another. That is a per-source `flow.topics`
+restriction, not a description problem.

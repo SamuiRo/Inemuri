@@ -4,7 +4,7 @@ import { DiscoveredItem, Source } from "../../teapot/models/index.js";
 
 /**
  * Огляд triage для оператора: статистика і черга перегляду
- * (`flow triage stats|review`, NEWS_INTAKE.md §2.3, §5 «Shadow first»).
+ * (`flow triage stats|review`, NEWS_INTAKE.md §2.3, §5 «Measure first»).
  */
 
 /**

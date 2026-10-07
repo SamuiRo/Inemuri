@@ -8,10 +8,12 @@ deliver **only what matters** (in the first place, what moves markets), with the
 key facts extracted. Most of what these outlets publish is irrelevant here and
 must never reach a channel. Republishing articles is explicitly **not** a goal.
 
-Phase 3.5 already reads RSS/Atom (`src/sources/feeds/`). This document adds three
+Phase 3.5 reads RSS/Atom (`src/sources/feeds/`). This document adds three
 things on top of it: more ways to discover articles, a cheap triage before any
 article is fetched, and a portable knowledge base the triage and the enrich
-prompt learn from.
+prompt learn from. **Built:** steps 1–3 (§4). **Not built:** article fetch
+(step 4) — today a passed article becomes a post with its headline and
+teaser only.
 
 ## 1. What the outlets actually give — measured 2026-10-03
 
@@ -60,22 +62,22 @@ the rule this whole design follows: **triage on the headline first, fetch after.
 
 ```text
 1. Discovery   rss | sitemap | wpjson  ->  candidate {url, title, keywords, section, published_at, teaser}
-2. Triage      rules (section deny-list, entity allow-list) + batched LLM over headlines (~50 per call)
-3. Fetch       only what passed triage, plus a small random share of the rejected (for learning)
+2. Triage      section deny-list rule + batched LLM over headlines (~50 per call)
+3. Fetch       (step 4, not built) only what passed, plus a small share of the rejected
                body: feed full text -> wpjson -> JSON-LD articleBody -> <p> -> teaser only
-4. Enrich      the existing enrich + entity extraction, on the full text
-5. Delivery    only signals above the threshold (the existing FlowDelivery)
+4. Enrich      the existing enrich + entity extraction
+5. Delivery    the existing FlowDelivery
 ```
 
 ### 2.1 Configuration — one platform, two knobs
 
-No platform per site. A news source is one `sources.json` entry with two
-independent settings:
+No platform per site. A news source is one `rss` entry in `sources.json` with
+two independent settings in `feed`:
 
 | Key | Values | Meaning |
 |---|---|---|
-| `discovery` | `rss` · `sitemap` · `wpjson` | Where the list of new articles comes from |
-| `body` | `feed` · `page` · `wpjson` · `none` | Where the article text comes from, after triage |
+| `discovery` | `rss` · `sitemap` · `wpjson` | Where the list of new articles comes from (built) |
+| `body` | `feed` · `page` · `wpjson` · `none` | Where the article text comes from, after triage (planned, step 4) |
 
 Adding an outlet is a config entry, never code. Polling starts at 5 minutes
 (`poll_interval_min`, migration 006; ETag/304 is already in `fetchFeed`) and is
@@ -92,16 +94,16 @@ real posts, and the storage budget is spent on signal.
 ### 2.3 Triage
 
 Cheap by construction: 6k headlines a day in batches of 50 is about 120 calls a
-day. Rules run first and cost nothing — a narrow section deny-list (`/sports/`,
-`/betting/`, `/shopping/`…; what stays off it is in §5) and an allow-list of
-entities (tickers, central banks, commodities). The LLM sees only what the rules did not
-decide. Examples for the triage prompt come from the knowledge base at
-`level: headline`.
+day. The rule runs first and costs nothing — a narrow section deny-list
+(`/sports/`, `/betting/`, `/shopping/`…; why it stays narrow is in §5). An
+entity allow-list (tickers, central banks, commodities) was considered and
+not built: the model decides everything the deny-list does not. Examples for
+the triage prompt come from the knowledge base (`headline` and `post` levels).
 
-**A share of the rejected is fetched anyway** (`sampled_reject`, starting at 5%):
+**A share of the model's rejects is flagged for review** (`sampled`, 5%):
 without negatives, nothing ever tells the triage it was wrong to drop something.
 
-### 2.4 Fetch and etiquette
+### 2.4 Fetch and etiquette (step 4, planned)
 
 Honest User-Agent with a contact, `robots.txt` respected, the per-host
 `HostThrottle` shared with the feeds. Text extraction order is the table in §2
@@ -160,8 +162,8 @@ does not. Triage reads them that way; enrich reads the classification.
 - Migration `015` creates the table and backfills every existing
   `post_feedback` label that still has its post. Backfill is idempotent through
   `feedback_id` and can be rerun: `flow knowledge backfill`.
-- Later steps add `origin: sampled_reject` (triage) and `level: headline` /
-  `article` rows.
+- `flow triage review` writes `level: headline` rows; `flow knowledge import`
+  brings `origin: manual` examples. `article` rows wait for step 4.
 
 ### 3.4 Few-shot reads the knowledge base
 
@@ -212,22 +214,17 @@ nothing to learn from.
 
 ### What step 2 found live (2026-10-03)
 
-The built parsers against the real endpoints: NYPost's news sitemap 599
-items, Reuters through its sitemap index 50 (the first child is the
-freshest), NYT's `.xml.gz` 714, Fox 243 (no news extension, so titles come
-from the URL slug), The Hill and TechCrunch through the WordPress API 25
-each, NYPost's WordPress API 401 — the poller backs off as for any closed
-feed.
+NYPost's news sitemap 599 items, Reuters through its sitemap index 50 (the
+first child is the freshest), NYT's `.xml.gz` 714, Fox 243 (no news
+extension, so titles come from the URL slug), The Hill and TechCrunch through
+the WordPress API 25 each, NYPost's WordPress API 401 — the poller backs off
+as for any closed feed.
 
-- **Not every endpoint sends an ETag.** NYPost's sitemap and both WordPress
-  APIs do not, so each poll downloads the whole response — a few hundred KB
-  for a large sitemap. At 5 minutes that is tens of MB a day per outlet;
-  step 5 widens intervals from real numbers.
-- **The URL carries the section** (`/betting/`, `/sports/`), and the classic
-  `filters.blacklist` already matches it. Until triage exists that is the
-  cheap interim filter.
-- **Until step 3 every new article is ingested.** Candidates go straight to
-  `posts` (or forwarding), not to `discovered_items` — that table is step 3.
+**Not every endpoint sends an ETag.** NYPost's sitemap and both WordPress APIs
+do not, so each poll downloads the whole response — a few hundred KB for a
+large sitemap, tens of MB a day per outlet at 5 minutes. That is what step 5
+widens intervals for. A source without triage still ingests every new
+article; its `filters.blacklist` can match URL sections (`/betting/`).
 
 ## 5. What is valuable — the interest profile
 
@@ -249,7 +246,7 @@ The operator's own example posts go into the knowledge base as
 `origin: manual` from a git-ignored JSONL (`flow knowledge import`, §3.5) —
 they are third-party text and personal taste, so they never enter the
 repository either. Areas of the profile line up with the taxonomy topics
-(`categories.json` v2), but nothing requires it.
+(`health`, `mind`, `money`, `markets`), but nothing requires it.
 
 ### Lessons the first profile taught the design
 
@@ -272,13 +269,13 @@ repository either. Areas of the profile line up with the taxonomy topics
 - **Two stages, different strictness.** Headline triage is generous — a
   missed article is gone for good, a false pass costs one fetch. The verdict
   after the full text (enrich) is strict.
-- **The taxonomy needed a v2** — done in v4.55.0: topics `health`, `mind`,
-  `money`, `markets`, signals `research` and `report` (TAXONOMY.md,
-  Versioning).
+- **The taxonomy needed a v2**: topics `health`, `mind`, `money`, `markets`,
+  signals `research` and `report` (TAXONOMY.md, Versioning).
 
-### Markets: calibrating so it does not spam
+### Markets: calibrating so it does not spam (open)
 
-The operator's own caveat — market news must not flood the stream. The plan:
+The operator's own caveat — market news must not flood the stream. None of
+this is built yet; the plan:
 
 1. **Materiality rules, not a score.** Pass only defined event kinds, in
    **both directions** (operator, 2026-10-03: a surge matters as much as a
@@ -291,9 +288,9 @@ The operator's own caveat — market news must not flood the stream. The plan:
    outlets (§1) count as corroboration.
 3. **A daily cap** for the market area; above it, the digest instead of the
    stream.
-4. **Shadow first.** For a week triage verdicts are logged, not delivered;
-   `flow review` labels them, and the thresholds are set from those labels,
-   as deduplication's were.
+4. **Measure first.** The test week (from 2026-10-06, delivery to staff-only
+   channels) produces the labels — `flow triage review`, `flow review` — that
+   the rules and the cap are set from.
 
 ## 6. Step 3 as built
 
@@ -333,9 +330,12 @@ the rest were rejected with sensible reasons (crime, politics, accidents).
 After the run the profile gained `values` (§5) — an opinion counts only when
 it rests on evidence — but from a headline the model cannot see the evidence,
 so such a piece may still pass; the full-text verdict (step 4) is the strict
-one. Calibration is the shadow week's job, not two calls'.
+one. Calibration is the test week's job, not two calls'.
 
 ## 7. Still open
 
-- **The shadow week** — `flow triage review` daily, then thresholds and the
-  market cap (§5).
+- **The test week** (on the VPS from 2026-10-06) — `flow triage stats` and
+  `flow triage review` daily, then tune `triage.json` (bump `version`), the
+  market rules and cap (§5).
+- **Step 4** — article fetch for what passed, plus the sampled rejects.
+- **Step 5** — poll intervals per source from real volume.

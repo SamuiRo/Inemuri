@@ -78,10 +78,13 @@ entity and hands the model a list to confirm:
 This is the basis of hybrid extraction (below) and gives the model an anchor:
 it never has to guess where in the text a code might be, it is shown candidates.
 
-**3. Cheap deduplication before embeddings**
+**3. Cheap repost check before any AI call**
 
-The normalized text hash and normalized URLs are checked against the window
-immediately. An exact repost collapses without a single AI call.
+The normalized text hash is checked against the same source's posts of the
+last `THEFLOW_REPOST_WINDOW_HOURS` (24): a word-for-word repost is
+`skipped_repost` without a single AI call. The check is per source on
+purpose — the same text on another channel is enriched and joins the event's
+cluster in tier 1, so "also reported by N" stays honest.
 
 ## Stage 1.5 — Vision (optional, per source)
 
@@ -99,23 +102,30 @@ invariant holds. Full details, gates, and hazards: [VISION.md](VISION.md).
 
 ## Stage 2 — Enrich
 
-A worker that reads from the database. It knows nothing about Telegram,
+`EnrichWorker` reads from the database. It knows nothing about Telegram,
 Discord, or the event bus — only `posts` and `LLMGateway`. That boundary is
 what keeps a later extraction into a separate process cheap.
 
+One tick is a chained `setTimeout` (ticks cannot overlap) that runs, in order:
+headline triage (NEWS_INTAKE.md), vision (stage 1.5), enrichment,
+deduplication and the delta call (DEDUPLICATION.md). A backlog drains at one
+tick a second, then the worker idles at `ENRICH_TICK_MS`.
+
 ```text
-SELECT * FROM posts WHERE status='pending' ORDER BY created_at LIMIT batch
+Post.claimPending(batch)           -> attempts + 1 at claim, before the call
         |
-concurrency-limited queue + per-provider token bucket
+gateway.enrich(raw_text + title + text_ocr, candidates, examples)  -> one structured call
         |
-gateway.enrich(text + text_ocr, candidates)  -> one structured call
+validate (structural, then verbatim)  -> invalid means retry, not write
         |
-validate response against schema   -> invalid means retry, not write
+gateway.embed(text_en)             -> vector for deduplication (null is allowed)
         |
-gateway.embed(text_en)             -> vector for deduplication
-        |
-UPDATE posts SET status='enriched', model_used=..., ...
+UPDATE posts SET status='enriched', model_used, taxonomy_version, …
 ```
+
+`attempts` grows at claim time so a post that crashes the process is not
+retried forever; a shed or a deferred quota error gives the attempt back.
+After `ENRICH_MAX_ATTEMPTS` the post is `failed`, kept with `last_error`.
 
 **One call, not five.** The temptation to make separate calls for translation,
 classification, extraction, and scoring is a four-times-too-expensive mistake.
@@ -126,73 +136,47 @@ Field order inside the call matters: **translation comes first**. The model
 normalizes the text to English, and the remaining response fields describe that
 canonical representation. This is what makes everything downstream monolingual.
 
-## Stage 3 — Flow
+## Stage 3 — Delivery
+
+`FlowDelivery`, on its own timer, only with `FLOW_DELIVERY_ENABLED=true`
+(DELIVERY.md):
 
 ```text
-SELECT * FROM posts WHERE status='enriched'
+updates to delivered clusters first (additions, corrections — edit / reply)
         |
-deduplication (3 tiers — see DEDUPLICATION.md)
+canonical posts that passed dedup (+ failed ones, for #unsorted)
         |
-   +----+---------------------------+
-new event                    joins an existing cluster
-   |                                |
-resolve destinations         linked: append to what was already sent
-   |                         (or suppressed, if it adds nothing)
-download media  <- ONLY HERE
-   |
-adapter.sendMessage / editMessage
-   |
-UPDATE posts SET status='routed'
+resolve destinations (TAXONOMY.md)  -> translate if not Ukrainian
+        |
+lazy media via MediaResolver  <- the only download for TheFlow
+        |
+render per platform -> MessageRouter.routeMessage (unchanged)
+        |
+UPDATE posts SET status='routed' | 'unsorted', delivery; clusters.delivered
 ```
 
-## Changes to existing code
+## Where TheFlow touches the existing code
 
-Three places. The rest of Inemuri is untouched.
+Three places; the rest of Inemuri is unchanged.
 
-### 1. Media downloads lazily
+**1. The branch.** `TelegramSourceListener._filterAndProcess()` (and the feed
+poller's equivalent) branches on `source.isFlowEnabled()` after
+`text_replacements`: flow sources go to `FlowIngest`, classic ones on to
+filters, media download and `message.received`. Not earlier
+(`_routeIncoming`, album buffering, serves both) and not later
+(`_processFiltered` downloads media, which TheFlow defers).
 
-`TelegramSourceListener._processFiltered()` currently downloads media **before**
-emitting the event. Under TheFlow that means downloading video for posts that
-will be discarded as duplicates two seconds later.
+**2. Media is lazy.** Classic forwarding downloads before emitting; TheFlow
+stores `posts.media_ref` (`{ kind: "telegram", channel_id, message_id,
+grouped_id }` or `{ kind: "url", urls }`) and fetches through `MediaResolver`
+only for posts it delivers, so a duplicate never triggers a video download.
 
-The download moves to stage 3, for delivered posts only. Classic mode keeps its
-current behavior.
-
-Consequence: `posts` must store enough to fetch media later. That is
-`posts.media_ref` (migration `002`) — `{ kind: "telegram", channel_id,
-message_id, grouped_id }` for Telegram, `{ kind: "url", urls }` for feed
-items — resolved through the stage-2.5 `MediaResolver` seam. `FlowIngest`
-writes it at ingest whenever `has_media` is set.
-
-### 2. Content-based routing
-
-`MessageRouter.routeMessage()` currently takes destinations from
-`messageData.source.destinations` — that is, **the source decides where a post
-goes**. TheFlow requires the opposite: the content decides.
-
-The router itself barely changes; it already iterates over `{platform: [ids]}`.
-What changes is **who fills that field**: a resolve stage looks at `topic` and
-`signal_type` and reads destinations from `categories.json`.
-`source.destinations` remains the fallback for classic mode.
-
-One additive change already landed (ROADMAP §2.6): `sendToDestination()` now
-returns `{ platform, channel_id, message_id, sent_at }` instead of a boolean,
-and `routeMessage()` returns and emits the `delivered[]` array. Stage 3 needs
-those ids to edit a cluster's messages later (`clusters.delivered`, the
-`linked` mechanism); classic forwarding ignores the return.
-
-### 3. Filter order for TheFlow sources
-
-The keyword whitelist is disabled, the blacklist stays. See the regex stage.
-
-**Implemented.** The branch lives in
-`TelegramSourceListener._filterAndProcess()`, after `text_replacements` and
-before filtering. `text_replacements` and Markdown re-sync are shared
-preprocessing; below the branch, flow sources go to `FlowIngest`
-(`src/module/theflow/`) which runs `RegexStage` and persists to `posts`.
-It is not branched earlier (`_routeIncoming`, where album buffering lives, is
-needed by both modes) or later (`_processFiltered`, which already downloads
-media — exactly what flow must defer to stage 3).
+**3. Content decides the destination.** `MessageRouter` is unchanged: it
+still sends to `messageData.source.destinations`; for a flow post the resolve
+stage fills that field from `routing.json`. `sendToDestination()` returns
+`{ platform, channel_id, message_id, sent_at }` and `routeMessage()` returns
+`delivered[]`, which is what lets delivery edit a sent message later; classic
+forwarding ignores it.
 
 ## Hybrid entity extraction
 

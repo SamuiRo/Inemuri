@@ -2,307 +2,155 @@
 
 > Related: [THEFLOW.md](../THEFLOW.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [DEDUPLICATION.md](DEDUPLICATION.md)
 
-Two new tables plus one new column on the existing `Source` model.
-ORM is Sequelize, as in the rest of the project (`src/module/teapot/models/`).
+The SQLite schema as the migrations leave it. Models live in
+`src/module/teapot/models/` (Sequelize). The models are the reference for
+column types; this page says what each field is for.
 
-## Source — new `flow` column
+## Source — `flow` and `feed`
 
 ```js
-flow: {
-  type: DataTypes.JSON,
-  allowNull: true,
-  defaultValue: {
-    enabled: false,          // false = classic forwarding, current behavior
-    topics: null,            // null = all topics; or ["games", "market"]
-    min_confidence: 0.6,     // below this the post goes to #unsorted, not to the bin
-    dedup_window_hours: null,// null = inherit from the category
-    vision: {                // see VISION.md
-      enabled: false,        // enabling TheFlow does not enable vision
-      text_threshold: 200,   // skip images when the post already has this much text
-      max_images_per_post: 2
-    }
-  },
-  comment: 'TheFlow settings for this source'
+flow: {                    // JSON, default below; the seeder merges a partial block
+  enabled: false,          // false = classic forwarding
+  topics: null,            // null = all topics; or ["games", "markets"]
+  min_confidence: 0.6,     // below this the post goes to #unsorted
+  dedup_window_hours: null,// null = the signal's window from categories.json
+  vision: { enabled: false, text_threshold: 200, max_images_per_post: 2 }  // VISION.md
 }
+feed: null                 // rss sources: { discovery: "rss" | "sitemap" | "wpjson", triage?: true }
 ```
 
-`enabled: false` by default means **existing sources do not change behavior at
-all** until they are explicitly switched over.
+Other `sources` columns: `platform`, `channel_id`, `channel_name`,
+`is_active`, `mode`, `poll_interval_min`, `extra_media_types`,
+`text_replacements`, `filters`, `destinations` (README "Sources").
+
+## source_states
+
+One row per source: `last_message_id` (Telegram checkpoint), `cursor` (JSON —
+`{ ts, seen, etag, lastModified, url }` for feeds), `baseline_set_at`,
+`last_seen_at` (when the source last published, any mode — the status board).
 
 ## posts
 
-The central table. One row per incoming message.
+The central table. One row per ingested item of a flow-enabled source.
 
 | Field | Type | Purpose |
 |---|---|---|
 | `id` | INTEGER PK | |
-| `source_id` | INTEGER | FK to `sources`. `SET NULL` on source delete — post history is kept |
-| `platform` | STRING NOT NULL | `telegram` \| `reddit` \| `rss` \| … Default `'telegram'`. Migration `002` |
-| `external_id` | STRING | Universal item identity: Telegram message id as text, Reddit fullname (`t3_…`), an article's URL. **UNIQUE with `source_id`.** Migration `002` |
-| `external_url` | STRING | Canonical link. For Reddit and news also a tier 1 dedup key. Migration `002` |
-| `channel_id` | STRING | Denormalized fast Telegram lookup key. No longer part of an item's identity |
-| `grouped_id` | STRING | Album ID when the post is part of a group |
-| `posted_at` | DATE | Publication time at the source, not ingestion time |
-| `title` | TEXT | Headline, separate from the body. Carries the whole event for news and Reddit; Telegram has none. Migration `002` |
-| `author` | STRING | Reddit author, article byline. Migration `002` |
-| `raw_text` | TEXT | **Original, in the source language.** Never overwritten |
-| `text_md` | TEXT | Markdown rendering with entities, for reading and export |
-| `entities` | JSON | **Original MTProto entities**, as a plain array `[{ className, offset, length, url?, language? }]` — exactly what `TelegramDestination.buildFormattingEntities` consumes. Telegram formatting is offsets, not Markdown. Offsets index the text *before* replacements. Written by `FlowIngest`; added by migration `002`; see [DELIVERY.md](DELIVERY.md) |
-| `text_hash` | STRING | Hash of the normalized text — cheap dedup before embeddings |
-| `has_media` | BOOLEAN | Media is not downloaded at this stage, only flagged |
-| `media_ref` | JSON | What stage 3 needs to fetch media later, per platform: `{ kind: "telegram", channel_id, message_id, grouped_id }` or `{ kind: "url", urls: [...] }`. Written when `has_media`. Migration `002` |
-| `image_hash` | STRING | Perceptual hash of the first image. Filled by `scripts/backfill-image-hash.js` (not at ingest), used by the vision cache (see VISION.md) |
-| `text_ocr` | TEXT | Text transcribed from images. Merged with `raw_text` as input to enrichment |
-| `vision_used` | BOOLEAN | Whether a vision call was actually made, for quota attribution |
-| `text_en` | TEXT | **Canonical representation.** Every stage below operates on this |
-| `lang` | STRING | Detected source language (ISO 639-1) |
-| `topic` | STRING | Axis 1 of the taxonomy. Closed enum from `categories.json` |
-| `signal_type` | STRING | Axis 2 of the taxonomy. Closed enum |
-| `confidence` | FLOAT | 0..1. Below threshold routes to `#unsorted` |
-| `analysis` | JSON | `entities` (project, tickers), `extracted` (promo_codes with reward / anchored expiry, links with role, amounts, event with anchored dates — each quoted item carries `source` and `verified`), `summary_uk`, `why_interesting`, `is_ad`, `discarded` and `unverified` from validation, `prompt_version` (3 since v4.57.0, 2 since v4.50.0; absent = 1); `text_uk` and `text_uk_model` — the Ukrainian translation, written by delivery for a routed post not in Ukrainian (DELIVERY.md) |
-| `candidates` | JSON | What the regex stage found, kept for audit and re-runs |
-| `embedding` | BLOB | Float32Array as a BLOB, **normalized to unit length at write time** so cosine is a plain dot product. Little-endian; `buffer.length === embedding_dim * 4` |
-| `embedding_model` | STRING | Which model produced the vector, e.g. `gemini:text-embedding-004`. **Not** `model_used`, which is the enrichment model |
-| `embedding_dim` | INTEGER | Vector dimension. Differs per provider and per configured output size |
-| `cluster_id` | INTEGER | NULL means not yet assigned to an event |
+| `source_id` | INTEGER | FK to `sources`, `SET NULL` on delete — history is kept |
+| `platform` | STRING NOT NULL | `telegram` \| `reddit` \| `rss` |
+| `external_id` | STRING | Item identity: Telegram message id as text, Reddit fullname (`t3_…`), article URL. **UNIQUE with `source_id`** |
+| `external_url` | STRING | Canonical link; for Reddit and news also a tier 1 dedup key |
+| `channel_id` | STRING | Denormalized Telegram lookup key, not part of identity |
+| `grouped_id` | STRING | Album id |
+| `posted_at` | DATE | Publication time at the source |
+| `title` | TEXT | Headline (news, Reddit); Telegram has none |
+| `author` | STRING | Reddit author, byline |
+| `raw_text` | TEXT | Plain text in the source language **after `text_replacements`** — the model's input and what verbatim validation checks. Never overwritten |
+| `text_md` | TEXT | Markdown rendering with entities |
+| `entities` | JSON | Original MTProto entities `[{ className, offset, length, url?, language? }]`. Offsets index the text *before* replacements; delivery clips them (DELIVERY.md) |
+| `text_hash` | STRING | Hash of the normalized text — repost check and tier 1 |
+| `has_media` | BOOLEAN | Media is flagged at ingest, never downloaded there |
+| `media_ref` | JSON | What lazy media needs: `{ kind: "telegram", channel_id, message_id, grouped_id }` or `{ kind: "url", urls }` |
+| `image_hash` | STRING | Perceptual hash of the first image — filled by the vision stage or `scripts/backfill-image-hash.js`, never at ingest (it needs the bytes) |
+| `text_ocr` | TEXT | Text transcribed from images; enrichment input next to `raw_text` |
+| `vision_used` | BOOLEAN | A vision call was actually made |
+| `text_en` | TEXT | **Canonical English.** Embeddings, dedup and search work on it |
+| `lang` | STRING | Source language (ISO 639-1) |
+| `topic`, `signal_type` | STRING | The two taxonomy axes, closed enums from `categories.json` |
+| `confidence` | FLOAT | 0..1 |
+| `analysis` | JSON | `entities` (project, tickers); `extracted` (promo codes with reward and anchored expiry, links with role, amounts, event with anchored dates — quoted items carry `source` and `verified`); `summary_uk`, `why_interesting`, `is_ad`; `discarded`, `unverified` from validation; `prompt_version`; `fewshot` (hash of the example set); `text_uk`, `text_uk_model` — the Ukrainian translation written by delivery |
+| `candidates` | JSON | What the regex stage found |
+| `embedding` | BLOB | Little-endian Float32Array, **unit length at write time** (cosine = dot product); `length === embedding_dim * 4` |
+| `embedding_model`, `embedding_dim` | STRING, INTEGER | Which model made the vector. Vectors of different models are never compared |
+| `cluster_id` | INTEGER | The event; NULL = not deduplicated yet |
 | `link_role` | STRING | `canonical` \| `linked` \| `duplicate` \| `correction` |
-| `adds` | JSON | What this post adds over the canonical one (see DEDUPLICATION.md) |
-| `delivery` | JSON | The delivery log: `outcome` (`routed`/`unsorted`), resolve's `reason` and `rule`, `delivered[]` identities, `partial`, `media_error`; or `skipped` (`too_old`, `no_destinations`, `cluster_already_delivered`); or `failed` with `attempts` and `error`. NULL = not handled. Migration `013` |
-| `dedup` | JSON | The deduplication decision log: `decision` (`new`/`join`), `tier`, `s` (nearest other-source similarity), `s_same_source`, `nearest_post_id`, `key` (tier 1), `gray`, `gate` (richness and new entities), `cluster_id`, `t`, `at`; `{error}` if the stage failed on the post. NULL = not deduplicated yet. Migration `011` |
-| `status` | STRING | See the status table below |
-| `model_used` | STRING | Which model produced the verdict. **Required** |
-| `taxonomy_version` | INTEGER | `categories.json` version at verdict time, to separate model regression from a category description you changed |
-| `attempts` | INTEGER | Enrichment attempt counter |
-| `last_error` | TEXT | Last error — diagnostics without digging through logs |
-| `createdAt` / `updatedAt` | DATE | Sequelize timestamps |
+| `adds` | JSON | The delta call's answer: `relation`, `adds[]` (`kind`, `text`, `text_uk`), `confidence`, `model_used`; after delivery `applied_at` and per-message results |
+| `dedup` | JSON | Decision log: `decision`, `tier`, `s`, `s_same_source`, `nearest_post_id`, `key`, `gray`, `gate`, `cluster_id`, `at`; `{ error }` on failure |
+| `delivery` | JSON | Delivery log: `outcome` (`routed`/`unsorted`), `reason`, `rule`, `delivered[]`, `partial`, `media_error`; or `skipped` (`too_old`, `no_destinations`, `cluster_already_delivered`); or `failed` with `attempts`, `error` |
+| `status` | STRING | Below |
+| `model_used` | STRING | Model behind the verdict. Always set |
+| `taxonomy_version` | INTEGER | `categories.json` version at verdict time |
+| `attempts`, `last_error` | INTEGER, TEXT | Enrichment attempts (incremented at claim) and the last error |
+| `createdAt`, `updatedAt` | DATE | |
 
 ### Statuses
 
 ```text
-pending ---> enriched ---> routed
-   |             |
-   |             +---> suppressed   (duplicate that adds nothing)
-   |             +---> unsorted     (low confidence or unknown category)
-   |
-   +---> skipped_blacklist
-   +---> skipped_empty
-   +---> skipped_noise
-   +---> skipped_shouty            (short all-caps, per source)
-   +---> skipped_short             (shorter than filters.min_length, per source)
-   +---> skipped_repost             (same text from the same source in the window)
-   +---> failed                     (attempts exhausted; kept for review)
+pending ──> enriched ──> routed       (delivered to a topic channel)
+   │            ├──────> unsorted     (delivered to #unsorted, with the reason)
+   │            └──────> suppressed   (duplicate that adds nothing)
+   ├──> skipped_blacklist | skipped_empty | skipped_noise | skipped_shouty
+   │    | skipped_short | skipped_repost        (regex stage, never enriched)
+   └──> failed                                  (attempts exhausted; replay with flow requeue)
 ```
 
-`failed` does not mean discarded. The row stays in the database with
-`last_error` and can be replayed after the prompt or provider is fixed.
+`failed` posts are still delivered to `#unsorted` with reason `model_failed`.
 
 ### Indexes
 
-| Index | Purpose |
-|---|---|
-| `(source_id, external_id)` UNIQUE | Idempotent ingestion, platform-neutral, protects against double insertion in `both` mode. Replaces `(channel_id, message_id)` — migration `002` |
-| `(channel_id)` | Denormalized fast Telegram lookup |
-| `(status, createdAt)` | The worker's main query |
-| `text_hash` | Cheap deduplication |
-| `(cluster_id)` | Collecting cluster members |
-| `(topic, signal_type, posted_at)` | Digests and history search (ROADMAP §9.1) |
-| `(embedding_model)` | Tier 2 compares only vectors produced by the same model |
+`(source_id, external_id)` UNIQUE · `(channel_id)` · `(status, createdAt)` ·
+`text_hash` · `(cluster_id)` · `(topic, signal_type, posted_at)` ·
+`(embedding_model)`. Full-text search uses `posts_fts` (FTS5 over `text_en`,
+`raw_text`, `title`, kept in sync by triggers).
 
 ## clusters
 
-One row per event that one or more channels wrote about.
-
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | INTEGER PK | |
-| `canonical_post_id` | INTEGER | The first published post about the event |
-| `topic` / `signal_type` | STRING | Copied from the canonical post, for queries without a join |
-| `centroid` | BLOB | The canonical post's vector. Same format as `posts.embedding` |
-| `embedding_model` / `embedding_dim` | STRING / INTEGER | Which model the centroid belongs to. Vectors from different models are never compared. Migration `011` |
-| `members_count` | INTEGER | "Also reported by N more channels" |
-| `richness` | FLOAT | Informativeness of the current canonical version (see DEDUPLICATION.md) |
-| `delivered` | JSON | `[{platform, channel_id, message_id, sent_at}]`, so sent messages can be edited |
-| `appends_count` | INTEGER | How many additions were appended. The cap keeps the message readable |
-| `first_seen_at` / `last_seen_at` | DATE | Bounds of the event's active window |
-| `closed` | BOOLEAN | Window closed; no new posts join |
-
-`delivered` is an array because one post may have gone to several destinations,
-and each one has to be edited.
-
-## post_feedback
-
-Created in **phase 0.5** (ROADMAP 2.6), not phase 5: `flow:review` starts writing
-labels during phase 1 shadow mode, which turns verdict-checking you have to do
-anyway into a labelled dataset. Collecting this feedback retroactively is
-expensive.
-
-| Field | Type | Purpose |
-|---|---|---|
-| `id` | INTEGER PK | |
-| `post_id` | INTEGER | FK to `posts.id`, `SET NULL` — `missed` has no post, and label history is kept |
-| `verdict` | STRING NOT NULL | `good` \| `noise` \| `wrong_topic` \| `missed` (validated) |
-| `note` | TEXT | Optional |
-| `created_at` | DATE NOT NULL | Rows are immutable — no `updatedAt` (`timestamps: false`) |
-
-Table and `PostFeedback` model land in migration `004-post-feedback`.
-Labels come from your reaction to a post in the channel (emoji, forward).
-They later become few-shot examples for the prompt.
-
-## knowledge_examples
-
-The knowledge base (NEWS_INTAKE.md §3): self-contained labelled examples. Each
-row carries a snapshot of what was labelled — text, classification, taxonomy
-version, source name — so labels survive pruning `posts` and move between
-instances through `flow knowledge export|import`. `post_feedback` stays the
-review event log; few-shot reads this table. The full field table and the
-exchange format are in [NEWS_INTAKE.md](NEWS_INTAKE.md) §3.2 and §3.5.
-
-Key points: `uid` (UUID, UNIQUE) is the identity across instances;
-`content_hash` groups labels of the same content (the latest wins); `level` is
-`post` · `headline` · `article`; `verdict` uses the `post_feedback` vocabulary;
-`post_id` (`SET NULL`) and `feedback_id` (UNIQUE) are local links that are never
-exported. Rows are immutable — `created_at` only.
-
-Model `KnowledgeExample`, table created in migration `015-knowledge-examples`.
-
-## discovered_items
-
-Candidates of news sources with `feed.triage: true` (NEWS_INTAKE.md §2.2,
-§6): every new article lands here, only what triage passes becomes a post.
-Short-lived — swept after `FLOW_TRIAGE_RETENTION_DAYS` (14).
+One row per event.
 
 | Field | Purpose |
 |---|---|
-| `source_id`, `external_id` | Identity, UNIQUE together — a repeat of the same item is a no-op |
-| `url`, `title`, `teaser`, `author`, `keywords`, `image_urls`, `published_at` | The feed item as the parser gave it; a pass becomes a post exactly like this |
-| `section` | First path segment of the URL (`business`, `health`, `sports`) |
-| `status` | `pending` → `passed` · `rejected` · `failed` (no answer after `maxAttempts`) |
-| `decided_by`, `reason`, `area` | `rule` (`section:sports`) or `llm` (short reason, area of the profile) |
-| `profile_version`, `model_used` | Which `triage.json` and which model decided — for calibration |
-| `sampled` | A model reject flagged for review |
-| `post_id` | The post a pass became (`SET NULL`); null on a pass = promotion failed, retried |
-| `review_verdict` | The operator's label from `flow triage review`; null = not reviewed |
-| `attempts`, `last_error` | Failures of the triage call or of promotion |
+| `canonical_post_id` | The post the delivered message is rendered from |
+| `topic`, `signal_type` | Copied from the canonical post |
+| `centroid`, `embedding_model`, `embedding_dim` | The canonical post's vector and its model |
+| `members_count` | "Also reported by N" |
+| `richness` | Informativeness of the canonical version (DEDUPLICATION.md) |
+| `delivered` | `[{ platform, channel_id, message_id, sent_at, … }]` — every sent copy, so each can be edited |
+| `appends_count` | Additions edited in so far (cap 3) |
+| `first_seen_at`, `last_seen_at`, `closed` | Active window; a closed cluster takes no new members |
 
-Model `DiscoveredItem`, table created in migration `017-discovered-items`.
+## Other tables
 
-## Migration
+| Table | Purpose |
+|---|---|
+| `post_feedback` | Review event log: `post_id` (`SET NULL`), `verdict` (`good` \| `noise` \| `wrong_topic` \| `missed`), `note`, `created_at`. Immutable rows. Written by `flow review` |
+| `knowledge_examples` | Self-contained labelled examples, portable between instances — fields in [NEWS_INTAKE.md](NEWS_INTAKE.md) §3.2. Few-shot and triage examples read it |
+| `discovered_items` | Triage candidates of news sources: identity (`source_id`, `external_id`), the feed item, `section`, `status` (`pending` → `passed` · `rejected` · `failed`), `decided_by`, `reason`, `area`, `profile_version`, `model_used`, `sampled`, `post_id`, `review_verdict`, `attempts`, `last_error`. Swept after `FLOW_TRIAGE_RETENTION_DAYS` (14) |
+| `provider_quota` | LLM gateway ledger: `provider` (`provider:model`), `day_utc` (the provider's quota day), `count`, `exhausted_at` |
+| `vision_cache` | Transcriptions by perceptual hash: `image_hash`, `text_ocr`, `description`, `legible`, `model`; TTL `VISION_CACHE_TTL_HOURS` |
+| `discord_resources` | discordapp provisioning state: `guild_id`, `kind`, `key` → `discord_id`, `content_hash`, `parent_id`, `archived_at`, `archived_from` |
+| `status_messages` | The status board's message per destination: `platform`, `channel_id` → `message_id` |
+| `schema_migrations` | Applied migrations |
 
-The project now has a migration runner (`database/migrations/` plus
-`npm run migrate` / `npm run migrate:status`) — ROADMAP §2.2. Migrations are
-`NNN-name.js` files, each exporting `up({ sequelize, queryInterface })`,
-forward-only, applied in numeric order and recorded in a `schema_migrations`
-table. The runner takes one backup into `database/backups/` before the first
-migration of a run and refuses `NODE_ENV=development` (that path uses
-`force: true` and recreates tables). `database/` is git-ignored except
-`database/migrations/`.
+## Migrations
 
-### `001-theflow-phase0`
+`database/migrations/NNN-name.js`, each exporting
+`up({ sequelize, queryInterface })`, forward-only and idempotent; applied in
+order by `npm run migrate`, which backs up first and refuses
+`NODE_ENV=development`. Rules: explicit `ALTER TABLE … ADD COLUMN`, never
+`sync({ alter: true })` (SQLite rebuilds the table); JSON columns are declared
+`JSON`, not `TEXT` — Sequelize on SQLite parses JSON by the declared DDL type.
 
-Establishes the schema on this page. On a pre-TheFlow database (the VPS) it
-**creates** it; on a copy that already ran the earlier one-off script it
-**adopts** it — every step is idempotent:
+`sources` and `source_states` predate migrations and are created by
+`database.sync()` (`npm run db:bootstrap`), so migrations cannot start from an
+empty file. `npm run setup` runs both in the right order.
 
-1. Add the `flow` column to `sources` — **declared type `JSON`, not `TEXT`**.
-   Sequelize v6 on SQLite decides whether to parse a value as JSON from the
-   column's declared DDL type; a `TEXT` column comes back as a raw string
-   despite `DataTypes.JSON` on the model. A manual
-   `ALTER TABLE sources ADD COLUMN flow JSON DEFAULT '...'` is used rather than
-   `sync({ alter: true })`, which rebuilds the whole table on SQLite. If a
-   mistyped column already exists it is dropped and re-added.
-2. Backfill `flow` with the default object for existing rows.
-3. `sequelize.sync()` creates the new `posts` and `clusters` tables — a plain
-   `sync()` is sufficient for tables that do not yet exist.
-4. Verify: expected tables present, sources preserved.
-
-Verification after migration:
-
-```bash
-node src/cli.js list
-```
-
-If the sources are still listed and `flow` reads as `{enabled: false}`, the
-migration succeeded and behavior is unchanged.
-
-### `002-generalize-sources`
-
-Makes `posts` platform-neutral while the corpus is small (ROADMAP §2.4). All
-`ADD COLUMN` plus index add/remove — no table rebuild:
-
-- adds `platform`, `external_id`, `external_url`, `title`, `author`,
-  `media_ref`, `entities`, `embedding_model`, `embedding_dim`;
-- backfills `platform = 'telegram'`, `external_id = CAST(message_id AS TEXT)`,
-  and a Telegram `media_ref` for rows with media. `entities` cannot be
-  backfilled — phase-0 rows never stored it;
-- drops `UNIQUE (channel_id, message_id)`, adds `UNIQUE (source_id,
-  external_id)` and plain indexes on `(channel_id)` and `(embedding_model)`.
-
-`message_id` keeps its NOT NULL and stays populated for Telegram (FlowIngest
-always has it); nothing reads it. A later migration DROPs it outright once a
-non-Telegram adapter exists — SQLite 3.44 on the VPS has `DROP COLUMN`.
-
-### `003-source-cursor`
-
-Adds `source_states.cursor` JSON and backfills
-`{ "last_message_id": <value> }` from the existing checkpoint. The Telegram
-adapter keeps reading `last_message_id`; RSS/Reddit adapters (phase 3.5) store
-their own cursor shape.
-
-### `011-dedup`
-
-Adds `posts.dedup` (JSON), `clusters.embedding_model` and
-`clusters.embedding_dim`, and an index on `clusters (closed, last_seen_at)`.
-All `ADD COLUMN` / `CREATE INDEX IF NOT EXISTS`, idempotent.
-
-### `012-posts-fts`
-
-Creates `posts_fts`, an FTS5 virtual table over `text_en`, `raw_text` and
-`title` with `content='posts'` (the index only; text stays in `posts`), the
-triggers `posts_fts_ai` / `_ad` / `_au` (the update trigger fires only on
-those three columns), and builds the index from existing rows. Used by history
-search (ROADMAP §9.1). `db:bootstrap` does not create it — `sync()` knows only
-models — so a fresh install gets it from `npm run migrate`.
-
-### `013-post-delivery`
-
-Adds `posts.delivery` (JSON), the delivery log. Plain `ADD COLUMN`.
-
-### `014-drop-post-message-id`
-
-Drops `posts.message_id` (after dropping any index that still covers it).
-The Telegram message id lives on in `external_id` and `media_ref`; a Reddit
-fullname or an RSS guid could never have fit an `INTEGER NOT NULL` column.
-Migration `002` skips its `message_id` backfill when the column is absent, so
-a database bootstrapped from the current models still migrates.
-
-### `015-knowledge-examples`
-
-Creates `knowledge_examples` and backfills every `post_feedback` label that
-still has its post (`flow knowledge backfill` reruns it). Idempotent through
-the UNIQUE `feedback_id`.
-
-### `016-source-feed`
-
-Adds `sources.feed` JSON NULL — `{ "discovery": "rss" | "sitemap" |
-"wpjson" }`, how an `rss` source finds new articles (NEWS_INTAKE.md §2.1).
-NULL is a plain RSS/Atom feed, so existing sources need no backfill.
-
-### `017-discovered-items`
-
-Creates `discovered_items` (above). Idempotent.
-
-### Fresh installs
-
-`src/inemuri.js` and `src/cli.js` still call `database.sync()` on boot, which
-on a brand-new database creates every table from the models — already at the
-latest shape. `npm run migrate` then runs the idempotent migrations, which
-find everything present and simply record themselves in `schema_migrations`.
-
-## `image_hash` is not written at ingest
-
-`DATA_MODEL` lists `image_hash` as "recorded from phase 0", but ingestion must
-make **no outbound network calls** (ARCHITECTURE.md invariant) and a perceptual
-hash needs the image bytes. So at ingest only `has_media` is set; `image_hash`
-stays `NULL` and is filled by `scripts/backfill-image-hash.js` (dHash via
-`sharp`, rate-limited, resumable, picks `has_media = true AND image_hash IS
-NULL`).
+| # | Change |
+|---|---|
+| 001 | `sources.flow`; `posts`, `clusters` |
+| 002 | `posts` made platform-neutral: `platform`, `external_id`, `external_url`, `title`, `author`, `media_ref`, `entities`, `embedding_model`, `embedding_dim`; UNIQUE `(source_id, external_id)` |
+| 003 | `source_states.cursor` |
+| 004 | `post_feedback` |
+| 005 | `provider_quota` |
+| 006 | `sources.poll_interval_min` |
+| 007 | `sources.extra_media_types` |
+| 008 | `vision_cache` |
+| 009 | `discord_resources` |
+| 010 | `discord_resources.parent_id` |
+| 011 | `posts.dedup`; `clusters.embedding_model`, `embedding_dim`; index `clusters (closed, last_seen_at)` |
+| 012 | `posts_fts` (FTS5) and its triggers — `db:bootstrap` cannot create it |
+| 013 | `posts.delivery` |
+| 014 | drop `posts.message_id` |
+| 015 | `knowledge_examples`, backfilled from `post_feedback` |
+| 016 | `sources.feed` |
+| 017 | `discovered_items` |
+| 018 | `source_states.last_seen_at`; `status_messages` |

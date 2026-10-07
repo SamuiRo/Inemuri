@@ -4,21 +4,14 @@
 > [VISION.md](VISION.md) · [DATA_MODEL.md](DATA_MODEL.md) · [ROADMAP.md](ROADMAP.md)
 
 Stage 3 sends a post and then keeps it current as its cluster grows. This
-document fixes the **mechanism**. The template itself — the exact lines, wording,
-emoji, and the Discord embed layout — is deliberately left open and filled in
-during phase 2, when the destination channels from 5.1 exist and there is real
-material to look at.
-
-Three documents impose requirements on the rendered message and none of them
-owned it: VISION.md requires OCR-derived entities to be marked unverified,
-DEDUPLICATION.md requires an addition block, an addition cap and a full rewrite
-when the canonical post is replaced, DATA_MODEL.md offers `members_count` for the
-"also reported by N" line. This is where those requirements meet.
+document is the mechanism (decisions 1–3), the constraints other documents put
+on the message, and the template as built. Code:
+`src/module/theflow/delivery/render.js` (pure) and `FlowDelivery.js`.
 
 ## Decision 1 — full re-render, never string append
 
 ```js
-render(cluster, posts, { platform }) -> { text, entities }
+render({ post, cluster, members, source, resolved, link, platform })
 ```
 
 A pure function. Every edit calls it again over the current database state and
@@ -33,7 +26,7 @@ This collapses a whole class of problems in DEDUPLICATION.md step 3:
   function over a different input;
 - the platform length limit is checked once, on the output, instead of at every
   append;
-- being pure, it is testable — which is what 2.7 asks for.
+- being pure, it is testable (`test/render.test.js`).
 
 ## Decision 2 — compose by segments, rebase entity offsets
 
@@ -92,20 +85,10 @@ window expired — fall back to a reply carrying the re-rendered content.
 | Telegram | message text, or media caption | Text 4096. Caption 1024 without Telegram Premium on the sending account, 4096 with it (`TELEGRAM_PREMIUM`). `render()` budgets a post with media to the caption limit, so the mandatory lines survive; the adapter also cuts and clips entities as a last resort |
 | Discord | `embed.description` | 4096, within a 6000-character budget across the whole embed |
 
-Discord delivery already goes **exclusively through embeds**
-(`src/destinations/discord/DiscordDestination.js`): source name →
-`embed.author` (256), text → `embed.description` (4096), the first photo or
-animation → `embed.image`, everything else as attachments alongside. `content` is
-deliberately unused to avoid duplication, so the 2000-character plain-message
-limit never applies to this project.
-
-That makes an embed the natural target for flow posts as well, and it is the
-richer surface of the two: fields, a footer, and a colour keyed to
-`signal_type` all become available. **The exact embed layout is decided in phase
-2**, together with the rest of the template.
-
-Because the two platforms differ, `platform` is a parameter of `render()`, not a
-global assumption, and truncation is decided once on the rendered output.
+Discord delivery goes **exclusively through embeds** (`DiscordDestination`):
+`content` is unused, so the 2000-character message limit never applies. Because
+the platforms differ, `platform` is a parameter of `render()`, and truncation
+is decided once on the rendered output.
 
 ## Constraints the template must satisfy
 
@@ -123,14 +106,13 @@ Whatever the final wording, these are fixed by other documents:
 | Additions | At most three shown, then a counter. `corrects` and `denies` are exempt | DEDUPLICATION.md |
 | Diagnostics | `confidence`, `model_used` and `taxonomy_version` render **only** into `#unsorted`. That channel exists to be debugged; everywhere else they are noise | ROADMAP.md 13.4 |
 
-## Implementation (v4.47.0)
+## Implementation
 
-- `src/module/theflow/delivery/render.js` — `render({ post, cluster, members,
-  source, resolved, link, platform })`, pure. Every wording is in the one
-  `TEMPLATE` object at the top: header, lead, unverified line, "also reported
-  by N", additions and their counter, correction and denial banners, the
-  original-post link, diagnostics. **It is a draft**; changing the template
-  means editing that object, not the mechanism.
+- Every wording is in the one `TEMPLATE` object at the top of `render.js`:
+  header, lead, unverified line, "also reported by N", additions and their
+  counter, correction and denial banners, the original-post link,
+  diagnostics, axis labels. Changing the template means editing that object,
+  not the mechanism.
 - Output fits the adapters as they are. Telegram: `{ header, body, entities }`
   — `TelegramDestination` already sends `source.name + "\n" + rawText` and
   shifts the entities by the header, so the header goes in `source.name` and
@@ -147,7 +129,11 @@ Whatever the final wording, these are fixed by other documents:
   count limited before download; a media failure sends the text with the
   error recorded), one `routeMessage` per platform, `posts.delivery` and
   `clusters.delivered`.
-- Updates to a sent message (§6.6, v4.48.0) follow Decision 1 and 3 exactly:
+- Delivery selects canonical posts that passed dedup (plus `failed` ones, for
+  `#unsorted`) and never sends a post older than `FLOW_DELIVERY_MAX_AGE_HOURS`
+  (24, recorded as `too_old`), so switching delivery on cannot flood a channel
+  with history. A delivered cluster is never sent again.
+- Updates to a sent message (ROADMAP §6.6) follow Decision 1 and 3 exactly:
   every update is a full re-render of the cluster through the adapter's
   `editMessageData()`; additions are edited in up to three times per cluster;
   a `corrects` or `denies` is edited in **and** sent as a reply
@@ -156,10 +142,10 @@ Whatever the final wording, these are fixed by other documents:
   "reply instead of edit when too long" rule from DEDUPLICATION.md is not
   needed.
 
-## The template (v4.58.0)
+## The template
 
-The draft became the template. Ukrainian throughout, like the translation and
-the lead — delivery is addressed to a Ukrainian reader.
+Ukrainian throughout, like the translation and the lead — delivery is
+addressed to a Ukrainian reader.
 
 - **Axes** read as words: `🕹️ Ігри · 🎟 Промокод` (`TEMPLATE.topicLabel`,
   `signalLabel`, `signalEmoji`); an unknown key is shown as is.
@@ -181,7 +167,7 @@ the lead — delivery is addressed to a Ukrainian reader.
 - `DiscordDestination` reads `title`, `fields` and `timestamp` from
   `messageData.embed`, besides colour, footer and the link.
 
-## Translation (v4.57.0)
+## Translation
 
 The readers are Ukrainian; most source channels are not. A post the model
 found not to be in Ukrainian (`lang` ≠ `uk`) and that resolves to a topic
@@ -202,9 +188,3 @@ it as the body. Retries, `flow preview` and cluster re-renders reuse it.
   original is one link away.
 - `node src/cli.js flow preview --translate` shows what delivery would send,
   translating as it would (one provider call per post, saved).
-
-## Testing
-
-`render()` is pure and belongs in the 2.7 test list: offset rebasing across
-segments, the addition cap, truncation at each platform's limit, unverified
-marking, and that a `denies` survives every cap.

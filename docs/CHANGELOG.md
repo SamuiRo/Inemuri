@@ -7,6 +7,39 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.59.3] - 2026-10-07
+
+### Documentation
+- **Audit of every document against the code.** Wrong statements fixed:
+  README's quick start ran `npm run seed` on an empty database (now
+  `npm run setup`); the ARCHITECTURE repo map missed feeds, status, triage,
+  knowledge, delivery, dedup, the scripts and five models, and listed a
+  `progress.js` and `.eslintrc.json` that do not exist; LLM_GATEWAY listed
+  three gateway methods (there are six), counted quota per provider (it is
+  per `provider:model`) and named consumers that make no call (dedup,
+  digest); TAXONOMY's example was the v1-era shape with routing inside
+  `categories.json`, and the resolve order lacked `ad`; DEDUPLICATION still
+  said Discord editing needed adding and listed half the signal windows;
+  DATA_MODEL lacked six tables and migrations 004–010 and 018, and said
+  labels come from reactions; media.md described a 25 MB limit and a
+  `setFileSizeLimit()` that do not exist (`DISCORD_UPLOAD_LIMIT_MB`, 20);
+  NEWS_INTAKE presented the entity allow-list and the `body` knob as built;
+  VISION and DELIVERY were written as plans for phases now shipped;
+  DISCORDAPP's status stopped at v4.42.3 and missed `/daily` and `ids`.
+- **History and repetition removed from the specs.** ROADMAP 1545 → ~400
+  lines: done tasks are a line with their version, open work is a table at
+  the top, every section number code comments cite is kept. DATA_MODEL's
+  per-migration prose is a table; DISCORDAPP's work plan and version table,
+  DEPLOYMENT's two one-off rollout procedures (now one "Turning on TheFlow
+  features"), THEFLOW's per-phase prose (now a table), README's legacy notes
+  and second repo tree are gone. README points to `.env.example` for the
+  full variable list and to `LICENSE` for the license.
+- CLAUDE.md: what the tests cover; docs describe the current state, ROADMAP
+  section numbers stay stable.
+- Found, not changed: `package.json` says ISC while `LICENSE` is MIT;
+  `src/config/appearance.config.json` is read by no code (HANDOFF, open
+  questions).
+
 ## [4.59.2] - 2026-10-07
 
 ### Changed

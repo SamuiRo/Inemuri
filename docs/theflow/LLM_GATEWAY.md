@@ -7,20 +7,18 @@ which provider handled a request and contains no vendor-specific code.
 
 ## Contract
 
-The gateway exposes three methods:
-
 ```js
-await gateway.enrich(input)          -> EnrichResult
-await gateway.embed(text)            -> Float32Array
-await gateway.vision(image, options) -> { text_ocr, description }
+await gateway.enrich(input,    { priority })  // verdict: text_en, topic, signal, extracted…
+await gateway.embed(text,      { priority })  // unit-length Float32Array, or null
+await gateway.vision(image,    { priority })  // { text_ocr, description } — never a classification (VISION.md)
+await gateway.delta(input,     { priority })  // what a later post adds (DEDUPLICATION.md)
+await gateway.translate(input, { priority })  // Ukrainian body for delivery (DELIVERY.md)
+await gateway.triage(input,    { priority })  // a batch of headlines against the reader profile (NEWS_INTAKE.md)
 ```
 
-Everything else — provider selection, retries, rate limits, parsing,
-validation, caching — stays inside. The pipeline sees neither HTTP nor the
-differences between APIs.
-
-`vision()` is used only by the vision stage and returns transcribed text, never
-a classification — see [VISION.md](VISION.md) for why.
+A shed call returns `{ shed: true }` instead of throwing. Everything else —
+provider selection, retries, rate limits, parsing, validation, caching —
+stays inside; the pipeline sees neither HTTP nor the differences between APIs.
 
 ## A module, not a service
 
@@ -52,37 +50,24 @@ Extracting it into its own process becomes worthwhile only when more than one
   accounting.
 
 Until then the boundary is enforced by discipline: the gateway imports nothing
-from Telegram, Discord, or the pipeline. Because it is already a module behind a
-three-method contract, wrapping it in an HTTP server later is a day of work
-rather than a rewrite — which is the point of deciding it this way round. The
-cheap option now does not foreclose the expensive one later.
+from Telegram, Discord, or the pipeline, so wrapping it in an HTTP server later
+is a day of work rather than a rewrite. If it is ever extracted, every process
+touching the quota ledger needs `PRAGMA journal_mode=WAL` and an explicit
+`busy_timeout` (ARCHITECTURE.md).
 
-If it is ever extracted, the SQLite caveat from ARCHITECTURE.md applies to every
-process that touches the quota ledger: `PRAGMA journal_mode=WAL` and an explicit
-`busy_timeout`.
-
-No new dependencies are required: Gemini and OpenAI-compatible endpoints (which
-is how Qwen is reached) are both plain HTTP and JSON, and `axios` is already in
-`package.json`.
+Providers are plain HTTP and JSON over `axios`: Gemini, and any
+OpenAI-compatible endpoint (OpenRouter, Qwen, …) by base URL.
 
 ## `enrich()` input and output
 
-**Input:**
+**Input:** the text after `text_replacements` (plus `title` and `text_ocr`
+when present), the regex stage's `candidates` (promo codes, tickers, URLs,
+dates, amounts), the taxonomy, the post's publication date (outside the
+untrusted block, to resolve dates without a year) and few-shot examples from
+the knowledge base. The source text, OCR text and examples each sit in a
+per-call nonced untrusted-data block.
 
-```js
-{
-  text: "...",              // text after text_replacements, in the source language
-  candidates: {             // what the regex stage found
-    promo_codes: ["HY45OLK8QRE2"],
-    tickers: ["$ABC"],
-    urls: ["https://..."],
-    dates: ["2026-03-14"]
-  },
-  taxonomy: { /* topics and signals from categories.json */ }
-}
-```
-
-**Output** (validated against the schema before it is written to the database):
+**Output** (shape abbreviated; validated before it is written — `schemas.js`):
 
 ```json
 {
@@ -138,16 +123,14 @@ An invalid response is a failure, not data. The post stays `pending`,
 ## Verbatim field validation
 
 A rule layered on top of the schema: **every field that claims to be verbatim
-must be present in the source text**.
-
-```text
-for each code in extracted.promo_codes:
-    if code is not contained in raw_text -> discard it
-```
-
-The same applies to tickers, links, and names. This closes hallucination
-completely and costs nothing. The model never writes a code itself — it only
-confirms candidates found by regex (see ARCHITECTURE.md).
+must be present in the source text** (`raw_text` or `title`). Promo codes,
+tickers, links and amounts are checked; a normalized date is kept only with
+its exact words (`date_text`, `expires_text`), which are checked instead. A
+match only in `text_ocr` is kept as `verified: false` (VISION.md); a match
+nowhere is discarded into `analysis.discarded`. `entities.project` is not
+checked — a project name is legitimately transliterated. The model never
+writes a code itself; it confirms candidates found by regex
+(ARCHITECTURE.md).
 
 ## Fallback matrix
 
@@ -176,10 +159,11 @@ Conflating them means escalating on every `429` and burning quota.
 
 ### Local RPD accounting
 
-The gateway counts requests per provider itself and switches **before** hitting
-the wall rather than after. The counter resets on the provider's schedule
-(usually the UTC day). Without this, the first exhausted quota produces a burst
-of failures instead of a clean switchover.
+The gateway counts requests itself in `provider_quota` (persistent, so a
+restart does not forget) and switches **before** hitting the wall rather than
+after. The day is the provider's own: Gemini resets at Pacific midnight
+(`GEMINI_QUOTA_TZ`), not UTC. Without this, the first exhausted quota produces
+a burst of failures instead of a clean switchover.
 
 **The provider's word beats the counter.** A daily-quota `429` marks the
 model `exhausted` for the day, and the gate refuses it from then on even if
@@ -191,24 +175,26 @@ enrich claim is returned, triage and delta wait for the next tick. Neither
 counts as an attempt (v4.57.2; before it a mismatch turned the whole pending
 queue `failed` within minutes).
 
-**The counter is per provider, not per capability.** `enrich`, `embed`, and
-`vision` draw on the same daily allowance. Counting them separately produces a
-specific and confusing failure: vision, which costs several times more per call,
-quietly consumes the daily limit, and enrichment of ordinary posts starts
-failing — which looks like "classification broke" rather than "vision ate the
-quota".
+**The counter is per `provider:model`, not per capability** — the way Google
+counts free-tier limits. Every call on the complete model (enrich, vision,
+delta, translate, triage) shares its allowance (default 500/day); the
+embedding model has its own (1000/day). Counting capabilities separately
+would hide the real failure: vision quietly consumes the daily limit and
+enrichment starts failing, which looks like "classification broke" rather
+than "vision ate the quota".
 
 ## Consumers and priority classes
 
-| Consumer | Uses | Priority | State |
-|---|---|---|---|
-| Enrichment worker | `enrich`, `embed` | `critical` | phase 1 |
-| Deduplication | `embed` | `critical` | phase 3 |
-| Vision stage | `vision` | `normal` | phase 1.5 |
-| Digests | `enrich` | `low` | phase 5 |
-| Delivery | `translate` | `normal` | v4.57.0 — only routed posts not in Ukrainian |
-| History search | `embed` | `low` | phase 5 — ROADMAP §9.1 |
-| AI-assisted screening | `enrich` | `low` | **unspecified** — ROADMAP §13.8 |
+| Consumer | Uses | Priority |
+|---|---|---|
+| Enrichment worker | `enrich`, `embed` (the vector dedup reads) | `critical` |
+| Vision stage | `vision` | `normal` |
+| Headline triage | `triage` | `normal` |
+| Delta stage (dedup) | `delta` | `normal` |
+| Delivery | `translate` — routed posts not in Ukrainian only | `normal` |
+| History search | `embed` of the query | `low` |
+
+Deduplication and the digest make no provider call of their own.
 
 **Every consumer runs worker-side.** No consumer may be added to the ingestion
 path, whatever it is for: stage 1 makes no outbound network calls, and that
@@ -218,9 +204,9 @@ never a filter evaluated while a Telegram update is being handled. This is a
 constraint on the *pipeline*, and packaging does not change it — moving the
 gateway behind HTTP would not make an ingest-time call acceptable.
 
-Every call carries a priority. When remaining quota drops below a reserve
-threshold, the gateway sheds work from the bottom up: digests and search stop
-first, vision next, and enrichment plus deduplication are the last to go.
+Every call carries a priority. The last `LLM_QUOTA_RESERVE` (15%) of a
+model's RPD is held for `critical`: below it, `normal` and `low` calls are
+shed and only enrichment continues.
 
 Without explicit priorities, the shedding order is whatever happened to be
 queued first, and the most expensive optional work can starve the core pipeline.
@@ -238,12 +224,10 @@ together with the taxonomy version.
 
 ## Cache
 
-The key is a hash of the normalized input text. One text reposted across five
-channels costs **one** call instead of five.
-
-The cache lives in memory with a TTL. The pattern already exists in the project
-(`src/sources/telegram/TelegramDeduplicator.js`) and can be used as a model:
-TTL plus a size cap to prevent a memory leak.
+In memory, keyed by a hash of the normalized input plus the taxonomy version
+and the few-shot set; TTL `LLM_CACHE_TTL_MS` (6 h), size cap
+`LLM_CACHE_MAX_SIZE` (5000). One text reposted across five channels costs
+**one** call.
 
 ## Queue and rate limiting
 
@@ -261,86 +245,49 @@ limit burns through in seconds.
 
 ## Configuration
 
-```js
-// src/config/app.config.js
-export const LLM_PRIMARY   = process.env.LLM_PRIMARY   || "gemini";
-export const LLM_FALLBACK  = process.env.LLM_FALLBACK  || null;
-export const LLM_TIER_UP   = process.env.LLM_TIER_UP   || null;
-export const LLM_TIER_UP_BELOW = Number(process.env.LLM_TIER_UP_BELOW || 0.5);
-export const LLM_MAX_CONCURRENCY = Number(process.env.LLM_MAX_CONCURRENCY || 2);
-export const LLM_TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS || 30_000);
+All in `src/config/app.config.js`, every value overridable from `.env`
+(`.env.example` lists them): `LLM_PRIMARY` (`gemini`), `LLM_FALLBACK`,
+`LLM_TIER_UP` / `LLM_TIER_UP_BELOW` (tiering, off by default),
+`LLM_MAX_CONCURRENCY` (2), `LLM_TIMEOUT_MS` (30 s); the enrich worker's
+`ENRICH_TICK_MS` (30 s), `ENRICH_BATCH_SIZE` (10), `ENRICH_MAX_ATTEMPTS` (3);
+per provider the API key, model ids, RPD/RPM and quota time zone
+(`GEMINI_*`, `OPENROUTER_*`). The defaults are the measured Gemini free tier:
+`gemini-3.5-flash-lite` for complete and vision (RPD 500, RPM 15),
+`gemini-embedding-2` at 768 dimensions (RPD 1000, RPM 100).
 
-// Cache and shedding. Plain constants, mirroring DEDUP_TTL_MS / DEDUP_MAX_SIZE.
-export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;
-export const LLM_CACHE_MAX_SIZE = 5_000;
-export const LLM_QUOTA_RESERVE  = 0.15;   // fraction of RPD held for `critical`
+With no primary key the enrich worker does not start and flow posts wait as
+`pending`. OpenRouter's embeddings are deliberately unused
+(`OPENROUTER_EMBED_MODEL` empty): a fallback vector would sit in another
+model's space, invisible to dedup and search, while a `null` can be filled
+later by the same model. Startup warns if more than one embedding model is
+configured.
 
-// Enrichment worker (ROADMAP 3.6)
-export const ENRICH_TICK_MS      = Number(process.env.ENRICH_TICK_MS ?? 30_000);
-export const ENRICH_BATCH_SIZE   = Number(process.env.ENRICH_BATCH_SIZE ?? 10);
-export const ENRICH_MAX_ATTEMPTS = Number(process.env.ENRICH_MAX_ATTEMPTS ?? 3);
-```
-
-**Derive `ENRICH_TICK_MS` and `ENRICH_BATCH_SIZE` from RPD, do not guess them.**
-`batch / tick` is throughput; multiply by 2 requests per post and compare against
-the daily limit measured in 3.1 against the real volume from 2.1. The defaults
-above allow far more than any free tier will grant, which means the brake is the
-token bucket rather than the timer — better to slow the timer deliberately than
-to discover it through `429`s.
-
-Provider keys go in `.env` like every other secret. `.env.example` is updated
-alongside phase 1.
-
-**There is no shadow-mode flag in phase 1**, and this document previously
-specified one. Shadow mode is what the structure *is* while the gateway and the
-enrichment worker exist and the routing consumer does not: verdicts are written
-to `posts` and nobody reads them. A settable flag whose only possible value is
-its default is a switch an operator can flip with no effect — worse than no
-switch, because it implies a capability that isn't there. `LLM_SHADOW_MODE`
-arrives in phase 2, together with the routing code it will gate (ROADMAP §5).
+Delivery has its own switch, `FLOW_DELIVERY_ENABLED` — with it off (the
+default) verdicts are written and nobody sends them.
 
 ## Module layout
 
 ```text
 src/services/ai/
-├── LLMGateway.js            # enrich() / embed() / vision(), fallback, tiering,
-│                            # cache, queue, quota accounting, priority shedding
-├── schemas.js               # JSON response schemas plus validation
-├── prompts/
-│   ├── enrich.js            # main prompt with the taxonomy injected
-│   ├── delta.js             # comparison against the canonical post (DEDUPLICATION.md)
-│   └── vision.js            # transcription only, never classification (VISION.md)
+├── LLMGateway.js            # the six methods; routing, fallback, tiering, cache,
+│                            #   queue, quota ledger, breaker, priority shedding
+├── internal.js              # TokenBucket, CircuitBreaker, TtlCache
+├── schemas.js               # response schemas, structural and verbatim validation
+├── prompts/                 # enrich, fewshot, vision, delta, translate, triage
 └── providers/
-    ├── BaseProvider.js      # contract: complete(), embed(), vision()
+    ├── BaseProvider.js      # complete() / embed() / vision(), capabilities(), HTTP error classes
     ├── GeminiProvider.js
-    └── OpenAICompatProvider.js   # covers Qwen and other compatible endpoints
+    └── OpenAICompatProvider.js   # base-URL parameterized
 ```
 
-A provider that does not support a capability declares it, and the gateway
-routes that capability to a provider that does. Vision and text do not have to
-come from the same vendor.
+A provider declares its capabilities from its key and configured models; the
+gateway routes each capability to a provider that has it.
 
-`OpenAICompatProvider` should be parameterized by base URL — one adapter then
-covers Qwen and most other compatible APIs with no new code.
+## Volume
 
-## Volume and quota
-
-The **entire** incoming stream now reaches the AI, not the remainder after
-keyword filtering.
-
-```text
-~200 posts/day x 2 requests (enrich + embed) = 400-600 requests/day
-```
-
-Minus whatever the regex stage rejected, minus cache hits on reposts. The
-binding constraint will be the **daily limit (RPD), not the per-minute one** —
-verify current provider values before starting phase 1.
-
-Vision changes this arithmetic disproportionately: a call costs several times
-more than a text call, and the count depends entirely on how many sources have
-it enabled. Budget it separately, gate it hard (VISION.md), and give it a lower
-priority class than enrichment.
-
-Free tiers carry no SLA. Once TheFlow becomes your primary news channel that
-will start to hurt, but thanks to this layer, moving to a paid tier is an
-adapter swap rather than a pipeline rewrite.
+The whole flow stream reaches the model, not what keyword filters leave: a
+text post costs one complete call and one embedding, a screenshot post one
+more complete call — roughly 250–500 posts a day on the free tier, minus regex
+rejects and cache hits. The daily limit binds first, not the per-minute one.
+Free tiers carry no SLA; moving to a paid tier is a config change, not a
+pipeline rewrite.

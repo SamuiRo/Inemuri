@@ -2,10 +2,6 @@
 
 > **Role:** How media travels from a Telegram source to a destination, and what each side decides · **Audience:** Anyone changing media handling, adding a media type, or explaining why a file did not arrive
 
-This replaces the retired `USE_EMBED.md`, which described an opt-in embed API
-(`useEmbed: true`, a caller-supplied `embed` object) that the code does not
-have. Every symbol below was checked against the tree at `v4.20.0`.
-
 Media crosses **three independent stages**, and each drops things for its own
 reasons. When a file does not arrive, the question is always *which stage*.
 
@@ -48,9 +44,7 @@ Two details that matter downstream:
 
 - **A photo is always reported as `image/jpeg`.** `parseMedia()` sets it
   unconditionally and returns early — Telegram photos carry no document, so
-  there is no MIME type to read. `photo.defaultExtension` was `"png"` until
-  `v4.20.0`, which was unreachable for Telegram photos and actively misleading:
-  the MIME lookup runs first and yields `.jpg`. It now says `jpg`.
+  there is no MIME type to read.
 - `mimeType`, `fileSize` and `filename` come from the document when there is
   one, and are simply absent for photos.
 
@@ -64,10 +58,8 @@ downloads only types listed in `DOWNLOADABLE_MEDIA_TYPES`
 export const DOWNLOADABLE_MEDIA_TYPES = ["photo", "video", "document", "animation"];
 ```
 
-Anything else is skipped — **and, since `v4.20.0`, the skip is logged** with
-the type, the effective list, and what to do about it. It used to be a bare
-`continue` with no output at all, which made this the one place in the pipeline
-where media vanished without a trace.
+Anything else is skipped, and the skip is logged with the type, the effective
+list, and what to do about it.
 
 `audio`, `video_note`, `webpage`, `location`, `contact` and `poll` are all
 outside the global list. That is deliberate for the last four (there is nothing
@@ -95,23 +87,28 @@ The result is `messageData.downloadedMedia`, an array of
 `data` being a `Buffer`.
 
 TheFlow does **not** use this path: ingestion never touches the network, so it
-stores a `media_ref` and re-fetches later through
-[`MediaResolver`](../src/module/theflow/media/MediaResolver.js), which reuses
-`parseMedia()` and this same downloader.
+stores a `media_ref` and fetches later, only for posts it delivers, through
+[`MediaResolver`](../src/module/theflow/media/MediaResolver.js) — the
+Telegram resolver reuses `parseMedia()` and this same downloader, the URL
+resolver fetches feed images. Types and the count are limited before
+download.
 
 ## Stage 3 — Discord delivery
 
-**Discord messages are always an embed, never plain `content`.** There is no
-`useEmbed` flag and no way to pass an embed in; `_buildPayload()` composes it
-from the message every time.
+**Discord messages are always an embed, never plain `content`.**
+`_buildPayload()` composes it from the message:
 
 | Embed field | Source |
 |---|---|
 | `author` | `messageData.source.name` |
 | `description` | `messageData.text`, truncated to 4096 chars |
-| `color` | `0x5865f2` (Discord Blurple), fixed |
+| `color` | `0x5865f2` (Discord Blurple) unless `messageData.embed.color` is set |
 | `image` | `attachment://<filename>` of the **first** embeddable file |
-| `footer` | Only when files were skipped for size |
+| `footer` | When files were skipped for size, or `messageData.embed.footer` |
+
+Classic forwarding sets none of `messageData.embed`; TheFlow delivery uses it
+for title, colour, fields, footer, timestamp and the author link
+(theflow/DELIVERY.md).
 
 Truncation appends `\n\n*(…)*` and logs a warning, so a cut message is visible
 in both the channel and the log.
@@ -137,19 +134,15 @@ and a downloaded type with no entry here sends as `attachment<i>.bin`.
 
 ### File size
 
-The limit starts at 25 MB. `setFileSizeLimit(true)` raises it to 100 MB for a
-Nitro-boosted server; nothing calls it automatically, so a boosted server needs
-the call wiring in `src/inemuri.js`.
-
-Oversized files are dropped individually — the rest of the message still goes
-out — and the embed gains a footer:
+The limit is `DISCORD_UPLOAD_LIMIT_MB` (default 20). Oversized files are
+dropped individually — the rest of the message still goes out — and the embed
+gains a footer:
 
 ```
-⚠️ 2 file(s) skipped — exceeds 25MB limit
+⚠️ 2 file(s) skipped — exceeds 20MB limit
 ```
 
-There is no video compression. The archived doc listed it as a TODO; it is
-still not implemented.
+There is no video compression.
 
 ### Filenames
 
@@ -186,6 +179,9 @@ that is not already there.
 
 `TelegramDestination` takes the same `downloadedMedia` and sends through
 `sendMediaGroup()` / `sendWithMedia()`, letting GramJS build the `InputMedia`
-rather than assembling `InputMediaUploadedPhoto` by hand. It declares
-`{ edit: true }` in `capabilities`, which is what the phase 3 `linked`
-mechanism will need — see [theflow/DELIVERY.md](theflow/DELIVERY.md).
+rather than assembling `InputMediaUploadedPhoto` by hand. The text of a post
+with media is its caption, cut to 1024 characters (4096 with
+`TELEGRAM_PREMIUM`), its entities clipped to the cut; a text message holds
+4096. Both adapters declare `{ edit: true }` and implement
+`editMessageData()`, which TheFlow uses to keep a delivered message current
+([theflow/DELIVERY.md](theflow/DELIVERY.md)).
