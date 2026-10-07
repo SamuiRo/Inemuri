@@ -1,3 +1,5 @@
+import { aggregateFlowStats, collectFlowStatsRows, CANDIDATE_KEYS } from "./module/theflow/stats.js";
+import { HOUR, DAY } from "./shared/time.js";
 import fs from "fs/promises";
 import readline from "node:readline/promises";
 
@@ -177,39 +179,6 @@ program
   });
 
 // ── TheFlow inspection (ROADMAP 2.8) ────────────────────────────────────────
-const CAND_KEYS = ["promo_codes", "tickers", "urls", "dates", "amounts"];
-
-function emptyStatBucket() {
-  return {
-    n: 0,
-    status: {},
-    mediaShort: 0, // has_media AND length(raw_text) < 200 — vision candidate
-    lenSum: 0,
-    lenMax: 0,
-    lenBuckets: { "0": 0, "<50": 0, "<200": 0, "<500": 0, "<1000": 0, "1000+": 0 },
-    cand: Object.fromEntries(CAND_KEYS.map((k) => [k, { n: 0, samples: new Set() }])),
-  };
-}
-
-function addLen(bucket, len) {
-  bucket.lenSum += len;
-  if (len > bucket.lenMax) bucket.lenMax = len;
-  if (len === 0) bucket.lenBuckets["0"]++;
-  else if (len < 50) bucket.lenBuckets["<50"]++;
-  else if (len < 200) bucket.lenBuckets["<200"]++;
-  else if (len < 500) bucket.lenBuckets["<500"]++;
-  else if (len < 1000) bucket.lenBuckets["<1000"]++;
-  else bucket.lenBuckets["1000+"]++;
-}
-
-function parseCandidates(raw) {
-  let c = raw;
-  if (typeof c === "string") {
-    try { c = JSON.parse(c); } catch { return null; }
-  }
-  return c && typeof c === "object" ? c : null;
-}
-
 function printBucket(label, b) {
   print(`\n${label} — ${b.n} post(s)`, "system");
   const statusStr = Object.entries(b.status)
@@ -227,7 +196,7 @@ function printBucket(label, b) {
     `  vision candidate (has_media & len<200)  ${b.mediaShort}` +
       (b.n ? ` (${((b.mediaShort / b.n) * 100).toFixed(1)}%)` : ""),
   );
-  for (const k of CAND_KEYS) {
+  for (const k of CANDIDATE_KEYS) {
     const c = b.cand[k];
     if (c.n === 0) continue;
     const samples = [...c.samples].slice(0, 5).join(", ");
@@ -236,10 +205,7 @@ function printBucket(label, b) {
 }
 
 async function collectFlowStats() {
-  const [rows] = await database.sequelize.query(
-    'SELECT source_id, status, has_media, candidates, "createdAt" AS created_at, ' +
-      "LENGTH(raw_text) AS len FROM posts",
-  );
+  const rows = await collectFlowStatsRows();
   if (rows.length === 0) {
     print(
       'No flow posts yet — set "flow": { "enabled": true } on a source, run ' +
@@ -248,41 +214,9 @@ async function collectFlowStats() {
     );
     return;
   }
-
   const sources = await Source.findAll();
   const nameById = new Map(sources.map((s) => [s.id, s.channel_name]));
-
-  const times = rows
-    .map((r) => new Date(r.created_at).getTime())
-    .filter((t) => !Number.isNaN(t));
-  const spanDays = Math.max((Date.now() - Math.min(...times)) / 86_400_000, 1 / 24);
-
-  const total = emptyStatBucket();
-  const perSource = new Map();
-
-  for (const r of rows) {
-    if (!perSource.has(r.source_id)) perSource.set(r.source_id, emptyStatBucket());
-    const buckets = [total, perSource.get(r.source_id)];
-    const len = r.len ?? 0;
-    const cand = parseCandidates(r.candidates);
-
-    for (const b of buckets) {
-      b.n++;
-      b.status[r.status] = (b.status[r.status] ?? 0) + 1;
-      addLen(b, len);
-      if (r.has_media && len < 200) b.mediaShort++;
-      if (cand) {
-        for (const k of CAND_KEYS) {
-          const arr = Array.isArray(cand[k]) ? cand[k] : [];
-          if (arr.length === 0) continue;
-          b.cand[k].n++;
-          for (const v of arr.slice(0, 3)) {
-            if (b.cand[k].samples.size < 8) b.cand[k].samples.add(String(v));
-          }
-        }
-      }
-    }
-  }
+  const { total, perSource, spanDays } = aggregateFlowStats(rows);
 
   print(
     `Flow corpus: ${total.n} post(s) over ~${spanDays.toFixed(1)} day(s)  ` +
@@ -751,7 +685,7 @@ flow
       }
 
       const days = Math.max(1, Number(options.days) || 7);
-      const since = new Date(Date.now() - days * 86_400_000);
+      const since = new Date(Date.now() - days * DAY);
       const rows = await Post.findAll({
         where: { dedup: { [Op.ne]: null }, updatedAt: { [Op.gte]: since } },
         attributes: ["id", "signal_type", "status", "link_role", "cluster_id", "text_en", "dedup", "posted_at", "createdAt"],
@@ -901,7 +835,7 @@ flow
         routing: ROUTING,
         translate: gateway ? (input) => gateway.translate(input) : null,
         dedupEnabled: DEDUP.enabled,
-        maxAgeHours: options.ignoreAge ? Number.MAX_SAFE_INTEGER / 3_600_000 : FLOW_DELIVERY.maxAgeHours,
+        maxAgeHours: options.ignoreAge ? Number.MAX_SAFE_INTEGER / HOUR : FLOW_DELIVERY.maxAgeHours,
       });
       const posts = options.id
         ? [await Post.findByPk(Number(options.id))].filter(Boolean)

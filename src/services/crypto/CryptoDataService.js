@@ -1,7 +1,7 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import { CMC_API_KEY } from "../../config/app.config.js";
-import { print } from "../../shared/utils.js";
+import { CMC_API_KEY, CRYPTO_API } from "../../config/app.config.js";
+import { print, printStack } from "../../shared/utils.js";
 
 /**
  * CryptoDataService - сервіс для отримання даних з крипто API
@@ -23,7 +23,7 @@ class CryptoDataService {
   async getGlobalMetrics() {
     try {
       const response = await axios.get(
-        "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest",
+        CRYPTO_API.globalMetrics,
         {
           headers: {
             "X-CMC_PRO_API_KEY": this.cmcApiKey,
@@ -37,7 +37,7 @@ class CryptoDataService {
         `[CryptoDataService] Error in getGlobalMetrics: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
       throw error;
     }
   }
@@ -50,7 +50,7 @@ class CryptoDataService {
   async findToken(ticker) {
     try {
       const response = await axios.get(
-        "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
+        CRYPTO_API.listings,
         {
           headers: {
             "X-CMC_PRO_API_KEY": this.cmcApiKey,
@@ -68,7 +68,7 @@ class CryptoDataService {
         `[CryptoDataService] Error in findToken: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
       throw error;
     }
   }
@@ -79,7 +79,7 @@ class CryptoDataService {
    */
   async getFearAndGreedIndex() {
     try {
-      const response = await axios.get("https://api.alternative.me/fng/");
+      const response = await axios.get(CRYPTO_API.fearAndGreed);
 
       return {
         value: response.data.data[0].value,
@@ -90,7 +90,7 @@ class CryptoDataService {
         `[CryptoDataService] Error in getFearAndGreedIndex: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
       throw error;
     }
   }
@@ -102,7 +102,7 @@ class CryptoDataService {
   async getAltseasonIndex() {
     try {
       const response = await axios.get(
-        "https://www.blockchaincenter.net/en/altcoin-season-index/",
+        CRYPTO_API.altcoinSeason,
       );
 
       const $ = cheerio.load(response.data);
@@ -120,7 +120,7 @@ class CryptoDataService {
         `[CryptoDataService] Error in getAltseasonIndex: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
       throw error;
     }
   }

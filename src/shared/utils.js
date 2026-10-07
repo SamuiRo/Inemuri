@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import path from "path";
 import sharp from 'sharp';
 import { fileURLToPath } from "url";
+import { LOG_LEVEL } from "../config/app.config.js";
 
 // Для роботи з __dirname в ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -63,7 +64,13 @@ export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Порядок рівнів для LOG_LEVEL. info/system/data/success — один рівень:
+// це звичайний хід роботи, різниця між ними лише у вигляді.
+const LEVEL_RANK = { debug: 0, info: 1, system: 1, data: 1, success: 1, warning: 2, error: 3 };
+const MIN_RANK = LEVEL_RANK[LOG_LEVEL] ?? 0;
+
 export function print(text, type = "info") {
+  if ((LEVEL_RANK[type] ?? 1) < MIN_RANK) return;
   const config = {
     info: {
       symbol: symbols.info,
@@ -121,6 +128,17 @@ export function print(text, type = "info") {
   console.log(log_line);
 }
 
+/**
+ * Стек помилки — рівнем debug, рядок за рядком через print(). Повідомлення
+ * помилки друкує сам викликач (рівнем error, зі своїм контекстом); стек —
+ * для розбору, і LOG_LEVEL=info його ховає.
+ */
+export function printStack(error) {
+  const stack = error?.stack ? String(error.stack) : null;
+  if (!stack) return;
+  for (const line of stack.split(/\r?\n/).slice(1)) print(line.trim(), "debug");
+}
+
 export function banner(text, subtitle = null) {
   console.log("\n");
 
@@ -138,19 +156,6 @@ export function banner(text, subtitle = null) {
   }
 
   console.log("\n");
-}
-
-export function _error(text) {
-  const current_date = new Date();
-
-  console.log(
-    symbols.error +
-      " |" +
-      ` ${current_date.toLocaleString()} ` +
-      "|" +
-      " [ERROR]" +
-      ` ${text}`,
-  );
 }
 
 /**
@@ -189,32 +194,5 @@ export async function loadImage(filename) {
   } catch (error) {
     print(`Failed to load image ${filename}: ${error.message}`, "error");
     return null;
-  }
-}
-
-export async function saveToJson(filePath, data) {
-  try {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf-8");
-    // console.log('✅ Дані збережено у', filePath);
-  } catch (error) {
-    console.error("Saving error:", error);
-  }
-}
-
-// Перезаписує txt (як writeFile)
-export async function saveToTxt(filePath, text) {
-  try {
-    await fs.writeFile(filePath, text, "utf-8");
-  } catch (error) {
-    console.error("TXT saving error:", error);
-  }
-}
-
-// Дописує в кінець з нового рядка (створить файл, якщо нема)
-export async function appendToTxt(filePath, text) {
-  try {
-    await fs.appendFile(filePath, text + "\n", "utf-8");
-  } catch (error) {
-    console.error("TXT append error:", error);
   }
 }

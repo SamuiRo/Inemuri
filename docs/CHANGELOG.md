@@ -7,6 +7,67 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.60.0] - 2026-10-07
+
+Code audit for modularity, hard-coded values and purity. No behaviour change
+with an unchanged `.env`; 642 tests (17 new).
+
+### Added
+- **`LOG_LEVEL`** (`debug` default — as before; `info` hides stacks and debug
+  lines). `printStack(error)` replaces the 22 bare `console.error(error)`
+  calls in `src/`; stacks go to the log at debug level.
+- **Every tunable in `.env.example`.** Seven variables `app.config.js` read
+  were missing (`LLM_MAX_CONCURRENCY`, `LLM_TIMEOUT_MS`, `GEMINI_BASE_URL`,
+  `OPENROUTER_BASE_URL`, `OPENROUTER_VISION_MODEL`, `OPENROUTER_EMBED_DIM`,
+  `SQLITE_STORAGE`). Values that were hard-coded in modules are now config
+  with the same defaults: `TELEGRAM_CONNECTION_RETRIES`,
+  `DAILY_REPORT_CRON` / `DAILY_REPORT_ENABLED` (the schedule was in code),
+  `FEED_TIMEOUT_MS`, `VISION_MAX_DOCUMENT_MB`, `VISION_MAX_SIDE`,
+  `MAINTENANCE_SWEEP_HOURS`, `FLOW_DELIVERY_TICK_MS`,
+  `FLOW_DELIVERY_MAX_APPENDS`, `FLOW_SEARCH_SEMANTIC_MAX_ROWS`,
+  `STATUS_ACTIVITY_THROTTLE_MIN`, `STATUS_MAX_LINES`; constants without an env
+  var: `DB_POOL`, `CRYPTO_API` endpoints, `DISCORD_APP_RETRY`,
+  `LLM_RETRY_MAX_WAIT_MS`, `FLOW_SEARCH.requestTimeoutMs`,
+  `STATUS.firstDelayMs`. `.env.example` is regrouped by subsystem.
+- `test/env-example.test.js`: `.env.example` lists exactly what
+  `app.config.js` reads, and nothing outside it reads `process.env`.
+
+### Changed
+- **Module boundaries.** `/daily` asks the core over the bus (`cron.run`,
+  `CronScheduler.runJob`) instead of importing the job and the CoinMarketCap
+  client — discordapp no longer imports core code (D1). The Telegram and URL
+  media resolvers moved from `theflow/media/` to `sources/telegram/` and
+  `sources/feeds/` and are registered by `inemuri.js`, so TheFlow imports
+  neither GramJS nor the feed HTTP client. The status board no longer imports
+  TheFlow's `ResolveStage` for `copyDestinations` (now
+  `src/shared/destinations.js`, re-exported for compatibility).
+- **Pure cores out of I/O classes:** `planClusterUpdate()` (what an update
+  does to a delivered message — edit, cap, correction) from
+  `FlowDelivery.refreshCluster`; `pollingSchedule.js` (phase offset, due
+  sources, next due time) from `TelegramSourceListener`; `stats.js`
+  (`aggregateFlowStats`) from `cli.js`; `dailyReport.js` (`dropsInfo`,
+  `formatDailyReport`, `createDailyJob` with injected data source) from
+  `src/config/cronjobs.js`, which held logic and is gone.
+- **One source per constant.** Discord/Telegram API limits were copied in
+  five places — now `src/shared/platformLimits.js`. Local `HOUR` / `MIN`
+  constants and `86_400_000`-style literals in some twenty files — now
+  `src/shared/time.js`. Stored enums (post statuses, link roles, verdicts,
+  triage statuses) moved out of the models into `teapot/vocabulary.js`, so
+  pure modules (the knowledge exchange format) stop opening SQLite to read a
+  list; the models re-export them.
+- `inemuri.js`: one cached `flowFor` and one `editVia` instead of two copies
+  each.
+
+### Removed
+- `Source.prototype.preprocessText` / `passesFilter` — a second, divergent
+  filter implementation (other regex flags, no `reject_shouty` /
+  `min_length`) that nothing called; `MessageFilter` is the only one. Also
+  unused `Source.getActiveChannelIds`, `isChannelWhitelisted`,
+  `getSourceWithFilters`, `getDestinations`; `utils._error`, `saveToJson`,
+  `saveToTxt`, `appendToTxt`; an empty `EventBus.setupDefaultHandlers`;
+  commented-out imports and sync options.
+- `src/config/appearance.config.json` (read by nothing).
+
 ## [4.59.3] - 2026-10-07
 
 ### Documentation

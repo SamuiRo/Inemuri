@@ -1,8 +1,8 @@
 import axios from "axios";
 
-import { print } from "../../../shared/utils.js";
-import { FEEDS } from "../../../config/app.config.js";
-import { feedThrottle } from "../../../sources/feeds/http.js";
+import { print } from "../../shared/utils.js";
+import { FEEDS } from "../../config/app.config.js";
+import { feedThrottle } from "./http.js";
 
 /**
  * Медіа за URL — для постів зі стрічок (ROADMAP §7.3), `media_ref.kind: "url"`.

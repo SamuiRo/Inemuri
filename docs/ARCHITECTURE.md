@@ -38,15 +38,15 @@ Inemuri/
     │   ├── app.config.js            # every env var and constant — nothing else reads process.env
     │   ├── localConfig.js           # loads git-ignored JSON configs, falls back to *.sample.json
     │   ├── categories.json          # TheFlow taxonomy (tracked)
-    │   ├── cronjobs.js              # cron job handlers
     │   ├── {sources,routing,triage,cronjob.config}.sample.json   # tracked examples of ignored configs
-    │   ├── appearance.config.json   # not read by any code
     │   └── discordapp/{servers,messages}/   # server configs and texts (*.sample.* tracked)
     ├── sources/
     │   ├── base/BaseSourceAdapter.js
-    │   ├── telegram/                # listener + polling: SourceListener, MessageParser,
-    │   │                            #   MediaDownloader, GroupBuffer (albums), Deduplicator (mode "both")
-    │   └── feeds/                   # rss / sitemap / wpjson / reddit: FeedPoller, discovery, http, parsers
+    │   ├── telegram/                # listener + polling: SourceListener, pollingSchedule (pure),
+    │   │                            #   MessageParser, MediaDownloader, GroupBuffer (albums),
+    │   │                            #   Deduplicator (mode "both"), TelegramMediaResolver (TheFlow lazy media)
+    │   └── feeds/                   # rss / sitemap / wpjson / reddit: FeedPoller, discovery, http,
+    │                                #   parsers (pure), UrlMediaResolver (TheFlow lazy media)
     ├── destinations/
     │   ├── base/BaseDestinationAdapter.js   # send, describeSent, capabilities, editMessage(Data), describeChannel
     │   ├── discord/DiscordDestination.js    # always an embed; REST only
@@ -55,7 +55,7 @@ Inemuri/
     │   ├── eventbus/EventBus.js     # emit/on, plus request/handle (request-reply)
     │   ├── routing/MessageRouter.js # message.received → adapters, returns delivered[]
     │   ├── filters/MessageFilter.js # text replacements and keyword/blacklist, compiled and cached
-    │   ├── cron/CronScheduler.js    # scheduled jobs emit synthetic messages
+    │   ├── cron/                    # CronScheduler (schedule + `cron.run` on the bus), dailyReport (job)
     │   ├── seeders/Sourceseeder.js  # sources.json → sources table
     │   ├── telegram/TelegramClient.js   # shared GramJS client
     │   ├── discord/                 # DiscordRest (delivery), DiscordGateway (discordapp only)
@@ -64,15 +64,16 @@ Inemuri/
     │   ├── theflow/                 # TheFlow (THEFLOW.md, theflow/ARCHITECTURE.md)
     │   │   ├── RegexStage.js, FlowIngest.js       # stage 1: ingest, no network
     │   │   ├── EnrichWorker.js, VisionStage.js    # stage 2 worker tick
-    │   │   ├── ResolveStage.js, FewShot.js, FlowHealth.js, Preflight.js, Storage.js
+    │   │   ├── ResolveStage.js, FewShot.js, FlowHealth.js, Preflight.js, Storage.js, stats.js
     │   │   ├── dedup/               # DedupCore (pure), DedupStage, DeltaStage
     │   │   ├── delivery/            # render (pure), FlowDelivery
     │   │   ├── triage/              # headline triage: TriageQueue, TriageStage, rules, examples, report
     │   │   ├── knowledge/           # knowledge base: KnowledgeBase, snapshot, exchange
-    │   │   ├── media/               # lazy media: MediaResolver, Telegram/Url resolvers
+    │   │   ├── media/               # lazy media registry (MediaResolver); resolvers live in sources/
     │   │   ├── digest/Digest.js
     │   │   └── search/HistorySearch.js
     │   └── teapot/
+    │       ├── vocabulary.js        # stored enums: post statuses, link roles, verdicts (pure)
     │       ├── sqlite/sqlite_db.js  # Sequelize connection
     │       └── models/              # Source, SourceState, Post, Cluster, PostFeedback, ProviderQuota,
     │                                #   VisionCache, KnowledgeExample, DiscoveredItem, DiscordResource, StatusMessage
@@ -80,7 +81,9 @@ Inemuri/
     │   ├── ai/                      # LLM gateway (theflow/LLM_GATEWAY.md): LLMGateway, internal,
     │   │                            #   schemas, prompts/, providers/ (Gemini, OpenAI-compatible)
     │   └── crypto/CryptoDataService.js  # CoinMarketCap data for the daily cron job
-    ├── shared/                      # utils (print, files), image (sharp), text, prompt, message
+    ├── shared/                      # utils (print, printStack, loadImage), image (sharp), text, prompt,
+    │                                #   message, time (MINUTE/HOUR/DAY), platformLimits (Discord/Telegram
+    │                                #   API limits), destinations (copy/validate destination ids)
     └── assets/images/daily.png
 ```
 
@@ -95,10 +98,11 @@ EnrichWorker tick: triage → vision → enrich + embed → dedup → delta ─�
 FlowDelivery tick: resolve → lazy media → render → MessageRouter ────────┘
 ```
 
-Startup order in `src/inemuri.js`: database (connect, `sync()`), Telegram
-client, destination adapters (Discord is REST-only, so a missing token only
+Startup order in `src/inemuri.js`: database (connect, `sync()`), media
+resolvers registered, Telegram client, destination adapters (Discord is REST-only, so a missing token only
 disables Discord delivery), Telegram listener, feed poller, cron scheduler
-(plus the digest job when `digest_destinations` is set), the enrich worker
+(the daily report, plus the digest job when `digest_destinations` is set;
+it answers `cron.run` on the bus, which `/daily` uses), the enrich worker
 (only with `ENRICH_WORKER_ENABLED` and a primary provider key), flow health,
 flow delivery (only with `FLOW_DELIVERY_ENABLED=true`), the status board
 (only with `status_destinations`), the `theflow.search` request handler, and
@@ -118,7 +122,17 @@ discordapp last — a failed Discord login never stops the process.
   Telegram travel as synthetic `message.received` events.
 - **Platform code stays in adapters.** TheFlow, the status board and flow
   health know no platform; `inemuri.js` injects send/edit functions and the
-  adapters.
+  adapters, and registers the media resolvers (Telegram, URL) on TheFlow's
+  registry.
+- **Functional core, imperative shell.** Decisions are pure functions that take
+  data and return data — `RegexStage`, `ResolveStage`, `DedupCore`, `render`,
+  `planClusterUpdate`, `pollingSchedule`, `aggregateFlowStats`, the
+  discordapp planner. The classes around them read, write and send. A module
+  that measures something has a `collect…` (I/O) and an `assess…` (pure) half.
+- **Configuration is data in one place.** Every env var and tunable is in
+  `src/config/app.config.js`, every env var is listed in `.env.example` (a test
+  checks both directions). API limits of Discord and Telegram are facts, not
+  settings: `src/shared/platformLimits.js`.
 
 ## Telegram ingestion
 

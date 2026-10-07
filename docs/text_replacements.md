@@ -393,9 +393,3 @@ clearCache(sourceId = null)
 getCacheStats()
 ```
 
-`Source`:
-
-```javascript
-source.preprocessText(messageText)  // replacements only
-source.passesFilter(messageText)    // replacements, then filters
-```

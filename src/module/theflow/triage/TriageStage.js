@@ -1,3 +1,4 @@
+import { MINUTE } from "../../../shared/time.js";
 import { DiscoveredItem, Source } from "../../teapot/models/index.js";
 import { FLOW_TRIAGE } from "../../../config/app.config.js";
 import { print } from "../../../shared/utils.js";
@@ -32,7 +33,7 @@ export class TriageStage {
     batchSize = FLOW_TRIAGE.batchSize,
     maxAttempts = FLOW_TRIAGE.maxAttempts,
     sampleRate = FLOW_TRIAGE.sampleRate,
-    maxWaitMs = FLOW_TRIAGE.maxWaitMin * 60_000,
+    maxWaitMs = FLOW_TRIAGE.maxWaitMin * MINUTE,
     random = Math.random,
     now = Date.now,
     Model = DiscoveredItem,

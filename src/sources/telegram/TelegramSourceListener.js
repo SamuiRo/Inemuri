@@ -1,6 +1,8 @@
+import { phaseOffsetMs, dueSources, nextDueAt } from "./pollingSchedule.js";
+import { MINUTE } from "../../shared/time.js";
 import { NewMessage } from "telegram/events/index.js";
 
-import { print, sleep } from "../../shared/utils.js";
+import { print, sleep, printStack } from "../../shared/utils.js";
 import { Source, SourceState } from "../../module/teapot/models/index.js";
 import telegramClient from "../../module/telegram/TelegramClient.js";
 import BaseSourceAdapter from "../base/BaseSourceAdapter.js";
@@ -171,7 +173,7 @@ class TelegramSourceListener extends BaseSourceAdapter {
     // Детермінований зсув фази — див. _phaseOffsetMs.
     const now = Date.now();
     for (const source of sources) {
-      const everyMs = source.getPollIntervalMin(POLLING_INTERVAL_MIN) * 60_000;
+      const everyMs = source.getPollIntervalMin(POLLING_INTERVAL_MIN) * MINUTE;
       // Перший тік: усе due одразу. Наздогін після простою — бажаний, а
       // стелю на тік і паузу 500 мс ніхто не скасовував, тож він обмежений.
       this.pollDueAt.set(source.id, now);
@@ -190,47 +192,21 @@ class TelegramSourceListener extends BaseSourceAdapter {
     this._scheduleNextPoll(0);
   }
 
-  /**
-   * Детермінований зсув фази для джерела, у межах [0, everyMs).
-   *
-   * Без нього кілька джерел з однаковим інтервалом назавжди залишаються
-   * синхронними: виставлені разом — стають due разом, і «раз на добу» для
-   * шести каналів означає шість запитів в одну секунду щодоби. Зсув від
-   * id джерела, а не від Math.random, щоб розклад відтворювався після
-   * рестарту, а не перетасовувався щоразу.
-   */
+  /** Зсув фази джерела — див. pollingSchedule.phaseOffsetMs. */
   static _phaseOffsetMs(sourceId, everyMs) {
-    if (!Number.isFinite(everyMs) || everyMs <= 0) return 0;
-    // FNV-1a над рядком id: дешево, без залежностей, добре розсіює малі числа.
-    let hash = 0x811c9dc5;
-    for (const ch of String(sourceId)) {
-      hash ^= ch.charCodeAt(0);
-      hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return hash % Math.floor(everyMs);
+    return phaseOffsetMs(sourceId, everyMs);
   }
 
   /** Джерела, чий час настав, найпрострочені першими, не більше стелі. */
   _dueSources(now = Date.now()) {
-    const due = [];
-    for (const [sourceId, dueAt] of this.pollDueAt) {
-      if (dueAt <= now) due.push([sourceId, dueAt]);
-    }
-    // Найдовше очікуване — першим: інакше джерело з коротким інтервалом
-    // може вічно витісняти те, що чекає з минулого тіку.
-    due.sort((a, b) => a[1] - b[1]);
-    return due.slice(0, POLLING_MAX_PER_TICK).map(([sourceId]) => sourceId);
+    return dueSources(this.pollDueAt, now, POLLING_MAX_PER_TICK);
   }
 
   /** Наступний час опитування для джерела, з рознесенням фази. */
   _rescheduleSource(sourceId, now = Date.now()) {
     const everyMs = this.pollEveryMs.get(sourceId) ?? POLLING_INTERVAL_MS;
-    const offset = TelegramSourceListener._phaseOffsetMs(sourceId, everyMs);
-    // Зсув застосовуємо один раз, при першому перепланувані: далі він уже
-    // «вшитий» у dueAt і інтервал лишається рівним.
-    const base = this.pollPhased.has(sourceId) ? everyMs : everyMs + offset;
+    this.pollDueAt.set(sourceId, nextDueAt({ sourceId, now, everyMs, phased: this.pollPhased.has(sourceId) }));
     this.pollPhased.add(sourceId);
-    this.pollDueAt.set(sourceId, now + base);
   }
 
   /**
@@ -425,7 +401,7 @@ class TelegramSourceListener extends BaseSourceAdapter {
       await this._routeIncoming(messageData);
     } catch (error) {
       print(`Error handling ${this.platform} message: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
       this.eventBus.emit("error.occurred", {
         source: this.platform,
         error:  error.message,
@@ -562,7 +538,7 @@ class TelegramSourceListener extends BaseSourceAdapter {
       }
     } catch (error) {
       print(`[THEFLOW] Ingest failed for msg ${messageData.messageId}: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
       this.eventBus.emit("error.occurred", {
         source:  this.platform,
         error:   error.message,

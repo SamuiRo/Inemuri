@@ -1,5 +1,7 @@
+import { DAY } from "../../../shared/time.js";
 import { DataTypes, Op } from "sequelize";
 import database from "../sqlite/sqlite_db.js";
+import { TRIAGE_STATUSES } from "../vocabulary.js";
 
 /**
  * Кандидати новинних джерел до triage (NEWS_INTAKE.md §2.2, ROADMAP §14.3).
@@ -17,7 +19,7 @@ import database from "../sqlite/sqlite_db.js";
  * `sampled` — відкинутий моделлю, але позначений на перегляд оператором.
  */
 
-export const TRIAGE_STATUSES = ["pending", "passed", "rejected", "failed"];
+export { TRIAGE_STATUSES };
 
 export const DiscoveredItem = database.sequelize.define("DiscoveredItem", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -104,7 +106,7 @@ DiscoveredItem.unpromoted = function (limit, maxAttempts = Infinity) {
 
 /** Прибрати старші за retentionDays. @returns {Promise<number>} */
 DiscoveredItem.sweep = function ({ retentionDays, now = new Date() }) {
-  const before = new Date(now.getTime() - retentionDays * 86_400_000);
+  const before = new Date(now.getTime() - retentionDays * DAY);
   return DiscoveredItem.destroy({ where: { createdAt: { [Op.lt]: before } } });
 };
 

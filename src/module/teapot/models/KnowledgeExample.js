@@ -1,6 +1,6 @@
 import { DataTypes } from "sequelize";
 import database from "../sqlite/sqlite_db.js";
-import { FEEDBACK_VERDICTS } from "./PostFeedback.js";
+import { KNOWLEDGE_LEVELS, KNOWLEDGE_ORIGINS, KNOWLEDGE_VERDICTS } from "../vocabulary.js";
 
 /**
  * База знань TheFlow: самодостатні розмічені приклади (NEWS_INTAKE.md §3).
@@ -15,14 +15,7 @@ import { FEEDBACK_VERDICTS } from "./PostFeedback.js";
  * зміст — новий рядок; читачі беруть найновіший за content_hash.
  */
 
-/** post — цілий пост; headline — лише заголовок (вхід triage); article — повний текст статті. */
-export const KNOWLEDGE_LEVELS = ["post", "headline", "article"];
-
-/** Звідки мітка. Зберігається при імпорті. */
-export const KNOWLEDGE_ORIGINS = ["review", "sampled_reject", "manual"];
-
-/** Вердикти — той самий словник, що в post_feedback. */
-export const KNOWLEDGE_VERDICTS = FEEDBACK_VERDICTS;
+export { KNOWLEDGE_LEVELS, KNOWLEDGE_ORIGINS, KNOWLEDGE_VERDICTS };
 
 export const KnowledgeExample = database.sequelize.define("KnowledgeExample", {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },

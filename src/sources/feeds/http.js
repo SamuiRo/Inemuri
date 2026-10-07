@@ -99,7 +99,7 @@ export function decodeBody(data, maxBytes = Infinity) {
  *   «прийди пізніше», а не помилка стрічки.
  */
 export async function fetchFeed(url, {
-  http = axios, userAgent, timeoutMs = 15_000, maxBytes = 5 * 1024 * 1024,
+  http = axios, userAgent, timeoutMs = FEEDS.timeoutMs, maxBytes = FEEDS.maxFeedBytes,
   etag = null, lastModified = null, accept = "application/rss+xml, application/atom+xml, application/xml, text/xml, application/json;q=0.9, */*;q=0.5",
   headers: extra = {},
 } = {}) {
@@ -125,7 +125,7 @@ export async function fetchFeed(url, {
     body: res.status >= 200 && res.status < 300 ? decodeBody(res.data, maxBytes) : null,
     etag: h.etag ?? null,
     lastModified: h["last-modified"] ?? null,
-    retryAfterMs: limited ? (retryAfterMs(h["retry-after"]) ?? 60_000) : null,
+    retryAfterMs: limited ? (retryAfterMs(h["retry-after"]) ?? FEEDS.defaultRetryAfterMs) : null,
     forbidden: res.status === 401 || res.status === 403,
   };
 }
@@ -136,7 +136,8 @@ export async function fetchFeed(url, {
  * запит візьме новий.
  */
 export class RedditAuth {
-  constructor({ clientId, clientSecret, userAgent, http = axios, now = Date.now }) {
+  constructor({ clientId, clientSecret, userAgent, http = axios, now = Date.now, timeoutMs = FEEDS.timeoutMs }) {
+    this.timeoutMs = timeoutMs;
     this.clientId = clientId;
     this.clientSecret = clientSecret;
     this.userAgent = userAgent;
@@ -163,7 +164,7 @@ export class RedditAuth {
       {
         auth: { username: this.clientId, password: this.clientSecret },
         headers: { "user-agent": this.userAgent, "content-type": "application/x-www-form-urlencoded" },
-        timeout: 15_000,
+        timeout: this.timeoutMs,
       },
     );
     const t = res.data?.access_token;

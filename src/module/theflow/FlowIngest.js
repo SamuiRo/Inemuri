@@ -1,3 +1,4 @@
+import { HOUR } from "../../shared/time.js";
 import { Op } from "sequelize";
 
 import { Post } from "../teapot/models/index.js";
@@ -53,7 +54,7 @@ export class FlowIngest {
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   } = {}) {
     this._regex = new RegexStage({ minTextLength });
-    this._repostWindowMs = repostWindowHours * 60 * 60 * 1000;
+    this._repostWindowMs = repostWindowHours * HOUR;
     this.Post = PostModel;
     this._retryDelaysMs = retryDelaysMs;
     this._sleep = sleep;

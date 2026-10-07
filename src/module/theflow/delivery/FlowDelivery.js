@@ -5,9 +5,9 @@ import { Post, Source, Cluster } from "../../teapot/models/index.js";
 import { resolve } from "../ResolveStage.js";
 import { render, renderNotice } from "./render.js";
 import { telegramLink } from "../search/HistorySearch.js";
-import { TELEGRAM_CAPTION_LIMIT } from "../../../config/app.config.js";
+import { TELEGRAM_CAPTION_LIMIT, FLOW_DELIVERY } from "../../../config/app.config.js";
+import { HOUR, SECOND } from "../../../shared/time.js";
 
-const HOUR = 3_600_000;
 const timeOf = (p) => new Date(p.posted_at ?? p.createdAt).getTime();
 const plainOf = (row) => (row?.get ? row.get({ plain: true }) : row);
 
@@ -33,7 +33,28 @@ export function toAdapterMedia(files) {
 
 // DEDUPLICATION.md «Step 3»: після трьох доповнень повідомлення стає
 // нечитабельним — далі лише лічильник. Виправлення й спростування — поза капом.
-export const MAX_APPENDS = 3;
+export const MAX_APPENDS = FLOW_DELIVERY.maxAppends;
+
+/**
+ * Що зробити з надісланим повідомленням кластера, коли прийшли нові пости
+ * (DEDUPLICATION.md «Step 3»). Чиста функція — рішення окремо від I/O.
+ *
+ *   corrections — corrects/denies: правка І окрема відповідь, завжди, без ліміту
+ *                 (правка не сповіщає, а спростування мусять побачити);
+ *   additions   — adds: правка, доки appendsCount < maxAppends, далі лише лічильник;
+ *   edit        — чи переписувати надіслане повідомлення;
+ *   capped      — доповнення є, але ліміт вичерпано.
+ *
+ * @param {{ triggers: Array<{ adds?: { relation?: string } }>, appendsCount?: number,
+ *           maxAppends?: number, force?: boolean }} input
+ */
+export function planClusterUpdate({ triggers, appendsCount = 0, maxAppends = MAX_APPENDS, force = false }) {
+  const corrections = triggers.filter((t) => t.adds?.relation === "corrects" || t.adds?.relation === "denies");
+  const additions = triggers.filter((t) => t.adds?.relation === "adds");
+  const underCap = Number(appendsCount ?? 0) < maxAppends;
+  const edit = force || corrections.length > 0 || (additions.length > 0 && underCap);
+  return { corrections, additions, edit, capped: !edit && additions.length > 0 };
+}
 
 /** Рендер → messageData у форматі, який розуміють наявні адаптери. */
 export function toMessageData(rendered, destinations = {}, media = []) {
@@ -110,8 +131,9 @@ export class FlowDelivery {
     route, sendTo = async () => null, edit = async () => { throw new Error("edit not wired"); },
     resolveMedia = async () => [], routing, flowFor = async () => null, translate = null,
     captionLimit = TELEGRAM_CAPTION_LIMIT, dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
-    intervalMs = 15_000, now = Date.now, log = () => {},
+    intervalMs = 15 * SECOND, maxAppends = MAX_APPENDS, now = Date.now, log = () => {},
   }) {
+    this.maxAppends = maxAppends;
     this.route = route;
     this.sendTo = sendTo;
     this.edit = edit;
@@ -144,7 +166,7 @@ export class FlowDelivery {
   }
 
   /** Зупиняє цикл і чекає поточний прохід (не довше за graceMs). */
-  async stop({ graceMs = 15_000 } = {}) {
+  async stop({ graceMs = 15 * SECOND } = {}) {
     this._running = false;
     if (this._timer) clearTimeout(this._timer);
     this._timer = null;
@@ -168,7 +190,7 @@ export class FlowDelivery {
       } finally {
         this._pass = null;
       }
-      this._schedule(n > 0 ? 1_000 : this.intervalMs);
+      this._schedule(n > 0 ? SECOND : this.intervalMs);
     }, ms);
     this._timer.unref?.();
   }
@@ -506,10 +528,9 @@ export class FlowDelivery {
     // Новий канонічний пост (заміна канонічного) міг ще не мати перекладу.
     if (resolved.outcome === "routed") await this._ensureTranslation(canonical);
 
-    const corrections = triggers.filter((t) => t.adds?.relation === "corrects" || t.adds?.relation === "denies");
-    const additions = triggers.filter((t) => t.adds?.relation === "adds");
-    const underCap = Number(cluster.appends_count ?? 0) < MAX_APPENDS;
-    const doEdit = force || corrections.length > 0 || (additions.length > 0 && underCap);
+    const { corrections, additions, edit: doEdit, capped } = planClusterUpdate({
+      triggers, appendsCount: cluster.appends_count, maxAppends: this.maxAppends, force,
+    });
 
     const results = [];
     const rendered = new Map();
@@ -532,7 +553,7 @@ export class FlowDelivery {
           results.push({ ...where, mode: reply ? "reply" : "failed", error: String(error.message).slice(0, 200) });
         }
       }
-    } else if (additions.length > 0) {
+    } else if (capped) {
       results.push({ mode: "capped", appends_count: cluster.appends_count });
     }
 

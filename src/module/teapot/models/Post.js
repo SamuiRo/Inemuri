@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import database from "../sqlite/sqlite_db.js";
+import { POST_STATUSES, POST_LINK_ROLES } from "../vocabulary.js";
 
 /**
  * Центральна таблиця TheFlow. Один рядок на кожне вхідне повідомлення
@@ -13,26 +14,8 @@ import database from "../sqlite/sqlite_db.js";
  * Специфікація полів: docs/theflow/DATA_MODEL.md
  */
 
-// Статуси життєвого циклу поста. STRING, а не ENUM: набір статусів TheFlow
-// ще уточнюватиметься, а міграцій у проєкті немає — розширювати список
-// рядкового поля дешевше, ніж ENUM.
-export const POST_STATUSES = [
-  "pending",            // щойно записаний ingest-ом, чекає на enrich
-  "enriched",           // отримав вердикт від LLMGateway
-  "routed",             // доставлений у призначення
-  "suppressed",         // дублікат, що нічого не додає
-  "unsorted",           // низька впевненість або невідома категорія → #unsorted
-  "skipped_blacklist",  // відсіяний regex-стадією: blacklist джерела
-  "skipped_empty",      // порожній або коротший за поріг після replacements
-  "skipped_noise",      // тільки емодзі / тільки посилання / службовий текст
-  "skipped_shouty",     // короткий пост капсом (ритуальні/службові), опційно на джерело
-  "skipped_short",      // коротший за filters.min_length джерела (без посилань), опційно
-  "skipped_repost",     // точний хеш-збіг у вікні останніх N годин, те саме джерело (§6.1)
-  "failed",             // спроби вичерпані; рядок лишається для розбору
-];
-
-// Роль поста всередині кластера (події).
-export const POST_LINK_ROLES = ["canonical", "linked", "duplicate", "correction"];
+// Словники — у ../vocabulary.js (чисті модулі беруть їх звідти, без бази).
+export { POST_STATUSES, POST_LINK_ROLES };
 
 export const Post = database.sequelize.define("Post", {
   id: {

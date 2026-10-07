@@ -3,6 +3,7 @@ import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
 import discordRest, { snowflakeTime } from "../../module/discord/DiscordRest.js";
 import { DISCORD_UPLOAD_LIMIT_MB } from "../../config/app.config.js";
 import { print } from "../../shared/utils.js";
+import { DISCORD } from "../../shared/platformLimits.js";
 
 /**
  * DiscordDestinationAdapter
@@ -26,10 +27,10 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
 
     // Discord ліміти
     this.limits = {
-      messageLength:         2000,
-      embedDescriptionLength: 4096,
-      embedAuthorLength:     256,
-      embedFooterLength:     2048,
+      messageLength:         DISCORD.messageContent,
+      embedDescriptionLength: DISCORD.embedDescription,
+      embedAuthorLength:     DISCORD.embedAuthor,
+      embedFooterLength:     DISCORD.embedFooter,
     };
 
     this.fileSizeLimit = DISCORD_UPLOAD_LIMIT_MB * 1024 * 1024;
@@ -269,8 +270,8 @@ class DiscordDestinationAdapter extends BaseDestinationAdapter {
       }
       if (Array.isArray(flowEmbed.fields) && flowEmbed.fields.length) {
         embedSpec.fields = flowEmbed.fields.slice(0, 25).map((f) => ({
-          name: this._truncate(String(f.name), 256),
-          value: this._truncate(String(f.value), 1024),
+          name: this._truncate(String(f.name), DISCORD.embedTitle),
+          value: this._truncate(String(f.value), DISCORD.embedFieldValue),
           inline: Boolean(f.inline),
         }));
       }

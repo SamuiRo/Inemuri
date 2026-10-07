@@ -1,9 +1,11 @@
+import { HOUR } from "../../../shared/time.js";
 import { Op } from "sequelize";
 
 import database from "../../teapot/sqlite/sqlite_db.js";
 import { Post, Source, Cluster } from "../../teapot/models/index.js";
 import { telegramLink } from "../search/HistorySearch.js";
 import { TEMPLATE } from "../delivery/render.js";
+import { DISCORD, TELEGRAM } from "../../../shared/platformLimits.js";
 
 /**
  * TheFlow — дайджест (ROADMAP §9, фаза 5).
@@ -26,7 +28,8 @@ const SIGNAL_WEIGHT = {
   security: 5, outage: 3, promo_code: 3, freebie: 3,
   launch: 2, event: 2, patch: 2, analysis: 2, research: 2, report: 2, opinion: 0,
 };
-const LIMIT = 3_900; // з запасом під 4096 обох платформ
+// З запасом під найменший ліміт обох платформ (заголовок, розмітка).
+const LIMIT = Math.min(TELEGRAM.message, DISCORD.embedDescription) - 196;
 
 /** Порядок усередині секції. Не фільтр. */
 export function digestScore(p) {
@@ -168,7 +171,7 @@ export async function collectDigestRows({ since, until }) {
  */
 export async function buildDigestMessage({ now = Date.now(), hours = 24, perTopic = 5, excludeSignals = [], topicOrder = [], destinations = {} } = {}) {
   const until = new Date(now);
-  const since = new Date(now - hours * 3_600_000);
+  const since = new Date(now - hours * HOUR);
   const rows = await collectDigestRows({ since, until });
   const sections = selectDigest(rows, { perTopic, excludeSignals, topicOrder });
   if (sections.length === 0) return null;

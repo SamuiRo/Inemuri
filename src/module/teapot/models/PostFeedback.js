@@ -1,5 +1,6 @@
 import { DataTypes } from "sequelize";
 import database from "../sqlite/sqlite_db.js";
+import { FEEDBACK_VERDICTS } from "../vocabulary.js";
 
 /**
  * Мітка людини на пост TheFlow.
@@ -12,7 +13,7 @@ import database from "../sqlite/sqlite_db.js";
  * Специфікація: docs/theflow/DATA_MODEL.md
  */
 
-export const FEEDBACK_VERDICTS = ["good", "noise", "wrong_topic", "missed"];
+export { FEEDBACK_VERDICTS };
 
 export const PostFeedback = database.sequelize.define("PostFeedback", {
   id: {

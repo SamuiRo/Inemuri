@@ -6,7 +6,7 @@ import {
 } from "../src/sources/feeds/parsers.js";
 import { feedUrlOf, toFeedMessageData } from "../src/sources/feeds/FeedPoller.js";
 import { HostThrottle, retryAfterMs, fetchFeed } from "../src/sources/feeds/http.js";
-import { UrlMediaResolver, guessFromUrl, typeFromContentType } from "../src/module/theflow/media/UrlMediaResolver.js";
+import { UrlMediaResolver, guessFromUrl, typeFromContentType } from "../src/sources/feeds/UrlMediaResolver.js";
 import { buildEnrichPrompt } from "../src/services/ai/prompts/enrich.js";
 
 const RSS = `<?xml version="1.0"?>

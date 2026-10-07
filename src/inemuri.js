@@ -1,5 +1,6 @@
+import { MINUTE, HOUR } from "./shared/time.js";
 import { WELCOM_MESSAGE, SUB_TITTLE } from "./shared/message.js";
-import { print, banner } from "./shared/utils.js";
+import { print, banner, printStack, loadImage } from "./shared/utils.js";
 import database from "./module/teapot/sqlite/sqlite_db.js";
 import EventBus from "./module/eventbus/EventBus.js";
 import MessageRouter from "./module/routing/MessageRouter.js";
@@ -11,7 +12,8 @@ import DiscordDestinationAdapter from "./destinations/discord/DiscordDestination
 import TelegramDestinationAdapter from "./destinations/telegram/TelegramDestination.js";
 import CronScheduler from "./module/cron/CronScheduler.js";
 import DiscordApp from "./module/discordapp/DiscordApp.js";
-import { CRON_JOBS } from "./config/cronjobs.js";
+import { createDailyJob } from "./module/cron/dailyReport.js";
+import CryptoDataService from "./services/crypto/CryptoDataService.js";
 import LLMGateway from "./services/ai/LLMGateway.js";
 import EnrichWorker from "./module/theflow/EnrichWorker.js";
 import VisionStage from "./module/theflow/VisionStage.js";
@@ -26,12 +28,18 @@ import { createTriageExamples } from "./module/theflow/triage/examples.js";
 import { collectStorage, assessStorage } from "./module/theflow/Storage.js";
 import { buildDigestMessage } from "./module/theflow/digest/Digest.js";
 import mediaResolver from "./module/theflow/media/index.js";
+import TelegramMediaResolver from "./sources/telegram/TelegramMediaResolver.js";
+import UrlMediaResolver from "./sources/feeds/UrlMediaResolver.js";
 import StatusBoard from "./module/status/StatusBoard.js";
 import { collectStatus } from "./module/status/collect.js";
 import { Source, VisionCache, DiscoveredItem, StatusMessage } from "./module/teapot/models/index.js";
-import { validateRouting, copyDestinations, destinationIdProblems } from "./module/theflow/ResolveStage.js";
+import { validateRouting } from "./module/theflow/ResolveStage.js";
+import { copyDestinations, destinationIdProblems } from "./shared/destinations.js";
 import {
   VISION_CACHE_TTL_HOURS,
+  CRON_CONFIG,
+  DAILY_REPORT,
+  MAINTENANCE_SWEEP_HOURS,
   CATEGORIES,
   ROUTING,
   CONFIG_WARNINGS,
@@ -80,7 +88,23 @@ class Inemuri {
     // Нагляд за TheFlow (ROADMAP §13.10)
     this.flowHealth = null;
 
+    // Конфіг TheFlow джерела — кешується на весь процес, як і кеші
+    // TelegramSourceListener: зміна flow через reseed діє після перезапуску.
+    // Спільний для воркера й доставки.
+    const flowConfigs = new Map();
+    this.flowFor = async (post) => {
+      if (!flowConfigs.has(post.source_id)) flowConfigs.set(post.source_id, await Source.findByPk(post.source_id));
+      return flowConfigs.get(post.source_id)?.getFlowConfig() ?? null;
+    };
+
     this.setupEventHandlers();
+  }
+
+  /** Правка надісланого через адаптер платформи (доставка TheFlow, статус-борд). */
+  editVia(platform, channelId, messageId, messageData, identity) {
+    const adapter = this.messageRouter.adapters.get(platform);
+    if (!adapter?.capabilities?.edit) throw new Error(`${platform} adapter cannot edit`);
+    return adapter.editMessageData(channelId, messageId, messageData, identity);
   }
 
   /**
@@ -90,9 +114,7 @@ class Inemuri {
     // Обробка критичних помилок на рівні системи
     this.eventBus.on("error.occurred", (errorData) => {
       print(`[ERROR] ${errorData.source}: ${errorData.error}`, "error");
-      console.error(errorData);
-      // Тут можна додати логіку для критичних помилок
-      // наприклад, запис в логи, алерти, тощо
+      printStack({ stack: errorData?.stack });
     });
   }
 
@@ -139,6 +161,11 @@ class Inemuri {
       print("Synchronizing database models...");
       await database.sync();
 
+      // Лінивий медіа-шар TheFlow: резолвери платформ реєструються тут, у
+      // корені композиції, — TheFlow знає лише контракт resolve(post).
+      mediaResolver.register("telegram", new TelegramMediaResolver());
+      mediaResolver.register("url", new UrlMediaResolver());
+
       // 3. Підключення до Telegram
       print("Connecting to Telegram...");
       await telegramClient.connect();
@@ -175,7 +202,16 @@ class Inemuri {
       // 7. Ініціалізація Cron Scheduler
       print("Initializing Cron Scheduler...");
       this.cronScheduler = new CronScheduler(this.eventBus);
-      await this.cronScheduler.initialize(CRON_JOBS);
+      await this.cronScheduler.initialize([
+        createDailyJob({
+          crypto: new CryptoDataService(),
+          loadImage,
+          destinations: CRON_CONFIG.dailyinfo?.destinations ?? {},
+          schedule: DAILY_REPORT.schedule,
+          enabled: DAILY_REPORT.enabled,
+          log: print,
+        }),
+      ]);
 
       // 7b. Дайджест TheFlow (фаза 5) — той самий шлях, що й cron-звіт:
       //     синтетичний message.received у digest_destinations з routing.json.
@@ -209,15 +245,8 @@ class Inemuri {
         // ходить у Telegram через резолвер медіа, а воркер за дизайном
         // Telegram не знає. Без провайдера з vision стадія сама повертає
         // "unavailable", і збагачення йде як раніше.
-        const vision = new VisionStage({ gateway, ttlHours: VISION_CACHE_TTL_HOURS });
-        // Конфіг джерела кешується на весь процес — як і в TelegramSourceListener,
-        // що будує свої кеші на старті. Зміна flow.vision через reseed
-        // підхоплюється перезапуском, як і решта налаштувань джерела.
-        const sources = new Map();
-        const flowFor = async (post) => {
-          if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
-          return sources.get(post.source_id)?.getFlowConfig() ?? null;
-        };
+        const vision = new VisionStage({ gateway, resolver: mediaResolver, ttlHours: VISION_CACHE_TTL_HOURS });
+        const flowFor = this.flowFor;
         // Дедуплікація (§6) — у тіку воркера, одразу після збагачення.
         const dedup = DEDUP.enabled
           ? new DedupStage({
@@ -251,7 +280,7 @@ class Inemuri {
             .then((n) => n && print(`[VISION] cache sweep removed ${n} row(s)`, "debug"))
             .catch((error) => print(`[VISION] cache sweep failed: ${error.message}`, "warning"));
         sweepVisionCache();
-        this.visionSweepTimer = setInterval(sweepVisionCache, 6 * 3_600_000);
+        this.visionSweepTimer = setInterval(sweepVisionCache, MAINTENANCE_SWEEP_HOURS * HOUR);
         this.visionSweepTimer.unref();
 
         // Кандидати triage — лише заголовки, живуть FLOW_TRIAGE.retentionDays.
@@ -260,7 +289,7 @@ class Inemuri {
             .then((n) => n && print(`[TRIAGE] swept ${n} old candidate(s)`, "debug"))
             .catch((error) => print(`[TRIAGE] sweep failed: ${error.message}`, "warning"));
         sweepDiscovered();
-        this.triageSweepTimer = setInterval(sweepDiscovered, 6 * 3_600_000);
+        this.triageSweepTimer = setInterval(sweepDiscovered, MAINTENANCE_SWEEP_HOURS * HOUR);
         this.triageSweepTimer.unref();
       } else {
         print(
@@ -303,8 +332,8 @@ class Inemuri {
           });
         },
         thresholds: FLOW_HEALTH,
-        intervalMs: FLOW_HEALTH.intervalMin * 60_000,
-        repeatMs: FLOW_HEALTH.repeatHours * 3_600_000,
+        intervalMs: FLOW_HEALTH.intervalMin * MINUTE,
+        repeatMs: FLOW_HEALTH.repeatHours * HOUR,
         workerRunning: Boolean(this.enrichWorker),
         log: print,
       });
@@ -314,23 +343,15 @@ class Inemuri {
       //      ввімкне FLOW_DELIVERY_ENABLED — тіньовий режим. Відправка — через
       //      наявний MessageRouter, медіа — через резолвер, ліниво.
       if (FLOW_DELIVERY.enabled) {
-        const sources = new Map();
         this.flowDelivery = new FlowDelivery({
           route: (messageData) => this.messageRouter.routeMessage(messageData),
           // §6.6: відповідь в одне призначення і правка надісланого — через
           // ті самі адаптери, що й відправка.
           sendTo: (platform, id, messageData) => this.messageRouter.sendToDestination(platform, id, messageData),
-          edit: (platform, channelId, messageId, messageData, identity) => {
-            const adapter = this.messageRouter.adapters.get(platform);
-            if (!adapter?.capabilities?.edit) throw new Error(`${platform} adapter cannot edit`);
-            return adapter.editMessageData(channelId, messageId, messageData, identity);
-          },
+          edit: (...args) => this.editVia(...args),
           resolveMedia: (post, opts) => mediaResolver.resolve(post, opts),
           routing: ROUTING,
-          flowFor: async (post) => {
-            if (!sources.has(post.source_id)) sources.set(post.source_id, await Source.findByPk(post.source_id));
-            return sources.get(post.source_id)?.getFlowConfig() ?? null;
-          },
+          flowFor: this.flowFor,
           // Переклад постів не українською — через той самий gateway (одна
           // черга й облік квоти). Без провайдера доставка шле оригінал.
           translate: this.llmGateway ? (input) => this.llmGateway.translate(input) : null,
@@ -360,17 +381,13 @@ class Inemuri {
           collect: () => collectStatus({ routing: ROUTING, adapterFor: (platform) => this.messageRouter.adapters.get(platform) }),
           destinations: statusDestinations,
           send: (platform, id, messageData) => this.messageRouter.sendToDestination(platform, id, messageData),
-          edit: (platform, channelId, messageId, messageData) => {
-            const adapter = this.messageRouter.adapters.get(platform);
-            if (!adapter?.capabilities?.edit) throw new Error(`${platform} adapter cannot edit`);
-            return adapter.editMessageData(channelId, messageId, messageData);
-          },
+          edit: (platform, channelId, messageId, messageData) => this.editVia(platform, channelId, messageId, messageData),
           store: StatusMessage,
           thresholds: STATUS,
-          intervalMs: STATUS.intervalMin * 60_000,
+          intervalMs: STATUS.intervalMin * MINUTE,
           log: print,
         });
-        this.statusBoard.start();
+        this.statusBoard.start({ firstDelayMs: STATUS.firstDelayMs });
         print(`Status board ON — every ${STATUS.intervalMin} min`);
       }
 
@@ -399,7 +416,7 @@ class Inemuri {
       print("System is now routing messages...", "success");
     } catch (error) {
       print(error.message, "error");
-      console.error("An error occurred while starting Inemuri:", error);
+      printStack(error);
       await this.stop();
     }
   }

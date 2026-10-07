@@ -9,10 +9,9 @@ import {
   TELEGRAM_API_ID,
   TELEGRAM_API_HASH,
   PKG,
+  TELEGRAM_CONNECTION_RETRIES,
 } from "../../config/app.config.js";
-// const pkg = require("../../../package.json");
-import { print } from "../../shared/utils.js";
-// import { SESSION, API_ID, API_HASH } from "./../config/telegram-config";
+import { print, printStack } from "../../shared/utils.js";
 
 class TelegramClient {
   constructor() {
@@ -25,7 +24,7 @@ class TelegramClient {
       appVersion: PKG.version,
       useWSS: true, // not sure if it works in node at all
       testServers: false, // this one should be the default for node env, but who knows for sure :)
-      connectionRetries: 5,
+      connectionRetries: TELEGRAM_CONNECTION_RETRIES,
     };
   }
 
@@ -53,7 +52,7 @@ class TelegramClient {
         phoneCode:   async () => askText("Verification code: "),
         onError: (error) => {
           print(`Authentication error: ${error.message}`, "error");
-          console.error(error);
+          printStack(error);
         },
       });
 
@@ -73,7 +72,7 @@ class TelegramClient {
       return this.client;
     } catch (error) {
       print(`Failed to connect to Telegram: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
       throw error;
     }
   }

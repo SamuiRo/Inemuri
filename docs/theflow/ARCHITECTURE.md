@@ -170,6 +170,9 @@ filters, media download and `message.received`. Not earlier
 stores `posts.media_ref` (`{ kind: "telegram", channel_id, message_id,
 grouped_id }` or `{ kind: "url", urls }`) and fetches through `MediaResolver`
 only for posts it delivers, so a duplicate never triggers a video download.
+The resolvers live with their platforms (`src/sources/telegram/`,
+`src/sources/feeds/`) and are registered by `src/inemuri.js`, so TheFlow
+imports neither GramJS nor the feed HTTP client.
 
 **3. Content decides the destination.** `MessageRouter` is unchanged: it
 still sends to `messageData.source.destinations`; for a flow post the resolve

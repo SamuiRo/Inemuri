@@ -1,3 +1,4 @@
+import { HOUR } from "../../shared/time.js";
 import crypto from "crypto";
 
 import { loadExamples } from "./knowledge/KnowledgeBase.js";
@@ -97,7 +98,7 @@ export { buildExamplesBlock } from "../../services/ai/prompts/fewshot.js";
  * Решта опцій (maxGood, maxWrong…) іде в `pick`.
  */
 export class FewShotStore {
-  constructor({ refreshMs = 3_600_000, now = Date.now, load = loadExamples, pick = pickExamples, ...pickOptions } = {}) {
+  constructor({ refreshMs = HOUR, now = Date.now, load = loadExamples, pick = pickExamples, ...pickOptions } = {}) {
     this.pick = pick;
     this.opts = pickOptions;
     this.refreshMs = refreshMs;

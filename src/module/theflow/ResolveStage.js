@@ -39,6 +39,11 @@
  *     свій канал, і в збірний (усі промокоди — ще й в один канал).
  */
 
+import { copyDestinations, destinationIdProblems } from "../../shared/destinations.js";
+
+// Спільні з рештою Inemuri (статус-борд, нагляд); ре-експорт — для сумісності.
+export { copyDestinations, destinationIdProblems };
+
 /** Ключі, які розуміє `when`. Решта — помилка конфігурації, див. validateRouting. */
 const WHEN_KEYS = new Set(["topic", "signal_type", "source"]);
 
@@ -56,16 +61,6 @@ export const RESOLVE_REASONS = Object.freeze({
 });
 
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
-
-/** Копія призначень: викликач не має отримати посилання всередину конфігу. */
-export function copyDestinations(d) {
-  const out = {};
-  for (const [platform, ids] of Object.entries(d ?? {})) {
-    const list = asArray(ids).map(String).filter((id) => id.trim() !== "");
-    if (list.length) out[platform] = list;
-  }
-  return out;
-}
 
 /**
  * Правила, упорядковані за спаданням priority. Сортування стабільне: при
@@ -269,25 +264,6 @@ export function validateRouting(routing, taxonomy) {
     }
   });
 
-  return problems;
-}
-
-/**
- * Ідентифікатори, які платформа точно не прийме: Discord — лише snowflake,
- * Telegram — числовий chat id або @username. Ловить заглушки на кшталт
- * "TODO:claims", що лишились у routing.json до створення каналу: інакше
- * доставка мовчки не дійшла б нікуди.
- */
-export function destinationIdProblems(destinations, at) {
-  const problems = [];
-  for (const [platform, ids] of Object.entries(copyDestinations(destinations))) {
-    for (const id of ids) {
-      const ok = platform === "discord" ? /^[0-9]{17,20}$/.test(id)
-        : platform === "telegram" ? /^-?[0-9]+$/.test(id) || /^@[A-Za-z0-9_]{4,}$/.test(id)
-          : true;
-      if (!ok) problems.push(`${at}.${platform} "${id}" is not a valid ${platform} id`);
-    }
-  }
   return problems;
 }
 

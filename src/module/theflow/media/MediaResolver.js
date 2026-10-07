@@ -18,8 +18,8 @@ import { print } from "../../../shared/utils.js";
  * (`buffer` is the bytes; a future resolver that streams to disk would return
  * `path` instead.)
  *
- * Registration happens in ./index.js. `TelegramMediaResolver` ships now;
- * `UrlMediaResolver` arrives with the Reddit/RSS adapters in phase 3.5, and is
+ * Registration happens in the composition root (src/inemuri.js): the
+ * resolvers live with their platforms (src/sources/telegram/, src/sources/feeds/), and is
  * an added `register("url", …)` line — not a change to the delivery path.
  */
 export class MediaResolver {

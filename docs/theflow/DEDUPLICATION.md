@@ -194,7 +194,7 @@ Every delivered copy in `clusters.delivered` is re-rendered whole and edited
 through the adapter's `editMessageData()` (Telegram and Discord) — the
 mechanism is in [DELIVERY.md](DELIVERY.md). Rules:
 
-- **Cap on additions.** At most three (`MAX_APPENDS`) per cluster are edited
+- **Cap on additions.** At most `FLOW_DELIVERY_MAX_APPENDS` (3) per cluster are edited
   in; after that only the counter grows.
 - **A failed edit is not a failed delivery.** Message deleted, permissions lost
   — fall back to a reply carrying the re-rendered message.

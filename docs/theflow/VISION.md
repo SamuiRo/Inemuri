@@ -52,7 +52,7 @@ its own — `NULL` means not tried, `""` means tried and nothing legible.
 2. **Text length** — a post with more than `vision.text_threshold` (200)
    characters has a decorative image; skip it.
 3. **Image type and size, before download** — `photo`, and documents of type
-   `image/png|jpeg|webp` up to 20 MB (screenshots sent as files to avoid
+   `image/png|jpeg|webp` up to `VISION_MAX_DOCUMENT_MB` (20) (screenshots sent as files to avoid
    compression). The format is checked by magic bytes before decoding: the MIME
    type is the sender's claim. SVG, HEIC and GIF are refused.
 4. **Album cap** — at most `vision.max_images_per_post` (2) images.
@@ -64,7 +64,7 @@ its own — `NULL` means not tried, `""` means tried and nothing legible.
 
 ## Local image processing
 
-`sharp` (`src/shared/image.js`) downscales to at most 1024 px on the long side
+`sharp` (`src/shared/image.js`) downscales to at most `VISION_MAX_SIDE` (1024 px) on the long side
 before sending — cost scales with resolution and screenshots stay legible —
 and computes the 64-bit dHash (9×8 grayscale) the cache compares.
 

@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 
 /**
  * Центральна шина подій для комунікації між модулями системи Inemuri
@@ -10,7 +10,6 @@ class EventBus extends EventEmitter {
     super();
     // Обробники запитів (request/reply): одна назва — один обробник.
     this._requestHandlers = new Map();
-    this.setupDefaultHandlers();
     this.setupErrorHandling();
   }
 
@@ -60,18 +59,8 @@ class EventBus extends EventEmitter {
     // Обробка необроблених помилок в async event handlers
     this.on("error", (error) => {
       print(`[EventBus] Uncaught error in event handler: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
     });
-  }
-
-  /**
-   * Налаштування базових обробників подій
-   */
-  setupDefaultHandlers() {
-    // Логування всіх подій для debugging (опціонально)
-    // this.onAny((eventName, data) => {
-    //   console.log(`[EventBus] ${eventName}`, data);
-    // });
   }
 
   /**
@@ -91,7 +80,7 @@ class EventBus extends EventEmitter {
         }
       } catch (error) {
         print(`[EventBus] Error in ${eventName} handler: ${error.message}`, "error");
-        console.error(error);
+        printStack(error);
         
         // Емітуємо помилку але не падаємо
         this.emitError({

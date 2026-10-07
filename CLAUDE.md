@@ -92,12 +92,27 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   intended (`EventBus`, `MessageFilter`, `TelegramMessageParser`,
   `telegramClient`).
 - All constants and environment variables live in `src/config/app.config.js`.
-  Do not read `process.env` elsewhere.
-- Logging goes through `print()` from `src/shared/utils.js`, not `console.log`.
+  Do not read `process.env` elsewhere. Every env var it reads is listed in
+  `.env.example`, and nothing else is — `test/env-example.test.js` fails
+  otherwise. A new tunable gets a default there and a line in `.env.example`.
+- Not configuration, but shared constants: Discord/Telegram API limits in
+  `src/shared/platformLimits.js`, time units (`MINUTE`, `HOUR`, `DAY`) in
+  `src/shared/time.js`, stored enums (post statuses, verdicts) in
+  `src/module/teapot/vocabulary.js`. No `86_400_000` or `4096` in modules.
+- **Functional core, imperative shell.** Business decisions are pure
+  functions of their arguments (no database, network, config import, clock
+  or logger inside) and are tested as functions; classes around them do the
+  I/O. A measuring module exports `collect…` (I/O) and `assess…`/`build…`
+  (pure). Pure modules import vocabularies, not models.
+- Logging goes through `print()` from `src/shared/utils.js`, not `console.*`;
+  stacks through `printStack(error)` (debug level, `LOG_LEVEL` filters).
 - Source adapters extend `BaseSourceAdapter`, destination adapters extend
   `BaseDestinationAdapter`.
 - Modules communicate through `EventBus` when an event handoff is enough,
-  rather than calling each other directly.
+  rather than calling each other directly; a question that needs an answer
+  is `eventBus.request(name)` with a `handle(name)` in the core (`/search`,
+  `/daily`). TheFlow and the status board import no platform code — the
+  composition root (`src/inemuri.js`) injects adapters and media resolvers.
 
 ## Operational cautions
 

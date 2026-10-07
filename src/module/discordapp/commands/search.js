@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { CATEGORIES } from "../../../config/app.config.js";
+import { CATEGORIES, FLOW_SEARCH } from "../../../config/app.config.js";
 import { textReply } from "../reply.js";
 
 // Discord дозволяє до 25 варіантів вибору; таксономія менша.
@@ -36,7 +36,7 @@ export default {
       signal: opt.getString("signal"),
       days: opt.getInteger("days"),
       limit: opt.getInteger("limit"),
-    }, { timeoutMs: 20_000 });
+    }, { timeoutMs: FLOW_SEARCH.requestTimeoutMs });
     return textReply(res.text, "search.md");
   },
 };

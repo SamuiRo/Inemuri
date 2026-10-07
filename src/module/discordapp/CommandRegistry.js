@@ -1,10 +1,10 @@
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { checkAccess } from "./guard.js";
 import { parseCustomId } from "./customId.js";
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
+import { DISCORD } from "../../shared/platformLimits.js";
 
-// Ліміт Discord на content повідомлення.
-const MAX_CONTENT = 2000;
+const MAX_CONTENT = DISCORD.messageContent;
 
 /**
  * Результат обробника → payload для editReply. Чиста функція.
@@ -119,7 +119,7 @@ class CommandRegistry {
         await interaction.editReply(toReply(result, { replacesMessage: updates }));
       } catch (error) {
         print(`[DISCORDAPP] ${label} failed: ${error.message}`, "error");
-        console.error(error);
+        printStack(error);
         await interaction.editReply(toReply(`❌ ${error.message}`, { replacesMessage: updates }));
       }
     } catch (error) {

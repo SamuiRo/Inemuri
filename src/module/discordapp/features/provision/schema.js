@@ -10,6 +10,7 @@ import {
 import { MAX_PANEL_ROLES, MAX_CONTENT, MAX_EMBED_DESCRIPTION } from "./messages.js";
 import { PANEL_MODES } from "../roles/rolePanel.js";
 import { parseAutomod } from "./automod.js";
+import { DISCORD } from "../../../../shared/platformLimits.js";
 
 /**
  * Валідація конфігу сервера і нормалізація в «бажаний стан». Чиста функція:
@@ -70,8 +71,8 @@ const MESSAGE_KINDS = ["text", "announcement"];
 // Ліміти Discord.
 const MAX_ROLES = 250;
 const MAX_CHANNELS_PER_CATEGORY = 50;
-const MAX_TOPIC = 1024;
-const MAX_SLOWMODE = 21_600;
+const MAX_TOPIC = DISCORD.channelTopic;
+const MAX_SLOWMODE = DISCORD.slowmodeSeconds;
 
 /**
  * @param {object} raw  Розпарсений JSON конфігу.

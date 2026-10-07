@@ -4,6 +4,8 @@
  * the gateway's behaviour is testable without real timers.
  */
 
+import { MINUTE } from "../../shared/time.js";
+
 /**
  * Per-provider RPM limiter. `take()` resolves when a token is available.
  *
@@ -16,7 +18,7 @@ export class TokenBucket {
   constructor(ratePerMinute, now = () => Date.now(), { burst = ratePerMinute } = {}) {
     this.capacity = Math.max(1, burst);
     this.tokens = this.capacity;
-    this.refillPerMs = Math.max(1, ratePerMinute) / 60_000;
+    this.refillPerMs = Math.max(1, ratePerMinute) / MINUTE;
     this.last = now();
     this._now = now;
   }
@@ -67,7 +69,7 @@ export class TokenBucket {
  * the breaker and traffic moves to the fallback with a periodic probe.
  */
 export class CircuitBreaker {
-  constructor({ threshold = 1, coolOffMs = 60_000, now = () => Date.now() } = {}) {
+  constructor({ threshold = 1, coolOffMs = MINUTE, now = () => Date.now() } = {}) {
     this.threshold = threshold;
     this.coolOffMs = coolOffMs;
     this._now = now;

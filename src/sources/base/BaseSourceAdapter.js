@@ -1,4 +1,4 @@
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 
 /**
  * Базовий абстрактний клас для всіх Source адаптерів
@@ -84,7 +84,7 @@ class BaseSourceAdapter {
         `Error handling ${this.platform} message: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
 
       // Емітимо помилку в Event Bus
       this.eventBus.emit("error.occurred", {

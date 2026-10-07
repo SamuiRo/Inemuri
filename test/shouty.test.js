@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { capsRatio, isShouty, compileShouty, SHOUTY_DEFAULTS } from "../src/shared/text.js";
 import messageFilter from "../src/module/filters/MessageFilter.js";
 import RegexStage from "../src/module/theflow/RegexStage.js";
-import { POST_STATUSES } from "../src/module/teapot/models/Post.js";
+import { POST_STATUSES } from "../src/module/teapot/vocabulary.js";
 
 const D = SHOUTY_DEFAULTS;
 

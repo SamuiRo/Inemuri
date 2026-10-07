@@ -81,7 +81,8 @@ sample with a `[CONFIG]` warning, a malformed one stops the start.
 | `GEMINI_API_KEY`, `LLM_PRIMARY`, `LLM_FALLBACK`, `OPENROUTER_*` | TheFlow providers ([LLM_GATEWAY.md](docs/theflow/LLM_GATEWAY.md)); without a primary key the enrich worker does not start |
 | `FLOW_DELIVERY_ENABLED` | TheFlow delivery; `false` by default (shadow mode) |
 | `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` | Reddit sources (unauthenticated requests get 403) |
-| `FLOW_*`, `DEDUP_*`, `STATUS_*`, `FEED_*` | Tuning, all with working defaults — see `.env.example` |
+| `LOG_LEVEL` | `debug` (default), `info`, `warning` or `error` — the lowest level that reaches the log |
+| `FLOW_*`, `DEDUP_*`, `STATUS_*`, `FEED_*`, `VISION_*` | Tuning, all with working defaults — see `.env.example` |
 
 ## Sources
 
@@ -314,8 +315,9 @@ server day to day: [docs/PROVISIONING.md](docs/PROVISIONING.md).
 
 ## Scheduled jobs
 
-Job handlers are in `src/config/cronjobs.js`, their destinations in
-`src/config/cronjob.config.json`:
+The job is `src/module/cron/dailyReport.js` (schedule `DAILY_REPORT_CRON`,
+default `5 0 * * *` server time; `DAILY_REPORT_ENABLED=false` turns it off),
+its destinations are in `src/config/cronjob.config.json`:
 
 ```json
 { "dailyinfo": { "destinations": { "telegram": ["-1001234567890"], "discord": ["123456789012345678"] } } }

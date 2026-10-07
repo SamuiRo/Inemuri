@@ -9,7 +9,7 @@
  * `t` — час події в мс (posted_at, інакше createdAt).
  */
 
-const HOUR = 3_600_000;
+import { HOUR } from "../../../shared/time.js";
 
 // Параметри, що не несуть змісту, але роблять одне посилання різними рядками.
 const TRACKING_PARAMS = new Set([

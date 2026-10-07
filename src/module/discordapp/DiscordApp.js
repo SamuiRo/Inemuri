@@ -1,3 +1,4 @@
+import { DISCORD_APP_RETRY } from "../../config/app.config.js";
 import { Events } from "discord.js";
 import CommandRegistry from "./CommandRegistry.js";
 import { isServedGuild } from "./guard.js";
@@ -5,8 +6,7 @@ import { COMMANDS, COMPONENTS } from "./commands/index.js";
 import { print } from "../../shared/utils.js";
 
 // Повтор невдалого логіну: від 30 с, подвоюючи, до 10 хв.
-const RETRY_MIN_MS = 30_000;
-const RETRY_MAX_MS = 10 * 60_000;
+const { minMs: RETRY_MIN_MS, maxMs: RETRY_MAX_MS } = DISCORD_APP_RETRY;
 
 /**
  * DiscordApp — керування Discord-серверами в складі Inemuri

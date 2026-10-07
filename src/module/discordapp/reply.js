@@ -1,5 +1,7 @@
+import { DISCORD } from "../../shared/platformLimits.js";
+
 // Discord обрізає content на 2000; запас — під рядок про вкладення.
-const INLINE_LIMIT = 1900;
+const INLINE_LIMIT = DISCORD.messageContent - 100;
 
 /**
  * Довгий текст для відповіді: якщо влазить — як є, інакше — початок у

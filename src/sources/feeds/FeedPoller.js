@@ -1,3 +1,4 @@
+import { MINUTE } from "../../shared/time.js";
 import { Source, SourceState } from "../../module/teapot/models/index.js";
 import messageFilter from "../../module/filters/MessageFilter.js";
 import FlowIngest from "../../module/theflow/FlowIngest.js";
@@ -11,7 +12,7 @@ import { toItem } from "../../module/theflow/triage/candidates.js";
 import sourceActivity from "../../module/status/SourceActivity.js";
 
 export const FEED_PLATFORMS = ["reddit", "rss"];
-const MIN = 60_000;
+const MIN = MINUTE;
 
 /** Звідки опитувати джерело. null — конфіг джерела непридатний. */
 export function feedUrlOf(source, maxItems = FEEDS.maxItems, { oauth = false } = {}) {

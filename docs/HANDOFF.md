@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.59.3`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 625 green
+`v4.60.0`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 642 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -113,6 +113,23 @@ done work is a line per task there, details in CHANGELOG.
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
 
+### 2026-10-07 — code audit: boundaries, config, pure cores (`v4.60.0`)
+
+Measured first: the import graph (no cycles), which files mix I/O with
+decisions, and every literal outside `app.config.js`. Fixed: discordapp no
+longer imports core code (`/daily` goes through `cron.run` on the bus);
+TheFlow no longer imports Telegram (media resolvers moved to their
+platforms, registered in `inemuri.js`); the status board no longer imports a
+TheFlow stage. Decisions extracted into pure functions (cluster updates,
+polling schedule, flow stats, daily report). API limits, time units and
+stored enums each have one home. Every tunable is in `app.config.js` and
+`.env.example`, guarded by a test; `LOG_LEVEL` added. A second, unused
+filter implementation on the `Source` model removed. Left as is, on purpose:
+the source adapters still call `FlowIngest` directly (the documented
+classic/flow branch), discordapp keeps its own `DiscordResource` table, and
+the big adapters (`TelegramDestination`, `TelegramSourceListener`) are I/O by
+nature — splitting them further is a separate change.
+
 ### 2026-10-07 — documentation audit
 
 Every document checked against the code. Fixed what was wrong: README's
@@ -126,7 +143,7 @@ media.md's file-size limit, NEWS_INTAKE's unbuilt entity allow-list and
 ROADMAP 1545 → ~400 lines (section numbers kept), DATA_MODEL's per-migration
 prose (now a table), DISCORDAPP's work plan, DEPLOYMENT's one-off rollout
 procedures (now one "Turning on TheFlow features"). Found, not fixed: the
-license mismatch above; `src/config/appearance.config.json` is read by
+license mismatch above; `src/config/appearance.config.json` (removed in v4.60.0) was read by
 nothing.
 
 ### 2026-10-06 — deployed: TheFlow live on the VPS
@@ -141,18 +158,3 @@ reposts those instead, and explains a missing Apply button. Routing ids
 filled from `discordapp.js ids`, delivery on to the staff test channels,
 status board on. `v4.59.2`: `ecosystem.config.cjs` runs from its own
 directory, docs brought to the deployed state.
-
-### 2026-10-04 — the server and routing for the test week
-
-The operator's server was redesigned for TheFlow (config and texts only,
-git-ignored): almost every topic behind its own role, role panels by group,
-new channels created in the staff category for the test week, the archive
-for a dedicated role only. Code for it, generic: routing by source,
-`also` rules for a shared codes channel, the status board, `discordapp.js
-ids`, placeholder checks in preflight. Nothing was applied: the operator
-applies on the VPS with the production bot. A plan with an empty state
-(what the VPS will see) adopts everything cleanly and reposts the 9 managed
-messages — the old copies are deleted by hand. Then the texts: the delivery
-template in Ukrainian with codes, events and diagnostics as embed fields,
-role panels as embeds (new generic option), the status board in Ukrainian,
-and the server texts plus an announcement in news (git-ignored).

@@ -1,3 +1,4 @@
+import { DAY } from "../../../shared/time.js";
 import { Op } from "sequelize";
 
 import { DiscoveredItem, Source } from "../../teapot/models/index.js";
@@ -50,7 +51,7 @@ export function reviewQueue({ limit = 50 } = {}) {
  * }>}
  */
 export async function collectTriageStats({ days = 7, now = new Date() } = {}) {
-  const since = new Date(now.getTime() - days * 86_400_000);
+  const since = new Date(now.getTime() - days * DAY);
   const rows = await DiscoveredItem.findAll({
     where: { createdAt: { [Op.gte]: since } },
     attributes: ["source_id", "status", "decided_by", "area", "reason", "sampled", "review_verdict"],

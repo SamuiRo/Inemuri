@@ -1,3 +1,4 @@
+import { MINUTE } from "../../shared/time.js";
 import { Op } from "sequelize";
 
 import { Post, Source, ProviderQuota } from "../teapot/models/index.js";
@@ -23,7 +24,7 @@ import { Post, Source, ProviderQuota } from "../teapot/models/index.js";
  * inemuri.js як `notify(text)`.
  */
 
-const MIN = 60_000;
+const MIN = MINUTE;
 const HOUR = 60 * MIN;
 
 /**

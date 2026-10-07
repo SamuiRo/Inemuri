@@ -4,6 +4,21 @@ Newest first. [HANDOFF.md](HANDOFF.md) keeps only the latest entries; when it
 gets a new one, the oldest of them moves here. For what each version shipped,
 see [CHANGELOG.md](CHANGELOG.md).
 
+### 2026-10-04 — the server and routing for the test week
+
+The operator's server was redesigned for TheFlow (config and texts only,
+git-ignored): almost every topic behind its own role, role panels by group,
+new channels created in the staff category for the test week, the archive
+for a dedicated role only. Code for it, generic: routing by source,
+`also` rules for a shared codes channel, the status board, `discordapp.js
+ids`, placeholder checks in preflight. Nothing was applied: the operator
+applies on the VPS with the production bot. A plan with an empty state
+(what the VPS will see) adopts everything cleanly and reposts the 9 managed
+messages — the old copies are deleted by hand. Then the texts: the delivery
+template in Ukrainian with codes, events and diagnostics as embed fields,
+role panels as embeds (new generic option), the status board in Ukrainian,
+and the server texts plus an announcement in news (git-ignored).
+
 ### 2026-10-04 — audit of TheFlow, three fixes
 
 An audit of the whole flow path before the shadow week. Two critical bugs,

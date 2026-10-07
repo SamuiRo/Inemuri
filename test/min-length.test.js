@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { isTooShort, compileMinLength } from "../src/shared/text.js";
 import messageFilter from "../src/module/filters/MessageFilter.js";
 import RegexStage from "../src/module/theflow/RegexStage.js";
-import { POST_STATUSES } from "../src/module/teapot/models/Post.js";
+import { POST_STATUSES } from "../src/module/teapot/vocabulary.js";
 
 // Реальні форми з ігрового каналу: однорядковий анонс без змісту і
 // звичайна новина з того самого каналу.

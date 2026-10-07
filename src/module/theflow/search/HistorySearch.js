@@ -1,3 +1,5 @@
+import { FLOW_SEARCH } from "../../../config/app.config.js";
+import { DAY } from "../../../shared/time.js";
 import database from "../../teapot/sqlite/sqlite_db.js";
 import { Source, Cluster } from "../../teapot/models/index.js";
 import { toSqliteDate } from "../../teapot/models/Post.js";
@@ -26,11 +28,10 @@ import { decodeEmbedding, cosine } from "../dedup/DedupCore.js";
 
 const SNIPPET = 160;
 const MAX_LIMIT = 25;
-// Без фільтра days семантика перебирає стільки найсвіжіших векторів.
-// Дефолтного вікна в днях немає: корпус може бути історією каналу (пілот —
-// пости за травень–липень), і вікно «30 днів» відсікало все. Косинус по
-// 20k векторах — десятки мілісекунд.
-const SEMANTIC_MAX_ROWS = 20_000;
+// Без фільтра days семантика перебирає FLOW_SEARCH.semanticMaxRows найсвіжіших
+// векторів. Дефолтного вікна в днях немає: корпус може бути історією каналу
+// (пілот — пости за травень–липень), і вікно «30 днів» відсікало все.
+// Косинус по 20k векторах — десятки мілісекунд.
 // Нижче цього схожість — шум: краще «нічого не знайдено», ніж випадкові пости.
 const MIN_SEMANTIC_S = 0.5;
 
@@ -125,9 +126,10 @@ export class HistorySearch {
    * @param {{ gateway?: object|null, now?: () => number }} [deps]
    *   `gateway` — LLMGateway для semantic; без нього доступний лише keyword.
    */
-  constructor({ gateway = null, now = Date.now } = {}) {
+  constructor({ gateway = null, now = Date.now, semanticMaxRows = FLOW_SEARCH.semanticMaxRows } = {}) {
     this.gateway = gateway;
     this.now = now;
+    this.semanticMaxRows = semanticMaxRows;
   }
 
   /**
@@ -161,7 +163,7 @@ export class HistorySearch {
     if (filters.sourceId) { sql.push(`${alias}.source_id = ?`); params.push(filters.sourceId); }
     if (filters.days) {
       sql.push(`COALESCE(${alias}.posted_at, ${alias}.createdAt) >= ?`);
-      params.push(toSqliteDate(new Date(this.now() - filters.days * 86_400_000)));
+      params.push(toSqliteDate(new Date(this.now() - filters.days * DAY)));
     }
     return { sql: sql.join(" AND "), params };
   }
@@ -204,7 +206,7 @@ export class HistorySearch {
         "p.embedding, p.embedding_dim FROM posts p " +
         `WHERE p.embedding IS NOT NULL AND p.embedding_model = ? AND ${where.sql} ` +
         "ORDER BY COALESCE(p.posted_at, p.createdAt) DESC LIMIT ?",
-      { replacements: [emb.model, ...where.params, SEMANTIC_MAX_ROWS] },
+      { replacements: [emb.model, ...where.params, this.semanticMaxRows] },
     );
 
     const scored = [];
@@ -214,8 +216,8 @@ export class HistorySearch {
     }
     scored.sort((a, b) => b.score - a.score);
     const picked = collapseByCluster(scored, limit);
-    const note = rows.length >= SEMANTIC_MAX_ROWS
-      ? `searched the ${SEMANTIC_MAX_ROWS} most recent posts; set days or a topic to narrow`
+    const note = rows.length >= this.semanticMaxRows
+      ? `searched the ${this.semanticMaxRows} most recent posts; set days or a topic to narrow`
       : null;
     return { ...base, note, results: await this._present(picked, (r) => r.score) };
   }

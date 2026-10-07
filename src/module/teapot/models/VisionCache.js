@@ -1,3 +1,4 @@
+import { HOUR } from "../../../shared/time.js";
 import { DataTypes, Op } from "sequelize";
 import database from "../sqlite/sqlite_db.js";
 import { hammingDistance, SAME_IMAGE_MAX_DISTANCE } from "../../../shared/image.js";
@@ -64,7 +65,7 @@ VisionCache.nearest = async function (hash, opts = {}) {
     now = new Date(),
     scanLimit = VISION_CACHE_SCAN_LIMIT,
   } = opts;
-  const since = new Date(now.getTime() - ttlHours * 3_600_000);
+  const since = new Date(now.getTime() - ttlHours * HOUR);
 
   const exact = await this.findOne({
     where: { image_hash: hash, createdAt: { [Op.gte]: since } },
@@ -105,7 +106,7 @@ VisionCache.store = async function (hash, { text_ocr, description, legible, mode
 
 /** Прибрати записи, старші за TTL. Повертає кількість видалених. */
 VisionCache.sweep = async function ({ ttlHours = 72, now = new Date() } = {}) {
-  const before = new Date(now.getTime() - ttlHours * 3_600_000);
+  const before = new Date(now.getTime() - ttlHours * HOUR);
   return this.destroy({ where: { createdAt: { [Op.lt]: before } } });
 };
 

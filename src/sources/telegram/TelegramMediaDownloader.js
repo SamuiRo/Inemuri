@@ -1,4 +1,4 @@
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 import { DOWNLOADABLE_MEDIA_TYPES } from "../../config/app.config.js";
 
 /**
@@ -38,7 +38,7 @@ class TelegramMediaDownloader {
         `Error downloading media for message ${messageData.messageId}: ${error.message}`,
         "error",
       );
-      console.error(error);
+      printStack(error);
       return null;
     }
   }

@@ -1,3 +1,5 @@
+import { STATUS } from "../../config/app.config.js";
+import { MINUTE } from "../../shared/time.js";
 import { print } from "../../shared/utils.js";
 import { SourceState } from "../teapot/models/index.js";
 
@@ -10,7 +12,7 @@ import { SourceState } from "../teapot/models/index.js";
  * а сплеск каналу інакше дав би запис на кожне повідомлення.
  */
 export class SourceActivity {
-  constructor({ Model = SourceState, minIntervalMs = 5 * 60_000, now = Date.now, log = print } = {}) {
+  constructor({ Model = SourceState, minIntervalMs = STATUS.activityThrottleMin * MINUTE, now = Date.now, log = print } = {}) {
     this.Model = Model;
     this.minIntervalMs = minIntervalMs;
     this.now = now;

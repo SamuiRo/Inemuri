@@ -65,9 +65,10 @@ src/config/discordapp/               # git-ignored deployment data + *.sample
 scripts/discordapp.js                # check | apply | export | ids from a terminal
 ```
 
-`/daily` (`commands/daily.js`, admin) builds the daily report with the cron
-job's handler and emits it as `message.received`; it goes to the
-`cronjob.config.json` destinations exactly as the scheduled run does.
+`/daily` (`commands/daily.js`, admin) asks the core over the bus
+(`cron.run`, below): `CronScheduler.runJob("dailyinfo")` builds the report and
+emits it exactly as the scheduled run does, to the `cronjob.config.json`
+destinations.
 
 ### Command module contract
 
@@ -102,6 +103,7 @@ registry turns into an ephemeral message like any other. Known requests:
 | Request | Handler | Answers |
 |---|---|---|
 | `theflow.search` | `HistorySearch.search()` (`src/module/theflow/search/`) | `{ mode, query, results[], note?, error?, text }` — `text` is ready to show |
+| `cron.run` | `CronScheduler.runJob(id)` (`src/module/cron/`) | `true` if the job's message went out, `false` otherwise |
 
 ## Feature: `/search`
 

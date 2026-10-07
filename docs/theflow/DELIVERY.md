@@ -135,7 +135,7 @@ Whatever the final wording, these are fixed by other documents:
   with history. A delivered cluster is never sent again.
 - Updates to a sent message (ROADMAP §6.6) follow Decision 1 and 3 exactly:
   every update is a full re-render of the cluster through the adapter's
-  `editMessageData()`; additions are edited in up to three times per cluster;
+  `editMessageData()`; additions are edited in up to `FLOW_DELIVERY_MAX_APPENDS` (3) times per cluster (`planClusterUpdate()`, pure);
   a `corrects` or `denies` is edited in **and** sent as a reply
   (`renderNotice()`), cap or no cap; a failed edit becomes a reply. Where the
   length would not fit, the original is cut, not the addition — so the

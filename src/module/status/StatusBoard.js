@@ -1,7 +1,7 @@
+import { MINUTE, HOUR } from "../../shared/time.js";
 import { print } from "../../shared/utils.js";
 
-const HOUR = 3_600_000;
-const MAX_LINES = 25; // на розділ — щоб повідомлення лишалось читабельним і в межах 4096
+const DEFAULT_MAX_LINES = 25; // на розділ — щоб повідомлення лишалось читабельним і в межах 4096
 
 // Кольори смуги embed: усе гаразд / щось мовчить.
 export const STATUS_COLOR = { ok: 0x2f9e44, attention: 0xf08c00 };
@@ -9,7 +9,7 @@ export const STATUS_COLOR = { ok: 0x2f9e44, attention: 0xf08c00 };
 /** «5 д 3 год», «7 год», «40 хв». */
 export function formatAge(ms) {
   if (ms == null || !Number.isFinite(ms)) return "?";
-  const totalMin = Math.max(0, Math.floor(ms / 60_000));
+  const totalMin = Math.max(0, Math.floor(ms / MINUTE));
   const d = Math.floor(totalMin / 1440);
   const h = Math.floor((totalMin % 1440) / 60);
   if (d) return h ? `${d} д ${h} год` : `${d} д`;
@@ -30,6 +30,7 @@ export function formatAge(ms) {
 export function buildStatus({ sources = [], channels = [] }, thresholds, now) {
   const sourceLimit = thresholds.sourceSilentHours * HOUR;
   const channelLimit = thresholds.channelSilentHours * HOUR;
+  const maxLines = thresholds.maxLines ?? DEFAULT_MAX_LINES;
   const age = (d) => (d ? now - new Date(d).getTime() : null);
 
   const silentSources = sources
@@ -44,8 +45,8 @@ export function buildStatus({ sources = [], channels = [] }, thresholds, now) {
   const lines = [`🕒 Оновлено ${new Date(now).toISOString().slice(0, 16).replace("T", " ")} UTC`];
   const section = (title, items, render) => {
     lines.push("", title);
-    for (const item of items.slice(0, MAX_LINES)) lines.push(render(item));
-    if (items.length > MAX_LINES) lines.push(`…і ще ${items.length - MAX_LINES}`);
+    for (const item of items.slice(0, maxLines)) lines.push(render(item));
+    if (items.length > maxLines) lines.push(`…і ще ${items.length - maxLines}`);
   };
 
   if (silentSources.length) {
@@ -106,7 +107,7 @@ export class StatusBoard {
     this._running = false;
   }
 
-  start({ firstDelayMs = 60_000 } = {}) {
+  start({ firstDelayMs = MINUTE } = {}) {
     if (this._running) return;
     this._running = true;
     const loop = async () => {
@@ -144,7 +145,7 @@ export class StatusBoard {
       // Discord: смуга — зелена, коли все гаразд; footer — як часто оновлюється.
       embed: {
         color: status.allGood ? STATUS_COLOR.ok : STATUS_COLOR.attention,
-        footer: `Оновлюється кожні ${Math.round(this.intervalMs / 60_000)} хв`,
+        footer: `Оновлюється кожні ${Math.round(this.intervalMs / MINUTE)} хв`,
       },
       metadata: { source: "status" },
     };

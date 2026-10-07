@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { MediaResolver } from "../src/module/theflow/media/MediaResolver.js";
-import { TelegramMediaResolver } from "../src/module/theflow/media/TelegramMediaResolver.js";
+import { TelegramMediaResolver } from "../src/sources/telegram/TelegramMediaResolver.js";
 
 test("MediaResolver — dispatches by media_ref.kind", async () => {
   const r = new MediaResolver();

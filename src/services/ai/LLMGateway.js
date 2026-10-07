@@ -13,6 +13,7 @@ import {
   LLM_CACHE_MAX_SIZE,
   LLM_QUOTA_RESERVE,
   LLM_PROVIDERS,
+  LLM_RETRY_MAX_WAIT_MS,
 } from "../../config/app.config.js";
 import { TokenBucket, CircuitBreaker, TtlCache } from "./internal.js";
 import { validateEnrichResponse } from "./schemas.js";
@@ -491,8 +492,8 @@ export class LLMGateway {
           }
           if (kind === "rate_limit") {
             // Скільки просить провайдер (Gemini: RetryInfo, ~20–60 с), але не
-            // більше хвилини; без підказки — коротка пауза, як раніше.
-            const hinted = Number.isFinite(err.retryAfterMs) ? Math.min(err.retryAfterMs, 60_000) : 0;
+            // більше LLM_RETRY_MAX_WAIT_MS; без підказки — коротка пауза, як раніше.
+            const hinted = Number.isFinite(err.retryAfterMs) ? Math.min(err.retryAfterMs, LLM_RETRY_MAX_WAIT_MS) : 0;
             await this.sleep(Math.max(500 * (attempt + 1), hinted));
             continue;
           }

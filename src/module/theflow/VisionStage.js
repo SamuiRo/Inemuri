@@ -1,7 +1,8 @@
+import { VISION_MAX_DOCUMENT_MB, VISION_MAX_SIDE } from "../../config/app.config.js";
 import { print } from "../../shared/utils.js";
 import { dhash, downscaleForVision } from "../../shared/image.js";
 import { VisionCache } from "../teapot/models/index.js";
-import defaultResolver from "./media/index.js";
+import defaultResolver from "./media/MediaResolver.js";
 
 /**
  * TheFlow — стадія 1.5, vision (ROADMAP §4, VISION.md).
@@ -39,7 +40,7 @@ export const VISION_DOCUMENT_MIME = new Set(["image/png", "image/jpeg", "image/w
  * 4K-скріншот файлом — 5–15 МБ, а «картинка» може бути й значно більшою.
  * Фото стискає сам Telegram і розмір у метаданих не несе — їх не обмежуємо.
  */
-export const VISION_MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+export const VISION_MAX_DOCUMENT_BYTES = VISION_MAX_DOCUMENT_MB * 1024 * 1024;
 
 /**
  * Чи підходить медіа для vision — лише за метаданими, до завантаження.
@@ -94,13 +95,14 @@ export class VisionStage {
    * @param {object} [deps.image]                { dhash, downscaleForVision } — для тестів.
    * @param {number} [deps.ttlHours=72]
    */
-  constructor({ gateway, resolver = defaultResolver, cache = VisionCache, image, ttlHours = 72 } = {}) {
+  constructor({ gateway, resolver = defaultResolver, cache = VisionCache, image, ttlHours = 72, maxSide = VISION_MAX_SIDE } = {}) {
     if (!gateway) throw new Error("VisionStage needs a gateway");
     this.gateway = gateway;
     this.resolver = resolver;
     this.cache = cache;
     this.image = image ?? { dhash, downscaleForVision };
     this.ttlHours = ttlHours;
+    this.maxSide = maxSide;
   }
 
   /**
@@ -139,7 +141,7 @@ export class VisionStage {
       let small;
       let hash;
       try {
-        small = await this.image.downscaleForVision(file.buffer);
+        small = await this.image.downscaleForVision(file.buffer, { maxSide: this.maxSide });
         hash = await this.image.dhash(small.data);
       } catch (error) {
         // Одне биге зображення (або decompression bomb) не має блокувати

@@ -1,13 +1,8 @@
 import mediaResolver from "./MediaResolver.js";
-import TelegramMediaResolver from "./TelegramMediaResolver.js";
-import UrlMediaResolver from "./UrlMediaResolver.js";
 
-// Wire the resolvers that ship today. Registration only stores the instance;
-// the GramJS client is resolved lazily on the first resolve() call, well
-// after Telegram has connected. `url` serves Reddit and RSS posts (phase 3.5).
-mediaResolver.register("telegram", new TelegramMediaResolver());
-mediaResolver.register("url", new UrlMediaResolver());
-
+// Реєстр без реєстрацій. Резолвери живуть у своїх платформах
+// (src/sources/telegram/TelegramMediaResolver.js, src/sources/feeds/UrlMediaResolver.js)
+// і реєструються в корені композиції (src/inemuri.js): TheFlow не імпортує
+// ні Telegram, ні HTTP-клієнт стрічок — лише контракт resolve(post).
 export { MediaResolver } from "./MediaResolver.js";
-export { TelegramMediaResolver, UrlMediaResolver };
 export default mediaResolver;

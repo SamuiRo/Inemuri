@@ -1,3 +1,4 @@
+import { HOUR } from "../../../shared/time.js";
 import { Op } from "sequelize";
 
 import database from "../../teapot/sqlite/sqlite_db.js";
@@ -14,7 +15,6 @@ import {
   decide,
 } from "./DedupCore.js";
 
-const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
 // Поля поста, потрібні дедуплікації. Без raw_text / text_md / entities:

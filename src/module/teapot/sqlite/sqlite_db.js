@@ -1,7 +1,7 @@
 import { Sequelize } from "sequelize";
 
-import { print } from "../../../shared/utils.js";
-import { NODE_ENV, SQLITE_STORAGE } from "../../../config/app.config.js";
+import { print, printStack } from "../../../shared/utils.js";
+import { NODE_ENV, SQLITE_STORAGE, DB_POOL } from "../../../config/app.config.js";
 
 export class Database {
   sequelize;
@@ -21,10 +21,10 @@ export class Database {
       // бере блокування запису на BEGIN, і конкуренти просто чекають.
       transactionType: "IMMEDIATE",
       pool: {
-        max: 5,
-        min: 0,
-        acquire: 30000,
-        idle: 10000,
+        max: DB_POOL.max,
+        min: DB_POOL.min,
+        acquire: DB_POOL.acquireMs,
+        idle: DB_POOL.idleMs,
       },
       define: {
         freezeTableName: true,
@@ -45,7 +45,7 @@ export class Database {
       this.#isConnected = true;
     } catch (error) {
       print("Unable to connect to the database: " + error.message, "error");
-      console.error("Unable to connect to the database:", error);
+      printStack(error);
       throw error;
     }
   }
@@ -56,24 +56,14 @@ export class Database {
     }
 
     try {
-      // Налаштування для різних середовищ
-      // const syncOptions =
-      //   NODE_ENV === "development"
-      //     ? { force: true, ...options }
-      //     : { alter: true, ...options };
-
-          const syncOptions =
-        NODE_ENV === "development"
-          ? { force: true, ...options }
-          : {  ...options };
-
-          
-
+      // development перестворює таблиці (force) — див. CLAUDE.md, Operational
+      // cautions. Ніколи не alter: на SQLite це перебудова всієї таблиці.
+      const syncOptions = NODE_ENV === "development" ? { force: true, ...options } : { ...options };
       await this.sequelize.sync(syncOptions);
       print("Database synchronized successfully", "success");
     } catch (error) {
       print("Database sync error: " + error.message, "error");
-      console.error("Database sync error:", error);
+      printStack(error);
       throw error;
     }
   }

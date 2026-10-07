@@ -1,4 +1,4 @@
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 import { ALBUM_GROUP_TIMEOUT_MS } from "../../config/app.config.js";
 
 /**
@@ -142,7 +142,7 @@ class TelegramGroupBuffer {
       await this._onGroupReady(groupedMessage);
     } catch (error) {
       print(`[GROUP_BUFFER] Error flushing group ${groupId}: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
     }
   }
 }

@@ -1,4 +1,5 @@
 import { compileMinLength, compileShouty, isShouty, isTooShort } from "../../shared/text.js";
+import { print } from "../../shared/utils.js";
 
 /**
  * Ефективний фільтр повідомлень з кешуванням
@@ -42,7 +43,7 @@ class MessageFilter {
               };
             }
           } catch {
-            console.error(`[MessageFilter] Invalid regex pattern for source ${sourceId}:`, item.pattern);
+            print(`[MessageFilter] Invalid regex pattern for source ${sourceId}: ${item.pattern}`, "error");
             return null;
           }
         })

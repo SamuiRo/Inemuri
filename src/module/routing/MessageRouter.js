@@ -1,4 +1,4 @@
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 
 class MessageRouter {
   constructor(eventBus) {
@@ -16,7 +16,7 @@ class MessageRouter {
         await this.routeMessage(messageData);
       } catch (error) {
         print(`[ROUTER] Critical error in message.received handler: ${error.message}`, "error");
-        console.error(error);
+        printStack(error);
         
         // Емітуємо помилку але продовжуємо роботу
         this.eventBus.emitError({
@@ -120,7 +120,7 @@ class MessageRouter {
       return delivered;
     } catch (error) {
       print(`[ROUTER] Error routing message: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
 
       this.eventBus.emit("error.occurred", {
         source: "router",

@@ -1,5 +1,5 @@
 import cron from "node-cron";
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 
 /**
  * CronScheduler manages scheduled tasks that generate messages
@@ -10,6 +10,9 @@ export default class CronScheduler {
     this.eventBus = eventBus;
     this.jobs = new Map();
     this.isInitialized = false;
+    // Ручний запуск задачі (discordapp /daily) — запитом через шину, щоб
+    // discordapp не імпортував самі задачі (DISCORDAPP.md D1).
+    this.eventBus.handle("cron.run", ({ id, triggeredBy = null } = {}) => this.runJob(id, { triggeredBy }));
   }
 
   /**
@@ -42,7 +45,7 @@ export default class CronScheduler {
    * @param {boolean} config.enabled - Whether job is enabled
    */
   scheduleJob(config) {
-    const { id, schedule, handler, description, enabled = true } = config;
+    const { id, schedule, description, enabled = true } = config;
 
     if (!enabled) {
       print(`Skipping disabled cron job: ${id}`);
@@ -60,41 +63,7 @@ export default class CronScheduler {
       return;
     }
 
-    const task = cron.schedule(schedule, async () => {
-      try {
-        print(`Executing cron job: ${id} - ${description}`);
-
-        // Execute the handler to get message data
-        const messageData = await handler();
-
-        if (!messageData) {
-          print(`Cron job ${id} returned no message data`, "warning");
-          return;
-        }
-
-        // Emit as message.received event
-        // This makes cronjobs work like any other message source
-        this.eventBus.emitMessageReceived({
-          ...messageData,
-          metadata: {
-            ...messageData.metadata,
-            source: "cron",
-            cronJobId: id,
-            timestamp: new Date().toISOString(),
-          },
-        });
-
-        print(`Cron job ${id} message emitted successfully`);
-      } catch (error) {
-        print(`Error executing cron job ${id}: ${error.message}`, "error");
-        console.error(error);
-        this.eventBus.emitError({
-          error,
-          context: `CronJob: ${id}`,
-          cronJobId: id,
-        });
-      }
-    });
+    const task = cron.schedule(schedule, () => this.runJob(id));
 
     this.jobs.set(id, {
       task,
@@ -103,6 +72,54 @@ export default class CronScheduler {
     });
 
     print(`Scheduled cron job: ${id} (${schedule}) - ${description}`);
+  }
+
+  /**
+   * Виконати задачу зараз: handler → message.received, як будь-яке джерело.
+   * Той самий шлях для розкладу і ручного запуску.
+   *
+   * @param {string} id
+   * @param {{ triggeredBy?: string|null }} [opts]
+   * @returns {Promise<boolean>} true — повідомлення відправлено в шину.
+   */
+  async runJob(id, { triggeredBy = null } = {}) {
+    const job = this.jobs.get(id);
+    if (!job) {
+      print(`Cron job ${id} not found`, "warning");
+      return false;
+    }
+    const { handler, description } = job.config;
+    try {
+      print(`Executing cron job: ${id} - ${description}`);
+      const messageData = await handler();
+      if (!messageData) {
+        print(`Cron job ${id} returned no message data`, "warning");
+        return false;
+      }
+      job.lastRun = new Date().toISOString();
+      this.eventBus.emitMessageReceived({
+        ...messageData,
+        metadata: {
+          ...messageData.metadata,
+          source: triggeredBy ? "discord-command" : "cron",
+          cronJobId: id,
+          triggeredBy,
+          timestamp: job.lastRun,
+        },
+      });
+      print(`Cron job ${id} message emitted successfully`);
+      return true;
+    } catch (error) {
+      print(`Error executing cron job ${id}: ${error.message}`, "error");
+      printStack(error);
+      this.eventBus.emitError({
+        source: `cron:${id}`,
+        error: error.message,
+        stack: error.stack,
+        cronJobId: id,
+      });
+      return false;
+    }
   }
 
   /**

@@ -4,6 +4,7 @@ import BaseDestinationAdapter from "../base/BaseDestinationAdapter.js";
 import telegramClient from "../../module/telegram/TelegramClient.js";
 import { print } from "../../shared/utils.js";
 import { TELEGRAM_CAPTION_LIMIT } from "../../config/app.config.js";
+import { TELEGRAM } from "../../shared/platformLimits.js";
 
 /**
  * Entities (Api.MessageEntity*), що лежать у [0, end): за межею — геть,
@@ -32,12 +33,12 @@ class TelegramDestinationAdapter extends BaseDestinationAdapter {
 
     // Telegram ліміти для user accounts (MTProto, не Bot API)
     this.limits = {
-      fileSize: 2000 * 1024 * 1024, // 2GB для user accounts
+      fileSize: TELEGRAM.fileBytes, // 2GB для user accounts
       // Підпис до медіа: 1024 без Premium, 4096 з ним (TELEGRAM_PREMIUM).
       // Раніше тут стояло 4096 для всіх — довший за 1024 підпис з акаунта без
       // Premium Telegram відхиляв (MEDIA_CAPTION_TOO_LONG).
       caption: TELEGRAM_CAPTION_LIMIT,
-      message: 4096, // максимальна довжина текстового повідомлення
+      message: TELEGRAM.message,
     };
 
     // Типи медіа які підтримуються

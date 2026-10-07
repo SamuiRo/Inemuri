@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { panelButtonId } from "../roles/rolePanel.js";
+import { DISCORD } from "../../../../shared/platformLimits.js";
 
 /**
  * Повідомлення провіжну (правила, гайди, панелі ролей) → payload Discord.
@@ -10,14 +11,14 @@ import { panelButtonId } from "../roles/rolePanel.js";
  * не лишає старий embed. Він же — вхід хешу, за яким видно, що текст змінився.
  */
 
-export const MAX_CONTENT = 2000;
-export const MAX_EMBED_DESCRIPTION = 4096;
-export const MAX_EMBED_TITLE = 256;
-export const MAX_EMBEDS = 10;
+export const MAX_CONTENT = DISCORD.messageContent;
+export const MAX_EMBED_DESCRIPTION = DISCORD.embedDescription;
+export const MAX_EMBED_TITLE = DISCORD.embedTitle;
+export const MAX_EMBEDS = DISCORD.embedsPerMessage;
 // Сума заголовків і текстів усіх embed одного повідомлення.
-export const MAX_EMBEDS_TOTAL = 6000;
-export const MAX_PANEL_ROLES = 25;
-const BUTTONS_PER_ROW = 5;
+export const MAX_EMBEDS_TOTAL = DISCORD.embedTotal;
+export const MAX_PANEL_ROLES = DISCORD.buttonsPerRow * DISCORD.componentRows;
+const BUTTONS_PER_ROW = DISCORD.buttonsPerRow;
 const MAX_BUTTON_LABEL = 80;
 const DEFAULT_PANEL_TEXT = "Choose your roles:";
 

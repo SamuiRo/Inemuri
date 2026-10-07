@@ -5,12 +5,20 @@ import CategoriesConfig from "./categories.json" with { type: "json" };
 import { fileURLToPath } from "url";
 import path from "path";
 import { loadLocalConfig } from "./localConfig.js";
+import { TELEGRAM } from "../shared/platformLimits.js";
+import { SECOND, MINUTE, HOUR } from "../shared/time.js";
 
 // ── Runtime ────────────────────────────────────────────────────────────────
 export const NODE_ENV = process.env.NODE_ENV;
 export const PKG = pkg;
 // TheFlow taxonomy (topics / signals) — у репозиторії, спільна для всіх.
 export const CATEGORIES = CategoriesConfig;
+
+// Найнижчий рівень, що потрапляє в лог: debug | info | warning | error.
+// debug за замовчуванням — так поводився лог до появи змінної; info ховає
+// стеки й службові рядки.
+const LOG_LEVELS = ["debug", "info", "warning", "error"];
+export const LOG_LEVEL = LOG_LEVELS.includes(process.env.LOG_LEVEL) ? process.env.LOG_LEVEL : "debug";
 
 // ── Database ───────────────────────────────────────────────────────────────
 // Робоча база — database/pot.sqlite. SQLITE_STORAGE перевизначає шлях; його
@@ -21,6 +29,9 @@ export const SQLITE_DEFAULT_STORAGE = path.resolve(process.cwd(), "database", "p
 export const SQLITE_STORAGE = process.env.SQLITE_STORAGE
   ? path.resolve(process.env.SQLITE_STORAGE)
   : SQLITE_DEFAULT_STORAGE;
+// Пул з'єднань Sequelize. SQLite пише по одному; пул — для паралельних
+// читань воркера, доставки й ingest. acquire — скільки чекати вільне з'єднання.
+export const DB_POOL = { max: 5, min: 0, acquireMs: 30 * SECOND, idleMs: 10 * SECOND };
 
 // ── Telegram auth ──────────────────────────────────────────────────────────
 export const TELEGRAM_SESSION =
@@ -33,7 +44,7 @@ export const TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH;
 // підпис Telegram відхиляє (MEDIA_CAPTION_TOO_LONG). Текст без медіа — 4096
 // для всіх.
 export const TELEGRAM_PREMIUM = process.env.TELEGRAM_PREMIUM === "true";
-export const TELEGRAM_CAPTION_LIMIT = TELEGRAM_PREMIUM ? 4096 : 1024;
+export const TELEGRAM_CAPTION_LIMIT = TELEGRAM_PREMIUM ? TELEGRAM.captionPremium : TELEGRAM.caption;
 
 // ── Discord ────────────────────────────────────────────────────────────────
 /** Список id через кому; порожні елементи відкидаються. */
@@ -58,6 +69,9 @@ export const DISCORD_GUILD_IDS = idList(process.env.DISCORD_GUILD_IDS);
 // (важкий: chalk, sharp, gradient), тож попередження друкує inemuri.js на
 // старті через print().
 export const CONFIG_WARNINGS = [];
+if (process.env.LOG_LEVEL && !LOG_LEVELS.includes(process.env.LOG_LEVEL)) {
+  CONFIG_WARNINGS.push(`LOG_LEVEL=${JSON.stringify(process.env.LOG_LEVEL)} is not one of ${LOG_LEVELS.join(" / ")} — using debug`);
+}
 
 /**
  * Додатне число з env, із фолбеком замість NaN.
@@ -164,11 +178,17 @@ export const DISCORD_SERVERS_DIR = fileURLToPath(new URL("./discordapp/servers/"
 // Тексти повідомлень, на які посилаються конфіги ("file": "rules.md").
 export const DISCORD_MESSAGES_DIR = fileURLToPath(new URL("./discordapp/messages/", import.meta.url));
 
+// ── Telegram: з'єднання ───────────────────────────────────────────────────
+// Скільки разів GramJS перепідключається, перш ніж здатись.
+export const TELEGRAM_CONNECTION_RETRIES = optionalNumber(
+  "TELEGRAM_CONNECTION_RETRIES", process.env.TELEGRAM_CONNECTION_RETRIES, 5,
+);
+
 // ── Polling ────────────────────────────────────────────────────────────────
 export const POLLING_INTERVAL_MIN = positiveNumber(
   "POLLING_INTERVAL_MIN", process.env.POLLING_INTERVAL_MIN, 5,
 );
-export const POLLING_INTERVAL_MS = POLLING_INTERVAL_MIN * 60 * 1000;
+export const POLLING_INTERVAL_MS = POLLING_INTERVAL_MIN * MINUTE;
 export const POLLING_FETCH_LIMIT = positiveNumber(
   "POLLING_FETCH_LIMIT", process.env.POLLING_FETCH_LIMIT, 50,
 );
@@ -195,8 +215,23 @@ export const POLLING_MAX_DRAIN_PAGES = optionalNumber(
   "POLLING_MAX_DRAIN_PAGES", process.env.POLLING_MAX_DRAIN_PAGES, 5,
 );
 
+// ── Cron: щоденний крипто-звіт ─────────────────────────────────────────────
+// Призначення задач — у git-ignored cronjob.config.json (id каналів).
+export const CRON_CONFIG = loadLocalConfig("cronjob.config", { dailyinfo: { destinations: {} } }, CONFIG_WARNINGS);
+export const DAILY_REPORT = {
+  schedule: process.env.DAILY_REPORT_CRON || "5 0 * * *", // час сервера
+  enabled: process.env.DAILY_REPORT_ENABLED !== "false",
+};
+
 // ── External services ──────────────────────────────────────────────────────
 export const CMC_API_KEY = process.env.CMC_API_KEY;
+// Джерела даних щоденного крипто-звіту (CryptoDataService).
+export const CRYPTO_API = {
+  globalMetrics: "https://pro-api.coinmarketcap.com/v1/global-metrics/quotes/latest",
+  listings: "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
+  fearAndGreed: "https://api.alternative.me/fng/",
+  altcoinSeason: "https://www.blockchaincenter.net/en/altcoin-season-index/",
+};
 
 // ── TelegramSourceListener: album grouping ─────────────────────────────────
 // Час очікування перш ніж вважати альбом зібраним (мс).
@@ -206,7 +241,7 @@ export const ALBUM_GROUP_TIMEOUT_MS = 5_000;
 // ── TelegramSourceListener: deduplication (mode: "both") ──────────────────
 // Скільки часу тримати запис про повідомлення оброблене listener-ом,
 // щоб polling не продублював його.
-export const DEDUP_TTL_MS = 10 * 60 * 1_000; // 10 хвилин
+export const DEDUP_TTL_MS = 10 * MINUTE;
 // Максимальна кількість записів у dedup-сеті (захист від memory leak).
 export const DEDUP_MAX_SIZE = 5_000;
 
@@ -235,15 +270,15 @@ export const LLM_TIER_UP        = process.env.LLM_TIER_UP  || null; // силь�
 export const LLM_TIER_UP_BELOW  = fraction("LLM_TIER_UP_BELOW", process.env.LLM_TIER_UP_BELOW, 0.5);
 export const LLM_MAX_CONCURRENCY = optionalNumber("LLM_MAX_CONCURRENCY", process.env.LLM_MAX_CONCURRENCY, 2);
 export const LLM_TIMEOUT_MS     = optionalNumber("LLM_TIMEOUT_MS", process.env.LLM_TIMEOUT_MS, 30_000);
-// Прапорця shadow mode тут немає навмисно. У фазі 1 shadow — це властивість
-// структури, а не конфігу: вердикти пише EnrichWorker, а читача вердиктів
-// (routing) ще не існує. Перемикач з'явиться разом із ним у фазі 2, і саме
-// тоді він щось вимикатиме. Див. ROADMAP §3.6, §5.
+// Тіньовий режим — це FLOW_DELIVERY.enabled нижче, не прапорець gateway.
 
 // Кеш і shedding — прості константи, дзеркалять DEDUP_TTL_MS / DEDUP_MAX_SIZE.
-export const LLM_CACHE_TTL_MS   = 6 * 60 * 60 * 1_000;
+export const LLM_CACHE_TTL_MS   = 6 * HOUR;
 export const LLM_CACHE_MAX_SIZE = 5_000;
 export const LLM_QUOTA_RESERVE  = 0.15; // частка RPD, зарезервована під `critical`
+// Найдовше, скільки gateway чекає за підказкою провайдера (retryDelay /
+// Retry-After) перед повтором; довша пауза — це вже не повтор, а відкладення.
+export const LLM_RETRY_MAX_WAIT_MS = MINUTE;
 
 // Enrichment worker (ROADMAP 3.6). Tick і batch виводяться з виміряного RPD
 // (3.1), не вгадуються — гальмо все одно token bucket, не таймер.
@@ -255,6 +290,17 @@ export const ENRICH_MAX_ATTEMPTS = optionalNumber("ENRICH_MAX_ATTEMPTS", process
 // кількох днів; довше тримати — зайвий скан при кожному пошуку за відстанню.
 export const VISION_CACHE_TTL_HOURS = optionalNumber(
   "VISION_CACHE_TTL_HOURS", process.env.VISION_CACHE_TTL_HOURS, 72,
+);
+// Найбільший документ-зображення, який vision качає (Telegram документи не
+// стискає: 4K-скріншот файлом — 5–15 МБ), і довша сторона після зменшення
+// перед відправкою моделі — вартість росте з роздільністю.
+export const VISION_MAX_DOCUMENT_MB = optionalNumber(
+  "VISION_MAX_DOCUMENT_MB", process.env.VISION_MAX_DOCUMENT_MB, 20,
+);
+export const VISION_MAX_SIDE = optionalNumber("VISION_MAX_SIDE", process.env.VISION_MAX_SIDE, 1024);
+// Як часто прибирати vision_cache і discovered_items (старші за свій TTL).
+export const MAINTENANCE_SWEEP_HOURS = optionalNumber(
+  "MAINTENANCE_SWEEP_HOURS", process.env.MAINTENANCE_SWEEP_HOURS, 6,
 );
 export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
 
@@ -296,9 +342,20 @@ export const FLOW_DELIVERY = {
   // Старші пости не надсилаються ніколи, лише позначаються too_old: корпус
   // може бути історією каналу (пілот — травень–липень).
   maxAgeHours: optionalNumber("FLOW_DELIVERY_MAX_AGE_HOURS", process.env.FLOW_DELIVERY_MAX_AGE_HOURS, 24),
-  intervalMs: 15_000,
+  intervalMs: optionalNumber("FLOW_DELIVERY_TICK_MS", process.env.FLOW_DELIVERY_TICK_MS, 15 * SECOND),
   batchSize: 5,
   maxAttempts: 3,
+  // Скільки доповнень (relation "adds") дописується в надіслане повідомлення
+  // кластера; далі лише лічильник. Спростування й уточнення — завжди.
+  maxAppends: optionalNumber("FLOW_DELIVERY_MAX_APPENDS", process.env.FLOW_DELIVERY_MAX_APPENDS, 3),
+};
+
+// Пошук по корпусу (ROADMAP §9.1): /search і `flow search`.
+export const FLOW_SEARCH = {
+  // Semantic порівнює запит зі стількома найновішими векторами (без days/topic).
+  semanticMaxRows: optionalNumber("FLOW_SEARCH_SEMANTIC_MAX_ROWS", process.env.FLOW_SEARCH_SEMANTIC_MAX_ROWS, 20_000),
+  // Скільки /search чекає відповіді ядра через EventBus.
+  requestTimeoutMs: 20 * SECOND,
 };
 
 // Triage заголовків новинних джерел (NEWS_INTAKE.md §2.3, ROADMAP §14.3).
@@ -329,8 +386,11 @@ export const FLOW_TRIAGE = {
 export const FEEDS = {
   // Як часто опитувати джерело, якщо в нього немає poll_interval_min.
   pollIntervalMin: optionalNumber("FEED_POLL_INTERVAL_MIN", process.env.FEED_POLL_INTERVAL_MIN, 15),
-  tickMs: 30_000,
-  timeoutMs: 15_000,
+  tickMs: 30 * SECOND,
+  // Тайм-аут одного запиту стрічки (і токена Reddit OAuth).
+  timeoutMs: optionalNumber("FEED_TIMEOUT_MS", process.env.FEED_TIMEOUT_MS, 15 * SECOND),
+  // Retry-After без значення на 429/503 — стільки чекати.
+  defaultRetryAfterMs: MINUTE,
   userAgent: process.env.FEED_USER_AGENT ||
     `Inemuri/${pkg.version} (TheFlow feed reader; +https://github.com/SamuiRo/Inemuri)`,
   // Мінімальний інтервал між запитами до одного хоста, мс. Reddit без OAuth
@@ -367,7 +427,7 @@ export const FLOW_FEWSHOT = {
   enabled: process.env.FLOW_FEWSHOT_ENABLED !== "false",
   maxGood: optionalNumber("FLOW_FEWSHOT_GOOD", process.env.FLOW_FEWSHOT_GOOD, 4),
   maxWrong: optionalNumber("FLOW_FEWSHOT_WRONG", process.env.FLOW_FEWSHOT_WRONG, 3),
-  refreshMs: 3_600_000,
+  refreshMs: HOUR,
 };
 
 // Дайджест TheFlow (ROADMAP §9, фаза 5): найцікавіше за період, один пост на
@@ -421,7 +481,17 @@ export const STATUS = {
   sourceSilentHours: optionalNumber("STATUS_SOURCE_SILENT_HOURS", process.env.STATUS_SOURCE_SILENT_HOURS, 72),
   // Канал доставки без нових повідомлень довше за це.
   channelSilentHours: optionalNumber("STATUS_CHANNEL_SILENT_HOURS", process.env.STATUS_CHANNEL_SILENT_HOURS, 168),
+  // Не частіше за це записувати last_seen_at одного джерела: ingest не чекає
+  // на базу через кожне повідомлення активного каналу.
+  activityThrottleMin: optionalNumber("STATUS_ACTIVITY_THROTTLE_MIN", process.env.STATUS_ACTIVITY_THROTTLE_MIN, 5),
+  // Рядків на розділ — щоб повідомлення лишалось читабельним; решта — «…і ще N».
+  maxLines: optionalNumber("STATUS_MAX_LINES", process.env.STATUS_MAX_LINES, 25),
+  // Перше оновлення — через хвилину після старту, коли адаптери вже готові.
+  firstDelayMs: MINUTE,
 };
+
+// discordapp: повтор невдалого логіну — від min, подвоюючись, до max (D3).
+export const DISCORD_APP_RETRY = { minMs: 30 * SECOND, maxMs: 10 * MINUTE };
 
 // Per-provider: ключ, model id-и, endpoint, ліміти. Усе з env. Модель, у якої
 // embedModel === null, не оголошує capability `embed` — gateway маршрутизує

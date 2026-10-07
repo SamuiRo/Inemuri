@@ -1,4 +1,4 @@
-import { print } from "../../shared/utils.js";
+import { print, printStack } from "../../shared/utils.js";
 import { Post } from "../teapot/models/index.js";
 import { ENRICH_PROMPT_VERSION } from "../../services/ai/prompts/enrich.js";
 import { isDeferrable } from "../../services/ai/LLMGateway.js";
@@ -126,7 +126,7 @@ export class EnrichWorker {
       advanced += await this.runOnce();
     } catch (error) {
       print(`[ENRICH] tick error: ${error.message}`, "error");
-      console.error(error);
+      printStack(error);
     }
     // Дедуплікація щойно збагачених — у тому ж тіку, після enrich. Її збій
     // не зупиняє збагачення: пост лишається enriched без рішення і

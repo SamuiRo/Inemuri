@@ -248,7 +248,7 @@ limit burns through in seconds.
 All in `src/config/app.config.js`, every value overridable from `.env`
 (`.env.example` lists them): `LLM_PRIMARY` (`gemini`), `LLM_FALLBACK`,
 `LLM_TIER_UP` / `LLM_TIER_UP_BELOW` (tiering, off by default),
-`LLM_MAX_CONCURRENCY` (2), `LLM_TIMEOUT_MS` (30 s); the enrich worker's
+`LLM_MAX_CONCURRENCY` (2), `LLM_TIMEOUT_MS` (30 s); a provider's retry hint is honoured up to `LLM_RETRY_MAX_WAIT_MS` (1 min); the enrich worker's
 `ENRICH_TICK_MS` (30 s), `ENRICH_BATCH_SIZE` (10), `ENRICH_MAX_ATTEMPTS` (3);
 per provider the API key, model ids, RPD/RPM and quota time zone
 (`GEMINI_*`, `OPENROUTER_*`). The defaults are the measured Gemini free tier:

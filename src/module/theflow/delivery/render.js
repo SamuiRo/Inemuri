@@ -27,16 +27,18 @@
  *              timestamp (кожен бачить у своєму поясі).
  */
 
+import { DISCORD, TELEGRAM } from "../../../shared/platformLimits.js";
+
 export const LIMITS = {
-  telegram: 4096, // текст повідомлення
+  telegram: TELEGRAM.message, // текст повідомлення
   // Підпис до медіа без Premium (з Premium — 4096). Викликач передає
   // справжній ліміт акаунта (`captionLimit`, TELEGRAM_PREMIUM); за
   // замовчуванням — безпечний.
-  telegramCaption: 1024,
-  discord: 4096, // embed.description
-  discordTotal: 6000, // сума всіх текстів одного embed
-  discordTitle: 256,
-  discordFieldValue: 1024,
+  telegramCaption: TELEGRAM.caption,
+  discord: DISCORD.embedDescription,
+  discordTotal: DISCORD.embedTotal, // сума всіх текстів одного embed
+  discordTitle: DISCORD.embedTitle,
+  discordFieldValue: DISCORD.embedFieldValue,
 };
 
 const plural = (n, one, few, many) => {

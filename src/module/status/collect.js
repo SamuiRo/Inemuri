@@ -1,5 +1,5 @@
 import { Source, SourceState } from "../teapot/models/index.js";
-import { copyDestinations } from "../theflow/ResolveStage.js";
+import { copyDestinations } from "../../shared/destinations.js";
 
 /**
  * Збір знімка для статус-борду. Окремо від StatusBoard, щоб той лишався без

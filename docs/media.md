@@ -88,9 +88,10 @@ The result is `messageData.downloadedMedia`, an array of
 
 TheFlow does **not** use this path: ingestion never touches the network, so it
 stores a `media_ref` and fetches later, only for posts it delivers, through
-[`MediaResolver`](../src/module/theflow/media/MediaResolver.js) — the
-Telegram resolver reuses `parseMedia()` and this same downloader, the URL
-resolver fetches feed images. Types and the count are limited before
+[`MediaResolver`](../src/module/theflow/media/MediaResolver.js) — a registry
+that `src/inemuri.js` fills: `src/sources/telegram/TelegramMediaResolver.js`
+reuses `parseMedia()` and this same downloader,
+`src/sources/feeds/UrlMediaResolver.js` fetches feed images. Types and the count are limited before
 download.
 
 ## Stage 3 — Discord delivery

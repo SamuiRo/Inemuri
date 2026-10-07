@@ -1,6 +1,6 @@
 import {
   KNOWLEDGE_LEVELS, KNOWLEDGE_ORIGINS, KNOWLEDGE_VERDICTS,
-} from "../../teapot/models/KnowledgeExample.js";
+} from "../../teapot/vocabulary.js";
 import { contentHash } from "./snapshot.js";
 
 /**

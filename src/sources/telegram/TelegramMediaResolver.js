@@ -1,7 +1,7 @@
-import { print } from "../../../shared/utils.js";
-import telegramClient from "../../telegram/TelegramClient.js";
-import TelegramMediaDownloader from "../../../sources/telegram/TelegramMediaDownloader.js";
-import TelegramMessageParser from "../../../sources/telegram/TelegramMessageParser.js";
+import { print } from "../../shared/utils.js";
+import telegramClient from "../../module/telegram/TelegramClient.js";
+import TelegramMediaDownloader from "./TelegramMediaDownloader.js";
+import TelegramMessageParser from "./TelegramMessageParser.js";
 
 /**
  * Resolves `media_ref.kind === "telegram"`.
