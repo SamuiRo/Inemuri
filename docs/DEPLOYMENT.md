@@ -55,9 +55,9 @@ warning, which is how a server quietly ends up running on example values.
 |---|---|---|
 | `.env` | Telegram session, API keys (`GEMINI_API_KEY`), switches | Nothing starts, or TheFlow stays dormant |
 | `src/config/sources.json` | Every source: channels, filters, `flow`, news sources with `feed` | Seed has nothing real to import |
-| `src/config/routing.json` | `unsorted_destinations`, `routing` rules, `health_destinations`, `digest_destinations`, `status_destinations` | No alerts, no status board; verdicts route to sample ids |
+| `src/config/routing.json` | `unsorted_destinations`, `routing` rules, `health_destinations`, `digest_destinations`, `status_destinations` | Verdicts, alerts and the status board go to the sample's ids, which do not exist — `flow preflight` blocks |
 | `src/config/triage.json` | The reader profile for headline triage | Triage judges against the sample profile |
-| `src/config/cronjob.config.json` | Cron job destinations | Cron jobs post nowhere |
+| `src/config/cronjob.config.json` | Cron job destinations | The daily report goes to the sample's ids — Discord answers `Unknown Channel` — and `flow preflight` blocks |
 | `src/config/discordapp/servers/*.json`, `messages/**` | discordapp server configs and texts | `/provision` has nothing to apply |
 | A knowledge JSONL (`database/knowledge/*.jsonl`) | The operator's labelled examples | Triage and few-shot start without examples |
 

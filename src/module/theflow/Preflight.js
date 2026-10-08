@@ -6,8 +6,9 @@ import { Source, KnowledgeExample } from "../teapot/models/index.js";
 import {
   NODE_ENV, CONFIG_WARNINGS, CATEGORIES, ROUTING, FLOW_TRIAGE, FLOW_DELIVERY,
   ENRICH_WORKER_ENABLED, LLM_PRIMARY, LLM_FALLBACK, LLM_PROVIDERS,
-  TELEGRAM_SESSION, TELEGRAM_API_ID,
+  TELEGRAM_SESSION, TELEGRAM_API_ID, CRON_CONFIG, DAILY_REPORT,
 } from "../../config/app.config.js";
+import { destinationIdProblems } from "../../shared/destinations.js";
 import { usesTriage } from "../../sources/feeds/discovery.js";
 import { validateRouting } from "./ResolveStage.js";
 
@@ -44,6 +45,8 @@ export async function collectPreflight() {
     mode: s.mode,
     flow: s.isFlowEnabled(),
     triage: usesTriage(s),
+    // Класичне пересилання шле сюди; flow-джерело — ні, але повернеться сюди.
+    destinationProblems: destinationIdProblems(s.getAllDestinations(), `source "${s.channel_name}"`),
   }));
 
   const knowledge = await KnowledgeExample.count();
@@ -85,6 +88,12 @@ export async function collectPreflight() {
       problems: validateRouting(ROUTING, CATEGORIES),
     },
     deliveryEnabled: FLOW_DELIVERY.enabled,
+    // Щоденний звіт: куди він піде. Семпл cronjob.config має id-заглушки.
+    cron: {
+      dailyEnabled: DAILY_REPORT.enabled,
+      daily: destinationCount(CRON_CONFIG.dailyinfo?.destinations),
+      problems: destinationIdProblems(CRON_CONFIG.dailyinfo?.destinations, "cronjob.config dailyinfo"),
+    },
     knowledge,
     triageExamples,
   };
@@ -132,9 +141,15 @@ export function assessPreflight(s) {
   }
 
   // ── Конфіги розгортання ───────────────────────────────────────────
+  // Семпл замість routing.json чи cronjob.config.json — це доставка на
+  // вигадані id: усе, що туди піде, відкине Discord («Unknown Channel») чи
+  // Telegram. Тому блокер, а не попередження.
+  const DELIVERY_CONFIGS = new Set(["routing", "cronjob.config"]);
   for (const name of s.configFallbacks) {
     if (name === "triage" && triage.length) {
       fail("config_triage", "triage.json is missing — triage would judge headlines against the sample profile; copy and fill it");
+    } else if (DELIVERY_CONFIGS.has(name)) {
+      fail(`config_${name}`, `${name}.json is missing — running on ${name}.sample.json, whose destination ids do not exist; copy the real one`);
     } else {
       warn(`config_${name}`, `${name}.json is missing — running on ${name}.sample.json`);
     }
@@ -146,6 +161,10 @@ export function assessPreflight(s) {
 
   // ── Джерела ───────────────────────────────────────────────────────
   ok("sources", `${s.sources.length} active source(s): ${flow.length} flow, ${triage.length} with headline triage`);
+  const sourceIdProblems = s.sources.flatMap((x) => x.destinationProblems ?? []);
+  if (sourceIdProblems.length) {
+    fail("source_ids", `${sourceIdProblems.length} source destination id(s) no platform accepts: ${sourceIdProblems.slice(0, 5).join("; ")}`);
+  }
   const listeners = flow.filter((x) => x.mode === "listener");
   if (listeners.length) {
     warn("flow_listener", `${listeners.length} flow source(s) in pure listener mode lose posts while the service is down — ` +
@@ -170,6 +189,17 @@ export function assessPreflight(s) {
   if (badIds.length) fail("routing_ids", `routing.json has ${badIds.length} destination id(s) no platform accepts: ${badIds.slice(0, 5).join("; ")}`);
   if (other.length) warn("routing", `routing.json: ${other.slice(0, 5).join("; ")}`);
   if (!problems.length) ok("routing", `routing.json: ${s.routing.rules} rule(s), no problems`);
+
+  // ── Cron ─────────────────────────────────────────────────────────
+  if (s.cron?.dailyEnabled) {
+    if (s.cron.problems.length) {
+      fail("cron_ids", `daily report destination id(s) no platform accepts: ${s.cron.problems.slice(0, 5).join("; ")}`);
+    } else if (!s.cron.daily) {
+      warn("cron", "daily report enabled but cronjob.config.json has no dailyinfo destinations — it goes nowhere (DAILY_REPORT_ENABLED=false to turn it off)");
+    } else {
+      ok("cron", `daily report to ${s.cron.daily} destination(s)`);
+    }
+  }
 
   // ── Знання ────────────────────────────────────────────────────────
   if (triage.length && !s.triageExamples) {

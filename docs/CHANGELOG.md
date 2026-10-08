@@ -7,6 +7,24 @@ in going into `v4.3.1`. Versioning rule: every commit bumps `package.json`
 (patch = docs/tests/cleanup, minor = new capability, major = a large body of
 work closes out) — see `CLAUDE.md` § Versioning.
 
+## [4.60.1] - 2026-10-08
+
+### Fixed
+- **A missing `cronjob.config.json` was silent.** Up to v4.59.3 the daily
+  report read it without collecting the fallback warning, so a deployment
+  without the file ran on `cronjob.config.sample.json` — Discord id
+  `1234567` — with no `[CONFIG]` line at startup and nothing in
+  `flow preflight`. Found on the VPS as `DiscordAPIError[10003]: Unknown
+  Channel, channelId: '1234567'` in the error log. v4.60.0 already collects
+  the warning; `flow preflight` now also acts on it:
+  - running on the `routing` or `cronjob.config` sample is a **blocker** (it
+    was a warning): their ids do not exist, so everything sent there is lost;
+  - the daily report's destinations are checked like `routing.json`'s —
+    an id no platform accepts blocks, none at all warns;
+  - classic sources' `destinations` in the database are checked the same way.
+- DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
+  nowhere"; they posted to the sample's ids.
+
 ## [4.60.0] - 2026-10-07
 
 Code audit for modularity, hard-coded values and purity. No behaviour change
