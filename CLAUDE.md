@@ -22,7 +22,8 @@ what shipped and why.
 **TheFlow is a subsystem of Inemuri**, not a separate product or a peer system.
 It is the part responsible for producing a stream of validated, categorized,
 deduplicated posts. Phases 0–5 and 1.5 are **built** and live on the VPS since
-2026-10-06, with delivery on to staff-only test channels (the worker starts
+2026-10-06; delivery to staff-only test channels is configured but was never
+switched on there (`FLOW_DELIVERY_ENABLED` unset, found 2026-10-08) (the worker starts
 only with a provider key; delivery is off by default, `FLOW_DELIVERY_ENABLED`). Phase 6, news intake
 ([docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)), has steps 1–3:
 the knowledge base, sitemap/WordPress discovery and headline triage. Still
@@ -93,8 +94,10 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   `telegramClient`).
 - All constants and environment variables live in `src/config/app.config.js`.
   Do not read `process.env` elsewhere. Every env var it reads is listed in
-  `.env.example`, and nothing else is — `test/env-example.test.js` fails
-  otherwise. A new tunable gets a default there and a line in `.env.example`.
+  `.env.example`, and nothing else is; every line there is active (never
+  `# NAME=`) and holds the code's default — `test/env-example.test.js`
+  checks all three. A new tunable gets a default in `app.config.js` and the
+  same value, uncommented, in `.env.example`.
 - Not configuration, but shared constants: Discord/Telegram API limits in
   `src/shared/platformLimits.js`, time units (`MINUTE`, `HOUR`, `DAY`) in
   `src/shared/time.js`, stored enums (post statuses, verdicts) in

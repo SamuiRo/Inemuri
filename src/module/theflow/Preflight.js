@@ -173,7 +173,12 @@ export function assessPreflight(s) {
 
   // ── Доставка і нагляд ─────────────────────────────────────────────
   if (s.deliveryEnabled) warn("delivery", "FLOW_DELIVERY_ENABLED=true — this is not shadow mode, verdicts are delivered");
-  else ok("delivery", "delivery off — shadow mode, nothing is sent");
+  else if (s.routing.rules > 0) {
+    // Правила є — отже, канали чекають постів. Тіньовий режим тут найчастіше
+    // забута змінна, а не намір: пости збагачуються і нікуди не йдуть.
+    warn("delivery", `delivery off (FLOW_DELIVERY_ENABLED is not true) but routing.json has ${s.routing.rules} rule(s) — ` +
+      "enriched posts reach no channel; set FLOW_DELIVERY_ENABLED=true when that is intended");
+  } else ok("delivery", "delivery off — shadow mode, nothing is sent");
   if (s.routing.digest && !s.deliveryEnabled) {
     warn("digest", `digest_destinations set (${s.routing.digest}) — the daily digest is sent even in shadow mode`);
   }

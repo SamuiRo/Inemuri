@@ -82,6 +82,13 @@ test("routing.json: a placeholder id blocks, any other routing problem only warn
   assert.equal(levelOf(assessPreflight(ready({ routing: { unsorted: 1, health: 1, digest: 0, status: 1, rules: 0 } })), "status"), "ok");
 });
 
+test("delivery off with routing rules warns: posts are enriched and reach no channel", () => {
+  const r = assessPreflight(ready({ routing: { unsorted: 1, health: 1, digest: 0, rules: 12 } }));
+  assert.equal(levelOf(r, "delivery"), "warn");
+  assert.match(r.items.find((i) => i.key === "delivery").message, /FLOW_DELIVERY_ENABLED/);
+  assert.equal(r.ok, true);
+});
+
 test("a deployment running on the routing or cronjob sample is blocked: those ids do not exist", () => {
   for (const name of ["routing", "cronjob.config"]) {
     const r = assessPreflight(ready({ configFallbacks: [name] }));

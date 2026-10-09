@@ -20,6 +20,33 @@ export const CATEGORIES = CategoriesConfig;
 const LOG_LEVELS = ["debug", "info", "warning", "error"];
 export const LOG_LEVEL = LOG_LEVELS.includes(process.env.LOG_LEVEL) ? process.env.LOG_LEVEL : "debug";
 
+// Попередження конфігурації. Збираються тут, а не друкуються одразу:
+// app.config.js не тягне shared/utils.js (важкий: chalk, sharp, gradient),
+// тож їх друкує inemuri.js на старті і показує `flow preflight`.
+export const CONFIG_WARNINGS = [];
+if (process.env.LOG_LEVEL && !LOG_LEVELS.includes(process.env.LOG_LEVEL)) {
+  CONFIG_WARNINGS.push(`LOG_LEVEL=${JSON.stringify(process.env.LOG_LEVEL)} is not one of ${LOG_LEVELS.join(" / ")} — using debug`);
+}
+
+const TRUE_VALUES = new Set(["true", "1", "yes", "on"]);
+const FALSE_VALUES = new Set(["false", "0", "no", "off"]);
+
+/**
+ * Перемикач з env. true/1/yes/on і false/0/no/off, без урахування регістру;
+ * порожньо — дефолт; будь-що інше — попередження і дефолт.
+ *
+ * Раніше було `=== "true"` / `!== "false"`: `FLOW_DELIVERY_ENABLED=True`
+ * мовчки лишав доставку вимкненою, а `DEDUP_ENABLED=0` — увімкненою.
+ */
+export function flag(name, raw, fallback, sink = CONFIG_WARNINGS) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return fallback;
+  const v = String(raw).trim().toLowerCase();
+  if (TRUE_VALUES.has(v)) return true;
+  if (FALSE_VALUES.has(v)) return false;
+  sink.push(`${name}=${JSON.stringify(raw)} is not true/false — using ${fallback}`);
+  return fallback;
+}
+
 // ── Database ───────────────────────────────────────────────────────────────
 // Робоча база — database/pot.sqlite. SQLITE_STORAGE перевизначає шлях; його
 // ставить scripts/run-tests.js, щоб `npm test` ганявся на одноразовій базі,
@@ -34,8 +61,8 @@ export const SQLITE_STORAGE = process.env.SQLITE_STORAGE
 export const DB_POOL = { max: 5, min: 0, acquireMs: 30 * SECOND, idleMs: 10 * SECOND };
 
 // ── Telegram auth ──────────────────────────────────────────────────────────
-export const TELEGRAM_SESSION =
-  process.env.TELEGRAM_SESSION === "" ? null : process.env.TELEGRAM_SESSION;
+// Порожньо чи не задано — сесії немає (перший логін інтерактивний).
+export const TELEGRAM_SESSION = process.env.TELEGRAM_SESSION || null;
 export const TELEGRAM_API_ID = +process.env.TELEGRAM_API_ID;
 export const TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH;
 // Чи має акаунт, від якого шле Inemuri, Telegram Premium. Від цього залежить
@@ -43,7 +70,7 @@ export const TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH;
 // (caption_length_limit_default / _premium у help.getAppConfig). Довший
 // підпис Telegram відхиляє (MEDIA_CAPTION_TOO_LONG). Текст без медіа — 4096
 // для всіх.
-export const TELEGRAM_PREMIUM = process.env.TELEGRAM_PREMIUM === "true";
+export const TELEGRAM_PREMIUM = flag("TELEGRAM_PREMIUM", process.env.TELEGRAM_PREMIUM, false);
 export const TELEGRAM_CAPTION_LIMIT = TELEGRAM_PREMIUM ? TELEGRAM.captionPremium : TELEGRAM.caption;
 
 // ── Discord ────────────────────────────────────────────────────────────────
@@ -60,18 +87,11 @@ export const DISCORD_COMMAND_WHITELIST = idList(process.env.DISCORD_COMMAND_WHIT
 // ── discordapp ─────────────────────────────────────────────────────────────
 // Керування серверами (docs/DISCORDAPP.md). Доставка від цього не залежить:
 // вона ходить через REST і працює навіть з DISCORD_APP_ENABLED=false.
-export const DISCORD_APP_ENABLED = process.env.DISCORD_APP_ENABLED !== "false";
+export const DISCORD_APP_ENABLED = flag("DISCORD_APP_ENABLED", process.env.DISCORD_APP_ENABLED, true);
 // Сервери, які обслуговує discordapp (D8). Порожньо — усі, де є бот.
 export const DISCORD_GUILD_IDS = idList(process.env.DISCORD_GUILD_IDS);
 
 // ── Валідація числових env ────────────────────────────────────────────────
-// Зібрані тут, а не надруковані одразу: app.config.js не тягне shared/utils.js
-// (важкий: chalk, sharp, gradient), тож попередження друкує inemuri.js на
-// старті через print().
-export const CONFIG_WARNINGS = [];
-if (process.env.LOG_LEVEL && !LOG_LEVELS.includes(process.env.LOG_LEVEL)) {
-  CONFIG_WARNINGS.push(`LOG_LEVEL=${JSON.stringify(process.env.LOG_LEVEL)} is not one of ${LOG_LEVELS.join(" / ")} — using debug`);
-}
 
 /**
  * Додатне число з env, із фолбеком замість NaN.
@@ -220,7 +240,7 @@ export const POLLING_MAX_DRAIN_PAGES = optionalNumber(
 export const CRON_CONFIG = loadLocalConfig("cronjob.config", { dailyinfo: { destinations: {} } }, CONFIG_WARNINGS);
 export const DAILY_REPORT = {
   schedule: process.env.DAILY_REPORT_CRON || "5 0 * * *", // час сервера
-  enabled: process.env.DAILY_REPORT_ENABLED !== "false",
+  enabled: flag("DAILY_REPORT_ENABLED", process.env.DAILY_REPORT_ENABLED, true),
 };
 
 // ── External services ──────────────────────────────────────────────────────
@@ -302,7 +322,7 @@ export const VISION_MAX_SIDE = optionalNumber("VISION_MAX_SIDE", process.env.VIS
 export const MAINTENANCE_SWEEP_HOURS = optionalNumber(
   "MAINTENANCE_SWEEP_HOURS", process.env.MAINTENANCE_SWEEP_HOURS, 6,
 );
-export const ENRICH_WORKER_ENABLED = process.env.ENRICH_WORKER_ENABLED !== "false";
+export const ENRICH_WORKER_ENABLED = flag("ENRICH_WORKER_ENABLED", process.env.ENRICH_WORKER_ENABLED, true);
 
 // Дедуплікація, tiers 1–2 (ROADMAP §6, DEDUPLICATION.md). Пороги — стартові
 // значення, НЕ константи: калібруються за журналом `posts.dedup` на реальних
@@ -323,13 +343,13 @@ export const DEDUP = {
   // шаблоном каналу. Близький за формою пост того ж каналу — наступний
   // випуск серії, а не дубль; tier 2 — для тієї ж події з ІНШОГО каналу.
   // Tier 1 (дослівний текст, код, URL) у межах джерела працює завжди.
-  tier2SameSource: process.env.DEDUP_TIER2_SAME_SOURCE === "true",
+  tier2SameSource: flag("DEDUP_TIER2_SAME_SOURCE", process.env.DEDUP_TIER2_SAME_SOURCE, false),
   batchSize: 50,
   // URL, що джерело ставить у стільки різних постів за boilerplateDays, —
   // підпис каналу, а не ключ tier 1.
   boilerplateMin: 3,
   boilerplateDays: 14,
-  enabled: process.env.DEDUP_ENABLED !== "false",
+  enabled: flag("DEDUP_ENABLED", process.env.DEDUP_ENABLED, true),
 };
 
 // Доставка TheFlow (ROADMAP §5.4–5.6, DELIVERY.md). ВИМКНЕНА за замовчуванням:
@@ -338,7 +358,7 @@ export const DEDUP = {
 // загальний чат, і увімкнення спрямувало б туди весь потік. Перед увімкненням
 // — `node src/cli.js flow preview`.
 export const FLOW_DELIVERY = {
-  enabled: process.env.FLOW_DELIVERY_ENABLED === "true",
+  enabled: flag("FLOW_DELIVERY_ENABLED", process.env.FLOW_DELIVERY_ENABLED, false),
   // Старші пости не надсилаються ніколи, лише позначаються too_old: корпус
   // може бути історією каналу (пілот — травень–липень).
   maxAgeHours: optionalNumber("FLOW_DELIVERY_MAX_AGE_HOURS", process.env.FLOW_DELIVERY_MAX_AGE_HOURS, 24),
@@ -424,7 +444,7 @@ export const FEEDS = {
 // з бази не частіше за refreshMs; кожен приклад — токени в КОЖНОМУ виклику
 // enrich, тож їх мало.
 export const FLOW_FEWSHOT = {
-  enabled: process.env.FLOW_FEWSHOT_ENABLED !== "false",
+  enabled: flag("FLOW_FEWSHOT_ENABLED", process.env.FLOW_FEWSHOT_ENABLED, true),
   maxGood: optionalNumber("FLOW_FEWSHOT_GOOD", process.env.FLOW_FEWSHOT_GOOD, 4),
   maxWrong: optionalNumber("FLOW_FEWSHOT_WRONG", process.env.FLOW_FEWSHOT_WRONG, 3),
   refreshMs: HOUR,

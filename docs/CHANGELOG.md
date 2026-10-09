@@ -25,6 +25,32 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.60.2] - 2026-10-08
+
+### Fixed
+- **Delivery off with routing rules is now a preflight warning**, not a
+  green "shadow mode". On the VPS `FLOW_DELIVERY_ENABLED` was not set since
+  the 2026-10-06 deploy: 785 posts enriched, none routed, channels empty —
+  and preflight showed it as ✓.
+- `node src/cli.js … | head` no longer crashes with `EPIPE` when the reader
+  closes the pipe early.
+- **Switches no longer fail silently.** Every on/off variable was read as
+  `=== "true"` or `!== "false"`, so `FLOW_DELIVERY_ENABLED=True` (or `1`,
+  `yes`) left delivery off without a word, and `DEDUP_ENABLED=0` left dedup
+  on. `flag()` in `app.config.js` accepts true/1/yes/on and false/0/no/off
+  in any case; anything else is a `[CONFIG]` warning and the default.
+  Applies to `FLOW_DELIVERY_ENABLED`, `ENRICH_WORKER_ENABLED`,
+  `DEDUP_ENABLED`, `DEDUP_TIER2_SAME_SOURCE`, `FLOW_FEWSHOT_ENABLED`,
+  `DAILY_REPORT_ENABLED`, `DISCORD_APP_ENABLED`, `TELEGRAM_PREMIUM`.
+- **Every variable in `.env.example` is active.** 84 lines were commented
+  (`# FLOW_DELIVERY_ENABLED="false"`), so editing the value in a copy without
+  removing the `#` changed nothing — which is how delivery stayed off on the
+  VPS after it was "enabled". Each line now holds the code's default, so a
+  copy behaves exactly like no `.env`. `test/env-example.test.js` checks that
+  no variable is commented and that every value equals the default (by
+  loading the config with and without them); `TELEGRAM_SESSION` empty and
+  unset now both read as `null`.
+
 ## [4.60.0] - 2026-10-07
 
 Code audit for modularity, hard-coded values and purity. No behaviour change

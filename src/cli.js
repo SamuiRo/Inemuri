@@ -29,6 +29,13 @@ import {
   FLOW_DELIVERY, ROUTING, FLOW_DIGEST,
 } from "./config/app.config.js";
 
+// `flow stats | head` закриває канал раніше, ніж CLI допише: це не помилка
+// команди, а читач, якому досить. Без цього Node падає з EPIPE і стеком.
+process.stdout.on("error", (error) => {
+  if (error.code === "EPIPE") process.exit(0);
+  throw error;
+});
+
 const program = new Command();
 
 program

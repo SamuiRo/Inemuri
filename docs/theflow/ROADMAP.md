@@ -132,7 +132,7 @@ from the plan:
 - Image documents (`image/png|jpeg|webp`, ≤ 20 MB) are transcribed, format
   checked by magic bytes before decoding.
 
-## 5. Phase 2 — content-based routing · done, delivering to test channels
+## 5. Phase 2 — content-based routing · done, test channels configured
 
 Spec: [TAXONOMY.md](TAXONOMY.md), [DELIVERY.md](DELIVERY.md).
 

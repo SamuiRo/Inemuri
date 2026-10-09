@@ -106,3 +106,15 @@ test("shipped samples are named exactly as the loader asks — case included", (
     );
   }
 });
+
+test("flag(): true/1/yes/on and false/0/no/off in any case; anything else warns and keeps the default", async () => {
+  const { flag } = await import("../src/config/app.config.js");
+  const sink = [];
+  for (const v of ["true", "True", " TRUE ", "1", "yes", "on"]) assert.equal(flag("X", v, false, sink), true);
+  for (const v of ["false", "FALSE", "0", "no", "Off"]) assert.equal(flag("X", v, true, sink), false);
+  assert.equal(flag("X", undefined, true, sink), true);
+  assert.equal(flag("X", "", false, sink), false);
+  assert.deepEqual(sink, []);
+  assert.equal(flag("FLOW_DELIVERY_ENABLED", "enabled", false, sink), false);
+  assert.match(sink[0], /FLOW_DELIVERY_ENABLED="enabled" is not true\/false — using false/);
+});

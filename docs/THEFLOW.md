@@ -1,7 +1,8 @@
 # TheFlow
 
 > **Status:** phases 0–5 and 1.5 are built and live on the VPS since
-> 2026-10-06, delivering to staff-only test channels for a test week before
+> 2026-10-06; delivery to staff-only test channels is configured but not yet
+> switched on there (`FLOW_DELIVERY_ENABLED`) — a test week follows before
 > public ones; phase 6 (news intake) has steps 1–3. Open: deduplication
 > threshold calibration (ROADMAP §6.8), phase 6 step 4 (article text) and
 > poll intervals, reactions (§5.7, deferred). Per-task status:
@@ -116,7 +117,7 @@ breakdown with versions is [theflow/ROADMAP.md](theflow/ROADMAP.md).
 | 0.5 — foundation | Migrations, platform-neutral schema, media resolver seam, tests, `flow stats` | Built |
 | 1 — enrichment | LLM gateway (Gemini primary, OpenRouter text fallback), `categories.json`, enrich worker, `flow review` labels | Built; starts only with a provider key |
 | 1.5 — vision | Screenshots transcribed into `text_ocr` ([VISION.md](theflow/VISION.md)) | Built; off on every source |
-| 2 — routing and delivery | Resolve by topic, signal or source, `#unsorted`, Ukrainian template, translation, lazy media, `flow preview` | Built; delivering to staff test channels |
+| 2 — routing and delivery | Resolve by topic, signal or source, `#unsorted`, Ukrainian template, translation, lazy media, `flow preview` | Built; staff test channels configured, VPS delivery not yet switched on — test channels |
 | 3 — deduplication | Tiers 1–2, clusters, the `linked` mechanism and the delta call that edits a delivered message | Built; thresholds uncalibrated, tier 3 not built |
 | 3.5 — feeds | Reddit, RSS/Atom, news sitemaps, WordPress API | Built; Reddit needs OAuth credentials |
 | 4 — extraction | Promo codes, links, amounts, events, each anchored to the source text | Built |

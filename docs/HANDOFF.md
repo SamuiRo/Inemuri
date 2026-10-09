@@ -6,14 +6,14 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.60.1`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 645 green
+`v4.60.2`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 649 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
 | Part | State |
 |---|---|
 | Classic forwarding | Telegram → Telegram/Discord, unchanged; must keep working through every deploy |
-| TheFlow phases 0–5, 1.5 | Built ([THEFLOW.md](THEFLOW.md)). **Live on the VPS since 2026-10-06, delivery on** — every routing rule points at a staff-only test channel, so nothing reaches a public channel yet |
+| TheFlow phases 0–5, 1.5 | Built ([THEFLOW.md](THEFLOW.md)). **Live on the VPS since 2026-10-06, but delivery was never on there** — `FLOW_DELIVERY_ENABLED` is unset in the VPS `.env` (found 2026-10-08: 785 enriched, none routed). Every routing rule points at a staff-only test channel, so nothing reaches a public channel yet |
 | Phase 6 — news intake | Steps 1–3 built: knowledge base, sitemap/WordPress discovery, headline triage ([theflow/NEWS_INTAKE.md](theflow/NEWS_INTAKE.md)). **Test week running** |
 | Taxonomy | `categories.json` v3: 11 topics, 14 signals ([theflow/TAXONOMY.md](theflow/TAXONOMY.md)) |
 | Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
