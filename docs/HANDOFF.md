@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.62.0`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 686 green
+`v4.62.1`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 686 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -75,7 +75,8 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
 5. **Sources for Nikke and Genshin** — their test channels exist and wait for
    Telegram sources and a `when.source` rule each.
-6. **Discord source live.** Describe the channels in `sources.json` (channel
+6. **Discord source live** — the operator is filling it in (2026-10-09),
+   following [DISCORD_SOURCE.md "Setup"](DISCORD_SOURCE.md#setup). Describe the channels in `sources.json` (channel
    ids, keywords, bot-reachable destination channels — CloakCord's webhook
    config is not reused; `node src/cli.js discord check <id>` shows what a
    channel posts and what the keywords catch), `DISCORD_USER_TOKEN` in

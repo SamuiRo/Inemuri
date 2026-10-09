@@ -25,6 +25,17 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.62.1] - 2026-10-09
+
+### Changed
+- DISCORD_SOURCE.md opens with a step-by-step **Setup**: the reading account
+  and its token, the bot permissions on destination channels, channel ids,
+  every `sources.json` field (including that `filters.enabled` must be `true`
+  for keywords to apply, and that removing an entry does not stop a channel —
+  `is_active: false` does), `discord check`, the `.env` options, and what the
+  log should show. DEPLOYMENT.md lists `DISCORD_USER_TOKEN` among what
+  `git pull` does not bring.
+
 ## [4.62.0] - 2026-10-09
 
 ### Added

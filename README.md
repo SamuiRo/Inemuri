@@ -179,8 +179,9 @@ Channels on other servers, read through a user account
 (`DISCORD_USER_TOKEN`) in a supervised child process. Keywords match the text
 and the text of embeds; images are forwarded. Only listens: nothing posted
 while the service is down is fetched later. Automating a user account is
-against Discord's terms — use a dedicated read-only account. Details:
-[docs/DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md).
+against Discord's terms — use a dedicated read-only account. Step-by-step
+setup (account, token, bot permissions, channel ids, checking a channel) and
+details: [docs/DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md#setup).
 
 ### Rejecting shouty posts
 

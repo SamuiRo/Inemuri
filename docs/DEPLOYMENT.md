@@ -53,7 +53,7 @@ warning, which is how a server quietly ends up running on example values.
 
 | File | Holds | Without it |
 |---|---|---|
-| `.env` | Telegram session, API keys (`GEMINI_API_KEY`), switches | Nothing starts, or TheFlow stays dormant |
+| `.env` | Telegram session, API keys (`GEMINI_API_KEY`), `DISCORD_USER_TOKEN` of the Discord reading account, switches | Nothing starts, TheFlow stays dormant, or discord sources are not started |
 | `src/config/sources.json` | Every source: channels, filters, `flow`, news sources with `feed` | Seed has nothing real to import |
 | `src/config/routing.json` | `unsorted_destinations`, `routing` rules, `health_destinations`, `digest_destinations`, `status_destinations` | Verdicts, alerts and the status board go to the sample's ids, which do not exist — `flow preflight` blocks |
 | `src/config/triage.json` | The reader profile for headline triage | Triage judges against the sample profile |

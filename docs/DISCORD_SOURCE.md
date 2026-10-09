@@ -11,48 +11,126 @@ the same with its own webhooks and database.
 Delivery to Discord is unrelated: it stays on the bot (`DISCORD_BOT_TOKEN`,
 REST). discordapp is unrelated too — the source neither uses nor needs it.
 
-## The account
+## Setup
 
-- **Automating a user account is against Discord's terms.** The account can be
-  banned without warning. Use a dedicated secondary account that only reads;
-  never send from it.
-- The token goes in `.env` as `DISCORD_USER_TOKEN`, nowhere else. Without it
-  the discord sources are not started (one warning at startup) and
-  `flow preflight` reports a blocker.
-- The account sees what it has joined. A configured channel it cannot see is
-  listed by name at startup (`… not visible to the account`) and shows in the
-  stats line as `watched=visible/total`.
+What is needed, in order. The same on the dev copy and on the VPS; on the VPS
+`.env` and `sources.json` are copied by hand ([DEPLOYMENT.md](DEPLOYMENT.md),
+"What git pull does not bring").
 
-## Configuring a source
+### 1. The reading account
 
-One entry per channel in `src/config/sources.json`:
+- **A dedicated secondary Discord account**, not your main one. Automating a
+  user account is against Discord's terms and the account can be banned
+  without warning. It only reads; nothing is ever sent from it.
+- **Join it to every server** you want to read. It sees exactly what a person
+  logged in as it would see: a channel it has no access to cannot be read.
+- Its **token** (the `Authorization` header of any request the logged-in web
+  client makes to `discord.com/api`, in the browser's developer tools) goes in
+  `.env`:
+
+  ```bash
+  DISCORD_USER_TOKEN="..."
+  ```
+
+  Nowhere else — not in `sources.json`, not in git. Logging out of that
+  account in the browser, or changing its password, revokes the token; the
+  reader then stops with `Fix DISCORD_USER_TOKEN` in the log and does not
+  retry.
+
+### 2. Where the posts go
+
+Delivery is the **Inemuri bot** (`DISCORD_BOT_TOKEN`), as for every other
+source — not the reading account and not webhooks. For each destination
+channel on your server, the bot needs **View Channel, Send Messages, Embed
+Links and Attach Files** there. Telegram destinations work too.
+
+### 3. Channel ids
+
+Discord → User Settings → Advanced → **Developer Mode** on. Then right-click
+a channel → **Copy Channel ID** — both for the channels to read (as the
+reading account) and for the destination channels. A **channel** id, not the
+server id: the seeder refuses anything that is not 17–20 digits.
+
+### 4. `src/config/sources.json`
+
+One entry per channel to read, in the same `sources` array as the other
+sources:
 
 ```json
 {
   "platform": "discord",
   "channel_id": "123456789012345678",
   "channel_name": "Server name · #announcements",
+  "is_active": true,
   "filters": { "enabled": true, "keywords": ["airdrop", "giveaway"], "blacklist": [], "case_sensitive": false },
   "destinations": { "telegram": [], "discord": ["234567890123456789"] }
 }
 ```
 
-- `channel_id` is the **channel** id (17–20 digits; Developer Mode → Copy
-  Channel ID), not the server id. The seeder refuses anything else.
-- `channel_name` is the embed author on delivery, so put the server name in it.
-- `filters`, `text_replacements` and `destinations` work as for Telegram
-  ([README](../README.md#sources)). An empty `keywords` list forwards
-  everything, including posts that are only an image.
-- `flow` puts the channel through TheFlow instead.
-- `mode` and `poll_interval_min` do not apply: the source only listens.
-- Run `npm run seed` after editing, then restart. The channel list is read at
-  startup.
+| Field | Notes |
+|---|---|
+| `channel_id` | The channel to read |
+| `channel_name` | Shown as the author of every forwarded post — put the server name in it |
+| `is_active` | `false` stops reading the channel. Deleting the entry does **not**: `npm run seed` adds and updates, never deletes |
+| `filters.enabled` | **Must be `true` for `keywords` and `blacklist` to apply.** `false` (or no `filters`) forwards everything |
+| `filters.keywords` | Any one of them in the text passes the post; case-insensitive unless `case_sensitive`. Empty list = everything, including posts that are only an image |
+| `filters.blacklist` | Any one of them drops the post, even with a keyword |
+| `destinations` | Bot-reachable channel ids from step 2 |
+| `text_replacements`, `filters.reject_shouty`, `filters.min_length` | Optional, as for Telegram ([README](../README.md#sources)) |
+| `flow` | `{ "enabled": true }` sends the channel to TheFlow (enrichment, routing by topic) instead of `destinations`; costs model quota per message |
 
-What is matched and forwarded: the message text **and the text of its
-embeds** (title, description, fields) — bots and announcement feeds often
+`mode` and `poll_interval_min` do not apply: the source only listens.
+
+What the keywords are matched against: the message text **and the text of
+its embeds** (title, description, fields) — bots and announcement feeds often
 post an empty message with everything in an embed. Image and video
-attachments and embed images are downloaded and forwarded (up to 4); other
-files are not.
+attachments and embed images are forwarded (up to 4); other files are not.
+
+### 5. Check a channel before relying on it
+
+```bash
+npm run seed
+node src/cli.js discord check 123456789012345678 --limit 30
+```
+
+`discord check` reads the latest messages through the account (one request)
+and marks what the filter would pass (`✓`) and drop (`·`). A 403/404 means the
+account cannot read the channel. Tune `keywords`, seed again, check again.
+More in [Checking a channel](#checking-a-channel-discord-check) below.
+
+### 6. Start and watch
+
+```bash
+node src/cli.js flow preflight      # blocks without DISCORD_USER_TOKEN or with a bad destination id
+pm2 restart inemuri                 # or npm start on the dev copy
+```
+
+`.env` options, all with working defaults:
+
+| Variable | Default | |
+|---|---|---|
+| `DISCORD_SOURCE_TRANSPORT` | `library` | `own` — the own client instead of the archived library |
+| `DISCORD_SOURCE_SHADOW` | `false` | `true` — run the other transport alongside and compare ([Shadow](#shadow-comparing-the-transports)). **Recommended for the first week** |
+| `DISCORD_SOURCE_MAX_RSS_MB` | `450` | Restart the reader above this memory |
+| `DISCORD_SOURCE_HEAP_MB` | `256` | Heap ceiling of the reader |
+| `DISCORD_SOURCE_STATS_MIN` | `10` | How often the stats line is logged |
+
+In the log, in this order:
+
+1. `[DISCORD] reader (library) ready as <account>: N server(s), watching M channel(s)` —
+   logged in. With the shadow on, the same line again with `[DISCORD:shadow own]`.
+2. `… channel(s) not visible to the account …` — only if some configured
+   channel cannot be read; it lists them by name. Fix or deactivate them.
+3. Every 10 minutes `[DISCORD] stats …` and, with the shadow,
+   `[DISCORD] shadow own vs library: …` — what to expect is in
+   [The stats line](#the-stats-line).
+
+Healthy after a day: `rss` flat, `watched` equal to the number of channels,
+`seen` growing, `matched` > 0, and forwarded posts in the destination
+channels. With the shadow: `only-library=0`.
+
+Adding or changing a channel later: edit `sources.json`, `npm run seed`,
+restart — the channel list is read at startup.
 
 ## How it runs
 
