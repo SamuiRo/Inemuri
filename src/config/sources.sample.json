@@ -110,6 +110,24 @@
       }
     },
     {
+      "platform": "discord",
+      "channel_id": "123456789012345678",
+      "channel_name": "Example server · #announcements (Discord example — needs DISCORD_USER_TOKEN)",
+      "is_active": false,
+      "filters": {
+        "enabled": true,
+        "keywords": ["airdrop", "giveaway", "promo code"],
+        "blacklist": [],
+        "case_sensitive": false
+      },
+      "destinations": {
+        "telegram": [],
+        "discord": [
+          "123123123123"
+        ]
+      }
+    },
+    {
       "platform": "reddit",
       "channel_id": "r/cs2",
       "channel_name": "r/cs2 (Reddit example — needs REDDIT_CLIENT_ID/SECRET)",

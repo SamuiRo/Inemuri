@@ -2,7 +2,7 @@
 
 Event-driven content and data flow manager. Inemuri ingests from configured
 sources — Telegram channels, RSS/Atom feeds, news sitemaps, the WordPress
-API, Reddit — and from scheduled jobs, normalizes everything into one event
+API, Reddit, Discord channels — and from scheduled jobs, normalizes everything into one event
 pipeline, applies replacements and filters, and delivers to Telegram and
 Discord. Two subsystems sit inside it:
 
@@ -76,6 +76,7 @@ sample with a `[CONFIG]` warning, a malformed one stops the start.
 | `DISCORD_BOT_TOKEN` | Without it Discord delivery and discordapp are off; everything else runs |
 | `DISCORD_COMMAND_WHITELIST` | User ids allowed to run admin commands. **Empty = nobody** |
 | `DISCORD_GUILD_IDS`, `DISCORD_APP_ENABLED`, `DISCORD_UPLOAD_LIMIT_MB`, `DISCORD_EXPORT_TELEGRAM_CHAT` | discordapp and Discord delivery — [DISCORDAPP.md](docs/DISCORDAPP.md#configuration) |
+| `DISCORD_USER_TOKEN` | User account that reads `discord` sources ([DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md)); without it they are not started |
 | `POLLING_INTERVAL_MIN`, `POLLING_FETCH_LIMIT` | Telegram polling defaults |
 | `CMC_API_KEY` | The bundled daily crypto report |
 | `GEMINI_API_KEY`, `LLM_PRIMARY`, `LLM_FALLBACK`, `OPENROUTER_*` | TheFlow providers ([LLM_GATEWAY.md](docs/theflow/LLM_GATEWAY.md)); without a primary key the enrich worker does not start |
@@ -113,8 +114,8 @@ A source is one entry in `src/config/sources.json`:
 
 | Field | Description |
 | --- | --- |
-| `platform` | `telegram`, `rss` or `reddit` |
-| `channel_id` | Telegram chat id, feed URL, or subreddit. It is the identity the seeder matches on — see [Seeding](#seeding-sources) |
+| `platform` | `telegram`, `rss`, `reddit` or `discord` |
+| `channel_id` | Telegram chat id, feed URL, subreddit, or Discord channel id. It is the identity the seeder matches on — see [Seeding](#seeding-sources) |
 | `channel_name` | Name used in logs and in delivered messages |
 | `is_active` | Enables or disables the source (default `true`) |
 | `mode` | Telegram only: `listener`, `polling` or `both` (default `listener`) |
@@ -166,6 +167,19 @@ replacements and filters, and feed TheFlow or classic forwarding.
 - **Reddit needs OAuth** in practice: create a "script" app at
   reddit.com/prefs/apps and set `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET`.
   Without them a refused source logs one warning and retries every 6 hours.
+
+### Discord sources
+
+```json
+{ "platform": "discord", "channel_id": "123456789012345678", "channel_name": "Server · #announcements", "filters": { "enabled": true, "keywords": ["airdrop"], "blacklist": [], "case_sensitive": false }, "destinations": { "telegram": [], "discord": ["234567890123456789"] } }
+```
+
+Channels on other servers, read through a user account
+(`DISCORD_USER_TOKEN`) in a supervised child process. Keywords match the text
+and the text of embeds; images are forwarded. Only listens: nothing posted
+while the service is down is fetched later. Automating a user account is
+against Discord's terms — use a dedicated read-only account. Details:
+[docs/DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md).
 
 ### Rejecting shouty posts
 

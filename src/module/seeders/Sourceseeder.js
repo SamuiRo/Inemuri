@@ -81,6 +81,11 @@ class SourceSeeder {
     if (!SOURCE_PLATFORMS.includes(source.platform)) {
       throw new Error(`Invalid platform: ${source.platform} (expected ${SOURCE_PLATFORMS.join(" / ")})`);
     }
+    // Discord: id каналу, не сервера і не посилання. Інше ніколи не збіглося б
+    // з channelId повідомлення — джерело мовчало б без жодної помилки.
+    if (source.platform === "discord" && !/^\d{17,20}$/.test(String(source.channel_id))) {
+      throw new Error(`discord source "${source.channel_name}": channel_id must be the channel id (17–20 digits)`);
+    }
     if (source.platform === "rss" && !/^https?:\/\//i.test(String(source.channel_id))) {
       throw new Error(`rss source "${source.channel_name}": channel_id must be the feed, sitemap or site URL`);
     }
@@ -123,8 +128,10 @@ class SourceSeeder {
         channel_name: sourceData.channel_name,
         is_active: sourceData.is_active ?? true,
         // Якщо mode не вказано — залишаємо дефолт 'listener'; стрічки
-        // лише опитуються, тож для них — 'polling'.
-        mode: FEED_PLATFORMS.has(sourceData.platform) ? "polling" : (sourceData.mode ?? "listener"),
+        // лише опитуються, тож для них — 'polling'; Discord лише слухає.
+        mode: FEED_PLATFORMS.has(sourceData.platform) ? "polling"
+          : sourceData.platform === "discord" ? "listener"
+            : (sourceData.mode ?? "listener"),
         // NULL = глобальний POLLING_INTERVAL_MIN (див. Source.getPollIntervalMin)
         poll_interval_min: normalizePollInterval(sourceData.poll_interval_min),
         // NULL = лише глобальний DOWNLOADABLE_MEDIA_TYPES

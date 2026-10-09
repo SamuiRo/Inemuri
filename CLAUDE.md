@@ -6,8 +6,11 @@ Working notes for Claude Code in this repository.
 
 Inemuri is an event-driven content and data flow manager: it ingests from
 configured sources, normalizes into a shared event pipeline, filters, and routes
-to destinations. Currently Telegram, RSS/Atom and Reddit ingestion, Telegram
+to destinations. Currently Telegram, RSS/Atom, Reddit and Discord (user
+account, [docs/DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md)) ingestion, Telegram
 and Discord delivery, cron jobs, and Discord server management (discordapp).
+The Discord *source* is not discordapp and not delivery: it reads other
+servers through a user account in a child process and shares nothing with them.
 
 Start with [docs/HANDOFF.md](docs/HANDOFF.md) for current state and next
 steps, [README.md](README.md) for behavior and configuration, and
@@ -23,8 +26,8 @@ what shipped and why.
 It is the part responsible for producing a stream of validated, categorized,
 deduplicated posts. Phases 0–5 and 1.5 are **built** and live on the VPS since
 2026-10-06; delivery to staff-only test channels is configured but was never
-switched on there (`FLOW_DELIVERY_ENABLED` unset, found 2026-10-08) (the worker starts
-only with a provider key; delivery is off by default, `FLOW_DELIVERY_ENABLED`). Phase 6, news intake
+switched on there (`FLOW_DELIVERY_ENABLED` unset, found 2026-10-08). The
+worker starts only with a provider key; delivery is off by default. Phase 6, news intake
 ([docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)), has steps 1–3:
 the knowledge base, sitemap/WordPress discovery and headline triage. Still
 open: dedup threshold calibration, phase 6 step 4 and poll intervals (step 5's

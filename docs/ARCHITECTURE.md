@@ -45,8 +45,10 @@ Inemuri/
     │   ├── telegram/                # listener + polling: SourceListener, pollingSchedule (pure),
     │   │                            #   MessageParser, MediaDownloader, GroupBuffer (albums),
     │   │                            #   Deduplicator (mode "both"), TelegramMediaResolver (TheFlow lazy media)
-    │   └── feeds/                   # rss / sitemap / wpjson / reddit: FeedPoller, discovery, http,
-    │                                #   parsers (pure), UrlMediaResolver (TheFlow lazy media)
+    │   ├── feeds/                   # rss / sitemap / wpjson / reddit: FeedPoller, discovery, http,
+    │   │                            #   parsers (pure), UrlMediaResolver (TheFlow lazy media)
+    │   └── discord/                 # user-account reader (DISCORD_SOURCE.md): DiscordSelfSource,
+    │                                #   discordMessage + supervisor (pure), transport/selfbotChild (child process)
     ├── destinations/
     │   ├── base/BaseDestinationAdapter.js   # send, describeSent, capabilities, editMessage(Data), describeChannel
     │   ├── discord/DiscordDestination.js    # always an embed; REST only
@@ -92,7 +94,8 @@ Inemuri/
 ```text
 Telegram (listener/polling) ─┐
 Feeds (rss/sitemap/wpjson/reddit) ─┼─> replacements → filters ─┬─ classic: EventBus "message.received" → MessageRouter → adapters
-Cron jobs ───────────────────┘                                 └─ flow.enabled: FlowIngest → posts (pending)
+Discord (user account, child) ─┤                               └─ flow.enabled: FlowIngest → posts (pending)
+Cron jobs ───────────────────┘
                                                                          │
 EnrichWorker tick: triage → vision → enrich + embed → dedup → delta ─────┤
 FlowDelivery tick: resolve → lazy media → render → MessageRouter ────────┘
@@ -100,7 +103,8 @@ FlowDelivery tick: resolve → lazy media → render → MessageRouter ───
 
 Startup order in `src/inemuri.js`: database (connect, `sync()`), media
 resolvers registered, Telegram client, destination adapters (Discord is REST-only, so a missing token only
-disables Discord delivery), Telegram listener, feed poller, cron scheduler
+disables Discord delivery), Telegram listener, feed poller, the Discord
+source (its child process, only with discord sources and `DISCORD_USER_TOKEN`), cron scheduler
 (the daily report, plus the digest job when `digest_destinations` is set;
 it answers `cron.run` on the bus, which `/daily` uses), the enrich worker
 (only with `ENRICH_WORKER_ENABLED` and a primary provider key), flow health,
@@ -172,6 +176,7 @@ Deployment configs are JSON files read through `localConfig.js`
 | [README.md](../README.md) | Behaviour, configuration, commands |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Install, deploy, migrate, rollback, pm2 |
 | [THEFLOW.md](THEFLOW.md) | TheFlow: decisions, phases, status; specs in `theflow/` |
+| [DISCORD_SOURCE.md](DISCORD_SOURCE.md) | Discord as a source: user account, child process, limits |
 | [DISCORDAPP.md](DISCORDAPP.md) | discordapp contract |
 | [PROVISIONING.md](PROVISIONING.md) | Running a Discord server from config |
 | [media.md](media.md) | Media through parse, download, delivery |

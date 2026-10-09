@@ -91,6 +91,31 @@ export const DISCORD_APP_ENABLED = flag("DISCORD_APP_ENABLED", process.env.DISCO
 // Сервери, які обслуговує discordapp (D8). Порожньо — усі, де є бот.
 export const DISCORD_GUILD_IDS = idList(process.env.DISCORD_GUILD_IDS);
 
+// ── Discord як джерело (user-акаунт, docs/DISCORD_SOURCE.md) ──────────────
+// Читає канали чужих серверів через user-акаунт (окремий, лише для читання —
+// автоматизація user-акаунта порушує ToS Discord). Транспорт живе в дочірньому
+// процесі зі своєю стелею heap і наглядом за RSS: його бібліотека тримає кеш
+// усіх серверів акаунта, і витік у ній не повинен покласти Telegram і TheFlow.
+export const DISCORD_USER_TOKEN = process.env.DISCORD_USER_TOKEN || null;
+export const DISCORD_SOURCE = {
+  // --max-old-space-size дочірнього процесу. На 92 серверах heap ~70 МБ.
+  heapMb: optionalNumber("DISCORD_SOURCE_HEAP_MB", process.env.DISCORD_SOURCE_HEAP_MB, 256),
+  // RSS вище — дочірній процес перезапускається (на 92 серверах ~200–250 МБ).
+  maxRssMb: optionalNumber("DISCORD_SOURCE_MAX_RSS_MB", process.env.DISCORD_SOURCE_MAX_RSS_MB, 450),
+  // Як часто дочірній процес звітує пам'ять і лічильники (рядок [DISCORD] stats).
+  statsMin: optionalNumber("DISCORD_SOURCE_STATS_MIN", process.env.DISCORD_SOURCE_STATS_MIN, 10),
+  // Без READY за цей час — перезапуск (логін завис).
+  readyTimeoutMs: 2 * MINUTE,
+  // Перезапуск після падіння: base·2^(n-1), не довше за cap. Скидається на READY.
+  restartBaseMs: 30 * SECOND,
+  restartCapMs: 15 * MINUTE,
+  // Скільки чекати виходу дочірнього процесу при зупинці, далі — kill.
+  shutdownGraceMs: 5 * SECOND,
+  // Вкладення для класичного пересилання: що качати і скільки.
+  mediaTypes: ["photo", "animation", "video"],
+  mediaLimit: 4,
+};
+
 // ── Валідація числових env ────────────────────────────────────────────────
 
 /**

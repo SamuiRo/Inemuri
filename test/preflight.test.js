@@ -48,6 +48,19 @@ test("blockers: development env, pending migrations, no model key, missing triag
   assert.equal(levelOf(assessPreflight(ready({ telegram: { session: false, apiId: true } })), "telegram"), "fail");
 });
 
+test("Discord sources need DISCORD_USER_TOKEN; a Discord flow source is not a listener warning", () => {
+  const discord = { name: "D", platform: "discord", mode: "listener", flow: true, triage: false };
+  const sources = [...ready().sources, discord];
+  const noToken = assessPreflight(ready({ sources }));
+  assert.equal(levelOf(noToken, "discord"), "fail");
+  assert.match(noToken.items.find((i) => i.key === "discord").message, /1 Discord source\(s\), but DISCORD_USER_TOKEN is not set/);
+
+  const withToken = assessPreflight(ready({ sources, discord: { userToken: true } }));
+  assert.equal(withToken.ok, true);
+  assert.equal(levelOf(withToken, "discord"), undefined);
+  assert.equal(levelOf(withToken, "flow_listener"), undefined, "Discord has no polling to switch to");
+});
+
 test("without triage sources, a missing triage.json is only a warning", () => {
   const r = assessPreflight(ready({ configFallbacks: ["triage"], sources: [{ name: "T", platform: "telegram", mode: "polling", flow: true, triage: false }] }));
   assert.equal(r.ok, true);

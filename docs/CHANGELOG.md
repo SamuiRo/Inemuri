@@ -25,6 +25,44 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.61.0] - 2026-10-09
+
+### Added
+- **Discord as a source** (`"platform": "discord"`,
+  [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): channels on other servers, read
+  through a user account (`DISCORD_USER_TOKEN`), through the same
+  replacements and filters into classic forwarding or TheFlow. Moved from
+  CloakCord, which forwarded to its own webhooks from its own database; its
+  config is not imported — sources are described anew in `sources.json`.
+- The reader runs in a **child process** (`--max-old-space-size`
+  `DISCORD_SOURCE_HEAP_MB`, default 256) under a watchdog: RSS above
+  `DISCORD_SOURCE_MAX_RSS_MB` (450) restarts it, a crash restarts it after
+  30 s doubling to 15 min, a refused token stops it without retries. Telegram,
+  TheFlow and discordapp are not affected by anything it does. The token goes
+  to the child over IPC, not in its arguments.
+- CloakCord's memory fix carried over unchanged: the library caches of
+  members and users limited to the account itself, messages, presences,
+  reactions and voice states to zero (19 h flat RSS on 92 servers).
+- A `[DISCORD] stats` line every `DISCORD_SOURCE_STATS_MIN` (10) minutes:
+  RSS, heap, cache sizes, `watched=visible/total`, `seen`, `matched`,
+  `ingested`. Channels the account cannot see are listed by name at startup.
+- `flow preflight`: discord sources without `DISCORD_USER_TOKEN` are a
+  blocker; a Discord flow source is not a "pure listener" warning (there is no
+  polling to switch to).
+- Seeder: a discord `channel_id` must be a channel id (17–20 digits); `mode`
+  is always `listener`.
+- Dependency `discord.js-selfbot-v13` **3.7.0, pinned exactly**. Archived and
+  deprecated upstream, GPL-3.0 — used as an npm dependency only, never copied
+  or modified. Replacing it with an own minimal client is the next step
+  (DISCORD_SOURCE.md, "Next").
+
+### Fixed (compared with CloakCord)
+- Keywords now match the text of embeds (title, description, fields), not
+  only the message content; announcement bots that post an empty message with
+  an embed were never matched (CloakCord ISSUES O6).
+- Video attachments and embed images are forwarded, not only image
+  attachments (O7).
+
 ## [4.60.2] - 2026-10-08
 
 ### Fixed

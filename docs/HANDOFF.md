@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.60.2`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 649 green
+`v4.61.0`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 668 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -18,6 +18,7 @@ runs lint, bootstrap, migrate and tests on every push.
 | Taxonomy | `categories.json` v3: 11 topics, 14 signals ([theflow/TAXONOMY.md](theflow/TAXONOMY.md)) |
 | Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
 | Status board | On (`v4.58.0`): silent sources and channels, one message edited in place in the staff `status` channel |
+| Discord source | Built (`v4.61.0`, [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): CloakCord moved in — user account in a supervised child process, classic keywords or TheFlow. **Not run against Discord yet**; CloakCord is off, no discord sources configured anywhere |
 | discordapp | In production with the production bot ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); the operator's server redesign applied 2026-10-06; one piece not run live: `/export-chats` to Telegram |
 
 **The VPS** runs `v4.59.1` under pm2 since 2026-10-06. Its database is new
@@ -74,6 +75,13 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
 5. **Sources for Nikke and Genshin** — their test channels exist and wait for
    Telegram sources and a `when.source` rule each.
+6. **Discord source live.** Describe the channels in `sources.json` (channel
+   ids, keywords, bot-reachable destination channels — CloakCord's webhook
+   config is not reused), `DISCORD_USER_TOKEN` in `.env`, `npm ci`,
+   `npm run seed`, restart. First on the dev copy with one channel, then the
+   VPS. Watch the `[DISCORD] stats` line for a day or two: RSS flat,
+   `members` ≤ ~2 per server, `watched` = total, `matched` > 0. Then the own
+   client replacing the dead library (DISCORD_SOURCE.md "Next").
 
 **Accepted as is (operator, 2026-10-03):** two pilot flow sources run pure
 `listener` (they lose posts while the service is down), and
@@ -112,6 +120,22 @@ done work is a line per task there, details in CHANGELOG.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-09 — CloakCord moved in as the Discord source (`v4.61.0`)
+
+Started with a health check: lint and tests green, nothing tracked that
+should not be; the unfinished `v4.60.2` was given its version. Then step 2 of
+CloakCord's plan (its docs/NEXT_STEPS.md): read its MEMORY.md and ISSUES.md
+first. The library stays (operator's choice), but only inside a forked child
+process with a heap ceiling and an RSS watchdog, behind a narrow IPC
+interface, so the own client later replaces one file. The cache limits that
+fixed CloakCord's leak are carried over unchanged. Fixed on the way:
+keywords match embed text (O6), videos and embed images forwarded (O7).
+Decided by the operator: delivery through the bot to channel ids (not
+webhooks), sources described anew rather than imported, classic keywords
+first, no shadow run (CloakCord is already off). Verified offline only: unit
+tests with a fake child, and the real child with an empty token (library
+loads, fatal path exits 2 without restart).
 
 ### 2026-10-07 — code audit: boundaries, config, pure cores (`v4.60.0`)
 

@@ -8,6 +8,7 @@ import telegramClient from "./module/telegram/TelegramClient.js";
 import discordGateway from "./module/discord/DiscordGateway.js";
 import TelegramSourceListener from "./sources/telegram/TelegramSourceListener.js";
 import FeedPoller from "./sources/feeds/FeedPoller.js";
+import DiscordSelfSource from "./sources/discord/DiscordSelfSource.js";
 import DiscordDestinationAdapter from "./destinations/discord/DiscordDestination.js";
 import TelegramDestinationAdapter from "./destinations/telegram/TelegramDestination.js";
 import CronScheduler from "./module/cron/CronScheduler.js";
@@ -198,6 +199,19 @@ class Inemuri {
       //     reddit/rss-джерел нічого не запускається.
       this.feedPoller = new FeedPoller({ eventBus: this.eventBus });
       await this.feedPoller.start();
+
+      // 6c. Discord як джерело — user-акаунт у дочірньому процесі
+      //     (docs/DISCORD_SOURCE.md). Без discord-джерел чи токена не
+      //     запускається; збій тут не зупиняє решту старту.
+      this.discordSource = new DiscordSelfSource(this.eventBus, {
+        resolveMedia: (post, opts) => mediaResolver.resolve(post, opts),
+      });
+      try {
+        await this.discordSource.connect();
+        await this.discordSource.startListening();
+      } catch (error) {
+        print(`Discord source disabled: ${error.message}`, "warning");
+      }
 
       // 7. Ініціалізація Cron Scheduler
       print("Initializing Cron Scheduler...");
@@ -440,6 +454,10 @@ class Inemuri {
       ]);
       if (finished.includes(false)) print("TheFlow tick still running after the grace period — stopping anyway", "warning");
       if (this.feedPoller) this.feedPoller.stop();
+      if (this.discordSource) {
+        print("Stopping Discord source...");
+        await this.discordSource.stopListening();
+      }
       if (this.visionSweepTimer) {
         clearInterval(this.visionSweepTimer);
         this.visionSweepTimer = null;

@@ -6,7 +6,7 @@ import { Source, KnowledgeExample } from "../teapot/models/index.js";
 import {
   NODE_ENV, CONFIG_WARNINGS, CATEGORIES, ROUTING, FLOW_TRIAGE, FLOW_DELIVERY,
   ENRICH_WORKER_ENABLED, LLM_PRIMARY, LLM_FALLBACK, LLM_PROVIDERS,
-  TELEGRAM_SESSION, TELEGRAM_API_ID, CRON_CONFIG, DAILY_REPORT,
+  TELEGRAM_SESSION, TELEGRAM_API_ID, CRON_CONFIG, DAILY_REPORT, DISCORD_USER_TOKEN,
 } from "../../config/app.config.js";
 import { destinationIdProblems } from "../../shared/destinations.js";
 import { usesTriage } from "../../sources/feeds/discovery.js";
@@ -69,6 +69,7 @@ export async function collectPreflight() {
       fallbackKey: Boolean(fallback?.apiKey),
     },
     telegram: { session: Boolean(TELEGRAM_SESSION), apiId: Number.isFinite(TELEGRAM_API_ID) && TELEGRAM_API_ID > 0 },
+    discord: { userToken: Boolean(DISCORD_USER_TOKEN) },
     // Лише «немає файлу — взято семпл»: саме це означає «не налаштовано».
     configFallbacks: CONFIG_WARNINGS
       .map((w) => w.match(/^(\S+)\.json not found/)?.[1] ?? (w.includes("neither") ? w : null))
@@ -122,6 +123,11 @@ export function assessPreflight(s) {
   if (telegramSources && !(s.telegram.session && s.telegram.apiId)) {
     fail("telegram", `${telegramSources} Telegram source(s), but TELEGRAM_SESSION / TELEGRAM_API_ID are not set`);
   }
+  // Без токена джерело Discord не стартує зовсім — лише рядок у лозі на старті.
+  const discordSources = s.sources.filter((x) => x.platform === "discord").length;
+  if (discordSources && !s.discord?.userToken) {
+    fail("discord", `${discordSources} Discord source(s), but DISCORD_USER_TOKEN is not set`);
+  }
 
   // ── TheFlow і модель ──────────────────────────────────────────────
   const flow = s.sources.filter((x) => x.flow);
@@ -165,7 +171,8 @@ export function assessPreflight(s) {
   if (sourceIdProblems.length) {
     fail("source_ids", `${sourceIdProblems.length} source destination id(s) no platform accepts: ${sourceIdProblems.slice(0, 5).join("; ")}`);
   }
-  const listeners = flow.filter((x) => x.mode === "listener");
+  // Лише Telegram: у Discord-джерела polling немає (історію читати поки ні).
+  const listeners = flow.filter((x) => x.mode === "listener" && x.platform === "telegram");
   if (listeners.length) {
     warn("flow_listener", `${listeners.length} flow source(s) in pure listener mode lose posts while the service is down — ` +
       "set mode to both or polling (ROADMAP 1.1a)");
