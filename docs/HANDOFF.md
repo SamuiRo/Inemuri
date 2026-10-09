@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.61.0`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 668 green
+`v4.62.0`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 686 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -18,7 +18,7 @@ runs lint, bootstrap, migrate and tests on every push.
 | Taxonomy | `categories.json` v3: 11 topics, 14 signals ([theflow/TAXONOMY.md](theflow/TAXONOMY.md)) |
 | Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
 | Status board | On (`v4.58.0`): silent sources and channels, one message edited in place in the staff `status` channel |
-| Discord source | Built (`v4.61.0`, [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): CloakCord moved in — user account in a supervised child process, classic keywords or TheFlow. **Not run against Discord yet**; CloakCord is off, no discord sources configured anywhere |
+| Discord source | Built (`v4.61.0`, [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): CloakCord moved in — user account in a supervised child process, classic keywords or TheFlow. Two transports (`v4.62.0`): the archived library (default) and the own client `src/lib/discord-user-client`, comparable side by side (`DISCORD_SOURCE_SHADOW`). **Not run with a real account yet**; CloakCord is off, no discord sources configured anywhere |
 | discordapp | In production with the production bot ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); the operator's server redesign applied 2026-10-06; one piece not run live: `/export-chats` to Telegram |
 
 **The VPS** runs `v4.59.1` under pm2 since 2026-10-06. Its database is new
@@ -77,11 +77,14 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    Telegram sources and a `when.source` rule each.
 6. **Discord source live.** Describe the channels in `sources.json` (channel
    ids, keywords, bot-reachable destination channels — CloakCord's webhook
-   config is not reused), `DISCORD_USER_TOKEN` in `.env`, `npm ci`,
-   `npm run seed`, restart. First on the dev copy with one channel, then the
-   VPS. Watch the `[DISCORD] stats` line for a day or two: RSS flat,
-   `members` ≤ ~2 per server, `watched` = total, `matched` > 0. Then the own
-   client replacing the dead library (DISCORD_SOURCE.md "Next").
+   config is not reused; `node src/cli.js discord check <id>` shows what a
+   channel posts and what the keywords catch), `DISCORD_USER_TOKEN` in
+   `.env`, `npm ci`, `npm run seed`, restart. First on the dev copy with one
+   channel, then the VPS, with `DISCORD_SOURCE_SHADOW=true` from the start.
+   Watch `[DISCORD] stats` (RSS flat, `watched` = total, `matched` > 0) and
+   `[DISCORD] shadow` (`only-library=0`) for about a week, then switch to
+   `DISCORD_SOURCE_TRANSPORT=own` and remove the library
+   (DISCORD_SOURCE.md "Next").
 
 **Accepted as is (operator, 2026-10-03):** two pilot flow sources run pure
 `listener` (they lose posts while the service is down), and
@@ -120,6 +123,21 @@ done work is a line per task there, details in CHANGELOG.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-09 — own Discord client (`v4.62.0`)
+
+Decided with the operator: the own client lives in Inemuri as a self-contained
+module (`src/lib/discord-user-client`, boundary enforced by a test), not a
+separate repo — one consumer today, protocol fixes must ship in one deploy;
+extract when a second project needs it. Protocol taken from discord.py-self
+(the operator's checkout next to this repo): v9 gateway with zlib-stream, QoS
+heartbeat op 40, time-spent op 41, web-client capabilities and super
+properties, subscription to 75k+ servers (op 37) — the last one possibly part
+of CloakCord's `matched=0`. Wired as a second transport behind the same IPC,
+with a shadow mode to compare both on live traffic, and `discord check` for
+writing sources anew. Checked against the real gateway with an empty token;
+found that an `Origin` header gets a Cloudflare 403. Nothing run with a real
+account.
 
 ### 2026-10-09 — CloakCord moved in as the Discord source (`v4.61.0`)
 

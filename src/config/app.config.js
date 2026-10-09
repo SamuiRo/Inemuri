@@ -97,7 +97,26 @@ export const DISCORD_GUILD_IDS = idList(process.env.DISCORD_GUILD_IDS);
 // процесі зі своєю стелею heap і наглядом за RSS: його бібліотека тримає кеш
 // усіх серверів акаунта, і витік у ній не повинен покласти Telegram і TheFlow.
 export const DISCORD_USER_TOKEN = process.env.DISCORD_USER_TOKEN || null;
+const DISCORD_TRANSPORTS = ["library", "own"];
+function discordTransport(raw) {
+  const v = String(raw ?? "").trim().toLowerCase();
+  if (v === "") return "library";
+  if (DISCORD_TRANSPORTS.includes(v)) return v;
+  CONFIG_WARNINGS.push(`DISCORD_SOURCE_TRANSPORT=${JSON.stringify(raw)} is not ${DISCORD_TRANSPORTS.join(" / ")} — using library`);
+  return "library";
+}
 export const DISCORD_SOURCE = {
+  // Хто читає Discord: library — discord.js-selfbot-v13 (заархівована),
+  // own — власний клієнт src/lib/discord-user-client. Обидва за тим самим
+  // IPC, батько різниці не бачить.
+  transport: discordTransport(process.env.DISCORD_SOURCE_TRANSPORT),
+  // Паралельно запустити ІНШИЙ транспорт у тіні: він лише рахує, що бачить,
+  // нічого не пересилає; раз на statsMin — порівняння id повідомлень
+  // (рядок [DISCORD] shadow). Друга сесія того самого акаунта — як другий
+  // відкритий клієнт.
+  shadow: flag("DISCORD_SOURCE_SHADOW", process.env.DISCORD_SOURCE_SHADOW, false),
+  // Повідомлення молодші за це ще не порівнюються: інший транспорт міг не встигнути.
+  shadowSettleMs: MINUTE,
   // --max-old-space-size дочірнього процесу. На 92 серверах heap ~70 МБ.
   heapMb: optionalNumber("DISCORD_SOURCE_HEAP_MB", process.env.DISCORD_SOURCE_HEAP_MB, 256),
   // RSS вище — дочірній процес перезапускається (на 92 серверах ~200–250 МБ).

@@ -189,4 +189,11 @@ node src/cli.js flow digest    # the scheduled digest, previewed
 node src/cli.js flow knowledge export|import|stats  # portable labels (NEWS_INTAKE.md)
 node src/cli.js flow triage stats|review           # headline triage of news sources
 node src/cli.js flow preflight # deployment ready? exit 1 on a blocker
+node src/cli.js discord check <channel_id>  # read a Discord channel, show what its filter passes
 ```
+
+`src/lib/discord-user-client/` is a self-contained module (the own Discord
+user client): it imports only its own files, `node:` and `ws`, and reads no
+config — keep it that way (a test enforces it), so it can become a package.
+Its protocol values come from discord.py-self (MIT; the operator keeps a
+checkout next to this repo); its README maps each value to the file there.

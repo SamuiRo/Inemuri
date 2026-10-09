@@ -77,6 +77,7 @@ sample with a `[CONFIG]` warning, a malformed one stops the start.
 | `DISCORD_COMMAND_WHITELIST` | User ids allowed to run admin commands. **Empty = nobody** |
 | `DISCORD_GUILD_IDS`, `DISCORD_APP_ENABLED`, `DISCORD_UPLOAD_LIMIT_MB`, `DISCORD_EXPORT_TELEGRAM_CHAT` | discordapp and Discord delivery — [DISCORDAPP.md](docs/DISCORDAPP.md#configuration) |
 | `DISCORD_USER_TOKEN` | User account that reads `discord` sources ([DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md)); without it they are not started |
+| `DISCORD_SOURCE_TRANSPORT`, `DISCORD_SOURCE_SHADOW` | Who reads Discord: `library` or the `own` client; run the other one alongside to compare |
 | `POLLING_INTERVAL_MIN`, `POLLING_FETCH_LIMIT` | Telegram polling defaults |
 | `CMC_API_KEY` | The bundled daily crypto report |
 | `GEMINI_API_KEY`, `LLM_PRIMARY`, `LLM_FALLBACK`, `OPENROUTER_*` | TheFlow providers ([LLM_GATEWAY.md](docs/theflow/LLM_GATEWAY.md)); without a primary key the enrich worker does not start |
@@ -370,6 +371,7 @@ message.
 | `flow knowledge stats\|export\|import\|backfill` | The portable knowledge base ([NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md) §3.5) |
 | `flow triage stats\|review` | Headline triage decisions and labelling |
 | `flow preflight` | Deployment readiness; exit 1 on a blocker |
+| `discord check <channel_id> [--limit n]` | Read a Discord channel through the user account; show what its source's filter would pass |
 
 Notes that are easy to get wrong:
 

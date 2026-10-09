@@ -25,6 +25,36 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.62.0] - 2026-10-09
+
+### Added
+- **Own Discord user client**, `src/lib/discord-user-client/`: gateway
+  (HELLO → QoS heartbeat, IDENTIFY, RESUME on `resume_gateway_url`,
+  INVALID_SESSION, RECONNECT, zombie detection, `compress=zlib-stream`) and
+  REST (one request at a time, a gap between requests, 429 waits). No object
+  cache: from READY it keeps server and channel ids only. Protocol values
+  from discord.py-self (MIT), knowledge not code; its README maps each value
+  to the file there. Self-contained — imports only itself, `node:` and `ws`
+  (now a direct dependency), enforced by a test — so it can become a package.
+- **`DISCORD_SOURCE_TRANSPORT`**: `library` (default, unchanged) or `own`
+  (`transport/ownChild.js`, same IPC). **`DISCORD_SOURCE_SHADOW=true`** runs
+  the other transport alongside: it forwards nothing, and a `[DISCORD] shadow`
+  line compares the message ids both saw (`both`, `only-…`).
+- The own client subscribes to servers of 75 000+ members that hold a watched
+  channel (gateway op 37); without it Discord sends a user account no
+  messages from them. The library transport does not do this.
+- `node src/cli.js discord check <channel_id>`: reads a channel's latest
+  messages through the account (one REST request) and shows which its
+  source's filter would pass — for writing `sources.json` anew.
+
+### Notes
+- Checked against the real gateway with an empty token only: HELLO
+  decompressed, IDENTIFY sent, close 4004 → stop without retry. Found on the
+  way: `Origin: https://discord.com` on the handshake gets a Cloudflare 403,
+  so it is not sent.
+- Not sent on purpose: the `auth_token_refresh` capability (a refreshed token
+  could not be written back to `.env`).
+
 ## [4.61.0] - 2026-10-09
 
 ### Added

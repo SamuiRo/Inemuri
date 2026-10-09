@@ -61,6 +61,33 @@ export function formatStats(stats, counters) {
 }
 
 /**
+ * Порівняння основного транспорту з тіньовим за id побачених повідомлень.
+ * Рахуються лише ті, що старші за `settleMs` (інший міг ще не встигнути);
+ * пораховані повертаються в `done`, щоб викликач їх забув.
+ *
+ * @param {Map<string, number>} primary  id → коли побачив основний (мс).
+ * @param {Map<string, number>} shadow   id → коли побачив тіньовий.
+ * @returns {{ both: number, onlyPrimary: number, onlyShadow: number, done: string[] }}
+ */
+export function compareSeen(primary, shadow, { now, settleMs }) {
+  const cutoff = now - settleMs;
+  const result = { both: 0, onlyPrimary: 0, onlyShadow: 0, done: [] };
+  for (const [id, at] of primary) {
+    const other = shadow.get(id);
+    if (Math.max(at, other ?? 0) > cutoff) continue;
+    if (other != null) result.both++;
+    else result.onlyPrimary++;
+    result.done.push(id);
+  }
+  for (const [id, at] of shadow) {
+    if (primary.has(id) || at > cutoff) continue;
+    result.onlyShadow++;
+    result.done.push(id);
+  }
+  return result;
+}
+
+/**
  * Попередження про канали, яких акаунт не бачить (вийшов із сервера, втратив
  * доступ, хибний id). null — бачить усі.
  *

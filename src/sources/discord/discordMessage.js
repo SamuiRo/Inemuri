@@ -43,6 +43,36 @@ export function normalizeMessage(m) {
   };
 }
 
+/**
+ * Сирий MESSAGE_CREATE з gateway (власний клієнт, src/lib/discord-user-client)
+ * → той самий plain-об'єкт, що й normalizeMessage з об'єкта бібліотеки:
+ * батьківському процесу байдуже, який транспорт працює.
+ */
+export function fromRawMessage(raw) {
+  const created = Date.parse(raw?.timestamp ?? "");
+  return {
+    id: String(raw.id),
+    channelId: String(raw.channel_id),
+    guildId: raw.guild_id ? String(raw.guild_id) : null,
+    authorId: raw.author?.id ? String(raw.author.id) : null,
+    authorName: raw.author?.username ?? null,
+    content: raw.content ?? "",
+    embeds: (raw.embeds ?? []).map((e) => ({
+      title: e.title ?? null,
+      description: e.description ?? null,
+      url: e.url ?? null,
+      fields: (e.fields ?? []).map((f) => ({ name: String(f.name ?? ""), value: String(f.value ?? "") })),
+      imageUrl: e.image?.url ?? null,
+    })),
+    attachments: (raw.attachments ?? []).map((a) => ({
+      url: a.url ?? null,
+      contentType: a.content_type ?? null,
+      name: a.filename ?? null,
+    })),
+    createdAt: Number.isFinite(created) ? created : null,
+  };
+}
+
 /** Текст embed: заголовок, опис, поля (назва й значення). */
 export function embedText(embed) {
   const fields = (embed?.fields ?? []).flatMap((f) => [f.name, f.value]);

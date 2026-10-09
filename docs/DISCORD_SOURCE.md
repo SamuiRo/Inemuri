@@ -58,7 +58,7 @@ files are not.
 
 ```text
 inemuri (main process)                           child process (fork)
-DiscordSelfSource ── watch, login(token) ──IPC──> selfbotChild.js
+DiscordSelfSource ── watch, login(token) ──IPC──> selfbotChild.js | ownChild.js
   filters → message.received / FlowIngest <──IPC── message (plain object)
   watchdog: RSS, restarts                 <──IPC── status, stats, log
 ```
@@ -67,10 +67,17 @@ DiscordSelfSource ── watch, login(token) ──IPC──> selfbotChild.js
   discord sources, starts the child, and handles what comes back: filters and
   classic forwarding or `FlowIngest`, the status board's last-seen time, the
   stats line.
-- `src/sources/discord/transport/selfbotChild.js` (child process) is the only
-  code that touches the Discord library (`discord.js-selfbot-v13`). It sends
-  the parent only messages from watched channels, as plain objects
-  (`normalizeMessage`).
+- The child is one of two **transports**, chosen by
+  `DISCORD_SOURCE_TRANSPORT`:
+  - `library` (default) — `transport/selfbotChild.js` on
+    `discord.js-selfbot-v13`, with CloakCord's cache limits;
+  - `own` — `transport/ownChild.js` on the own client,
+    [`src/lib/discord-user-client`](../src/lib/discord-user-client/README.md):
+    no object cache, keeps only server and channel ids from READY.
+
+  Both speak the same IPC and send the parent only messages from watched
+  channels, as the same plain objects (`normalizeMessage` /
+  `fromRawMessage`); the parent cannot tell them apart.
 - The token travels over IPC, not in the child's arguments, which any user
   on the host can list.
 - Pure parts, tested: `discordMessage.js` (normalize, text with embeds, media
@@ -121,12 +128,54 @@ Every `DISCORD_SOURCE_STATS_MIN` (10) minutes:
 | `ingested` | New posts in TheFlow |
 
 `seen=0` with `watched` below total: the account lost access. `seen>0`,
-`matched=0`: the keywords did not occur.
+`matched=0`: the keywords did not occur. With the `own` transport `members`
+and `users` are always 0 and `channels` counts only channel ids.
+
+### Large servers
+
+Discord sends a user account `MESSAGE_CREATE` automatically only from
+servers under 75 000 members; from larger ones nothing arrives until the
+client subscribes (gateway op 37). The `own` transport subscribes to large
+servers that hold a watched channel, right after READY
+(`subscribed to N large server(s)` in the log). The `library` transport does
+not — a watched channel on such a server stays at `seen=0`. This may be part
+of why CloakCord saw `matched=0` on keyword channels.
+
+### Shadow: comparing the transports
+
+`DISCORD_SOURCE_SHADOW=true` runs the other transport next to the chosen
+one, as a second session of the same account (like a second open client).
+The shadow forwards nothing; it only reports what it saw. On each stats
+line of the main transport:
+
+```text
+[DISCORD] shadow own vs library: both=41 only-library=0 only-own=3 | since start both=… only-library=… only-own=…
+```
+
+Only messages older than a minute are compared (the other side may lag).
+`only-…` above zero is a warning. The shadow has its own stats line
+(`[DISCORD:shadow own] stats …`), its own watchdog and restarts; a refused
+token stops it without touching the main transport.
+
+### Checking a channel: `discord check`
+
+```bash
+node src/cli.js discord check 123456789012345678 --limit 20
+```
+
+Reads the channel's latest messages through the account (REST, one
+request; the own client's `RestClient`) and prints them oldest first. With a
+discord source for that channel in the database, each line shows whether
+classic forwarding would pass it (`✓`) or not (`·`), or `→` for a TheFlow
+source. Use it while writing `sources.json`: it shows that the account can
+read the channel (403/404 otherwise) and what the keywords catch. Needs
+`DISCORD_USER_TOKEN` and runs without the service.
 
 ## Limits
 
 - **No history.** What is posted while Inemuri is down is lost (as Telegram
-  `listener`). History scans are planned with the own client (below).
+  `listener`). The own client can read a channel's history (`RestClient`), but
+  only `discord check` uses it; backfilling after downtime is not built.
 - **Edits and deletes are ignored.** A post that gets its keyword in an edit
   is not forwarded.
 - **Threads:** a message in a thread has the thread's id, not the channel's,
@@ -139,15 +188,25 @@ Every `DISCORD_SOURCE_STATS_MIN` (10) minutes:
   deprecated (3.7.0, pinned exactly), and GPL-3.0. It is an npm dependency
   only, never copied or modified here. When Discord changes what a user
   client must send, it will break with no fix upstream.
+- **Neither transport looks like a browser at the TLS level.** Node's TLS
+  fingerprint is not Chrome's (discord.py-self imitates it with curl_cffi).
+  This is also why the own client sends no `Origin` header on the gateway
+  handshake: with it Cloudflare answers 403.
 
-## Next: an own client
+## Next: switching to the own client
 
-The plan from CloakCord stays: replace `selfbotChild.js` with a minimal
-gateway + REST client (no cache at all, so memory is flat by construction),
-written from protocol knowledge, behind the same IPC messages. Gateway:
-HELLO → heartbeat, IDENTIFY with user-client properties kept in config,
-RESUME on disconnect, re-IDENTIFY on INVALID_SESSION, fatal close codes stop.
-History: `GET /channels/{id}/messages?before=` at a slow, budgeted pace, one
-request at a time, manual first. Pure core (`decideGatewayAction`,
-`parseRateLimit`, …) tested with `node --test`. Run it in shadow next to the
-library child for about a week, then remove the library.
+The own client is built and checked against the real gateway with an empty
+token (HELLO over zlib-stream, IDENTIFY, close 4004, no retry). Not yet with
+a real account. The rollout:
+
+1. Run `library` with `DISCORD_SOURCE_SHADOW=true` for about a week: the
+   shadow line should show `only-library=0`; `only-own` > 0 is expected on
+   large servers (the library does not subscribe to them).
+2. Switch: `DISCORD_SOURCE_TRANSPORT=own`, keep the shadow for a few days the
+   other way round.
+3. Remove `discord.js-selfbot-v13`, `selfbotChild.js` and the transport
+   switch.
+
+When Discord changes the user-client protocol, compare
+`src/lib/discord-user-client/protocol.js` and `properties.js` with
+discord.py-self (the module's README maps each value to its file there).

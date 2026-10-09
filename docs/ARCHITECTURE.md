@@ -48,7 +48,10 @@ Inemuri/
     │   ├── feeds/                   # rss / sitemap / wpjson / reddit: FeedPoller, discovery, http,
     │   │                            #   parsers (pure), UrlMediaResolver (TheFlow lazy media)
     │   └── discord/                 # user-account reader (DISCORD_SOURCE.md): DiscordSelfSource,
-    │                                #   discordMessage + supervisor (pure), transport/selfbotChild (child process)
+    │                                #   discordMessage + supervisor (pure), transport/{selfbotChild,ownChild} (child process)
+    ├── lib/
+    │   └── discord-user-client/     # own minimal Discord user client (gateway + REST), self-contained:
+    │                                #   imports only itself, node: and ws (its README; boundary test)
     ├── destinations/
     │   ├── base/BaseDestinationAdapter.js   # send, describeSent, capabilities, editMessage(Data), describeChannel
     │   ├── discord/DiscordDestination.js    # always an embed; REST only

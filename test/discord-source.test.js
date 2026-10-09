@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 
 import {
-  normalizeMessage, embedText, messageText, mediaUrlsOf, toDiscordMessageData, passesClassic,
+  normalizeMessage, fromRawMessage, embedText, messageText, mediaUrlsOf, toDiscordMessageData, passesClassic,
 } from "../src/sources/discord/discordMessage.js";
 import {
-  FATAL_EXIT_CODE, isFatalCloseCode, restartDelayMs, assessStats, formatStats, describeMissing,
+  FATAL_EXIT_CODE, isFatalCloseCode, restartDelayMs, assessStats, formatStats, describeMissing, compareSeen,
 } from "../src/sources/discord/supervisor.js";
 import { DiscordSelfSource } from "../src/sources/discord/DiscordSelfSource.js";
 import messageFilter from "../src/module/filters/MessageFilter.js";
@@ -276,14 +276,14 @@ test("crash loop backs off; READY resets the attempt counter", async () => {
   await h.source.connect();
   await h.source.startListening();
   h.children[0].emit("exit", 1, null);
-  assert.equal(h.source._attempt, 1);
+  assert.equal(h.source.slots.primary.attempt, 1);
   await sleep(15);
   h.children[1].emit("exit", 1, null);
-  assert.equal(h.source._attempt, 2);
+  assert.equal(h.source.slots.primary.attempt, 2);
   await sleep(30);
   h.children[2].emit("message", { type: "status", state: "ready", detail: { user: "reader", guilds: 3, missing: [] } });
   await sleep(0);
-  assert.equal(h.source._attempt, 0);
+  assert.equal(h.source.slots.primary.attempt, 0);
   await h.source.stopListening().catch(() => {});
 });
 
@@ -324,4 +324,83 @@ test("stop: asks the child to shut down and does not restart it", async () => {
   await sleep(30);
   assert.equal(h.forks.length, 1);
   assert.equal(child.killed, 0);
+});
+
+// ── Власний клієнт і тінь ────────────────────────────────────────────
+
+test("fromRawMessage (own client) gives the same object as normalizeMessage (library)", () => {
+  const raw = {
+    id: "1300000000000000001", channel_id: "1200000000000000001", guild_id: "1100000000000000001",
+    author: { id: "1000000000000000001", username: "announcer" },
+    content: "Season 3 airdrop is live",
+    embeds: [{ title: "T", description: "D", fields: [{ name: "Code", value: "ABC" }], image: { url: "https://cdn.example/e.png" } }],
+    attachments: [{ url: "https://cdn.example/a.png", content_type: "image/png", filename: "a.png" }],
+    timestamp: "2026-10-09T10:00:00.000000+00:00",
+  };
+  const lib = normalizeMessage(libMessage({
+    embeds: [{ title: "T", description: "D", fields: [{ name: "Code", value: "ABC" }], image: { url: "https://cdn.example/e.png" } }],
+    attachments: new Map([["a", { url: "https://cdn.example/a.png", contentType: "image/png", name: "a.png" }]]),
+  }));
+  assert.deepEqual(fromRawMessage(raw), lib);
+});
+
+test("compareSeen: counts settled ids only and returns them for forgetting", () => {
+  const now = 1_000_000;
+  const primary = new Map([["a", now - 120_000], ["b", now - 120_000], ["c", now - 1_000]]);
+  const shadow = new Map([["a", now - 110_000], ["d", now - 90_000], ["e", now - 500]]);
+  const r = compareSeen(primary, shadow, { now, settleMs: 60_000 });
+  assert.deepEqual({ both: r.both, onlyPrimary: r.onlyPrimary, onlyShadow: r.onlyShadow }, { both: 1, onlyPrimary: 1, onlyShadow: 1 });
+  assert.deepEqual(r.done.sort(), ["a", "b", "d"]);
+});
+
+test("transport own: the own-client child is forked", async () => {
+  const h = harness({ sources: [fakeSource(CH_CLASSIC)], config: { transport: "own" } });
+  await h.source.connect();
+  await h.source.startListening();
+  assert.match(h.forks[0].path, /ownChild\.js$/);
+  assert.equal(h.source.getStatus().transport, "own");
+  await h.source.stopListening().catch(() => {});
+});
+
+test("shadow: the other transport runs too, only counts, and is compared on the primary's stats", async () => {
+  let t = 10_000_000;
+  const src = fakeSource(CH_CLASSIC);
+  const h = harness({ sources: [src], config: { transport: "library", shadow: true, shadowSettleMs: 60_000 } });
+  h.source.now = () => t;
+  await h.source.connect();
+  await h.source.startListening();
+  assert.equal(h.forks.length, 2);
+  assert.match(h.forks[0].path, /selfbotChild\.js$/);
+  assert.match(h.forks[1].path, /ownChild\.js$/);
+  const [primary, shadow] = h.children;
+
+  const m1 = plainMessage(CH_CLASSIC, { id: "1300000000000000101" });
+  const m2 = plainMessage(CH_CLASSIC, { id: "1300000000000000102" });
+  primary.emit("message", { type: "message", message: m1 });
+  shadow.emit("message", { type: "message", message: m1 });
+  shadow.emit("message", { type: "message", message: m2 });
+  await sleep(0);
+  assert.equal(h.emitted.filter((e) => e.name === "message.received").length, 1, "the shadow forwards nothing");
+
+  t += 120_000;
+  shadow.emit("message", { type: "stats", stats: { rssMb: 100 } });
+  await sleep(0);
+  assert.ok(!h.logs.some((l) => l.text.includes(" vs library:")), "compared on the primary's stats only");
+  primary.emit("message", { type: "stats", stats: { rssMb: 100 } });
+  await sleep(0);
+  const line = h.logs.find((l) => l.text.startsWith("[DISCORD] shadow own vs library"));
+  assert.match(line.text, /both=1 only-library=0 only-own=1/);
+  assert.equal(line.level, "warning");
+  assert.ok(h.logs.some((l) => l.text.startsWith("[DISCORD:shadow own] stats")));
+  assert.deepEqual(h.source.getStatus().shadow, { transport: "own", both: 1, onlyPrimary: 0, onlyShadow: 1 });
+
+  // Фатальна тінь не зупиняє основний транспорт.
+  shadow.emit("message", { type: "status", state: "fatal", detail: "x" });
+  await sleep(0);
+  shadow.emit("exit", FATAL_EXIT_CODE, null);
+  await sleep(0);
+  assert.equal(h.source.isListening, true);
+  assert.ok(!h.emitted.some((e) => e.name === "error.occurred"));
+  messageFilter.clearCache(src.id);
+  await h.source.stopListening().catch(() => {});
 });

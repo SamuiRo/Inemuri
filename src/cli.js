@@ -24,9 +24,12 @@ import {
 } from "./module/theflow/triage/report.js";
 import { collectPreflight, assessPreflight } from "./module/theflow/Preflight.js";
 import { serialize as serializeKnowledge, parse as parseKnowledge } from "./module/theflow/knowledge/exchange.js";
+import messageFilter from "./module/filters/MessageFilter.js";
+import { RestClient, resolveClientIdentity } from "./lib/discord-user-client/index.js";
+import { fromRawMessage, toDiscordMessageData, passesClassic } from "./sources/discord/discordMessage.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
-  FLOW_DELIVERY, ROUTING, FLOW_DIGEST,
+  FLOW_DELIVERY, ROUTING, FLOW_DIGEST, DISCORD_USER_TOKEN,
 } from "./config/app.config.js";
 
 // `flow stats | head` закриває канал раніше, ніж CLI допише: це не помилка
@@ -935,6 +938,58 @@ flow
 
       await database.disconnect();
       process.exitCode = report.ok ? 0 : 1;
+    } catch (error) {
+      print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+// ── Discord як джерело (docs/DISCORD_SOURCE.md) ────────────────────────
+const discord = program.command("discord").description("Discord source (user account) tools");
+
+discord
+  .command("check <channel_id>")
+  .description("Read a channel's latest messages through the user account and show what its source's filter would pass")
+  .option("--limit <n>", "messages to read (1–100), one request", "20")
+  .action(async (channelId, options) => {
+    try {
+      if (!DISCORD_USER_TOKEN) throw new Error("DISCORD_USER_TOKEN is not set");
+      await database.connect();
+      const source = await Source.findOne({ where: { platform: "discord", channel_id: String(channelId) } });
+      const identity = await resolveClientIdentity({ log: (text) => print(text, "warning") });
+      const rest = new RestClient({ token: DISCORD_USER_TOKEN, identity });
+
+      let channel;
+      let raw;
+      try {
+        channel = await rest.channel(channelId);
+        raw = await rest.messages(channelId, { limit: Number(options.limit) });
+      } catch (error) {
+        const hint = error.status === 403 || error.status === 404
+          ? " — the account cannot see this channel (not a member, no access, or a wrong id)" : "";
+        throw new Error(`${error.message}${hint}`);
+      }
+
+      print(`#${channel.name ?? "?"} (${channelId}) on server ${channel.guild_id ?? "?"}: ${raw.length} message(s)`, "system");
+      if (!source) print("No discord source with this channel_id in the database — showing messages only. Add it to sources.json and run npm run seed.", "warning");
+      else print(`Source "${source.channel_name}"${source.is_active ? "" : " (inactive)"}: ${source.isFlowEnabled() ? "TheFlow — every message goes to enrichment" : "classic filter"}`, "info");
+
+      const filter = source && !source.isFlowEnabled() ? messageFilter.getCompiledFilter(source) : null;
+      const replacements = source ? messageFilter.getCompiledReplacements(source) : null;
+      let passed = 0;
+      for (const m of [...raw].reverse()) {
+        const data = toDiscordMessageData(fromRawMessage(m));
+        const text = messageFilter.preprocessText(replacements, data.rawText) ?? "";
+        const verdict = !source ? " "
+          : source.isFlowEnabled() ? "→"
+            : passesClassic({ text, hasMedia: data.mediaUrls.length > 0, filter, check: (t) => messageFilter.checkMessageFast(null, filter, t) }) ? "✓" : "·";
+        if (verdict === "✓") passed++;
+        const preview = text.replace(/\s+/g, " ").slice(0, 100);
+        const media = data.mediaUrls.length ? ` [${data.mediaUrls.length} media]` : "";
+        process.stdout.write(`${verdict} ${data.timestamp.toISOString().slice(0, 16)} ${data.author ?? "?"}: ${preview || "(no text)"}${media}\n`);
+      }
+      if (source && !source.isFlowEnabled()) print(`${passed} of ${raw.length} would be forwarded (✓)`, "success");
+      await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
       process.exit(1);
