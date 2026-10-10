@@ -63,19 +63,22 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
 2. **Calibration, round 1 (2026-10-10, `v4.64.0`)** — from a VPS snapshot
    (`database/backups/snapshot-2026-10-10.sqlite`, 640 deliveries) and the
    operator's verdict on ten posts. To put on the VPS: the code, then copy
-   `triage.json` (v2, `strict`, wider `deny_sections`), `sources.json`
+   `triage.json` (v3, `strict`, wider `deny_sections`), `sources.json`
    (junk removal for Business Insider and Fox), and import the labels —
    `node src/cli.js flow knowledge import database/knowledge-2026-10-10.jsonl`
    (the VPS knowledge base was empty). Measured before the change: triage
    passed 43–80% per outlet; Reuters was 453 of 640 deliveries, 181 of them
    foreign editions; 69 of 620 non-Ukrainian posts translated (the daily
-   quota, 426–440 of 500, went to enrichment); a replay of 100 v1 passes
-   under v2 kept 19 (about 10 once the section rule applies), 9 of the
-   operator's 10 verdicts matched. **Open:** Geely ("a company enters a
-   market") — v2 rejects it, the operator found it better than the rest;
-   decide whether such items are wanted. Then, after a few days on v2: the
-   numbers again (`flow triage stats`), `flow triage review` labels, and
-   the market cap and corroboration rules (NEWS_INTAKE.md §5).
+   quota, 426–440 of 500, went to enrichment). Two rounds of operator
+   verdicts (ten mixed posts, then ten market posts): profile v3 matches 19
+   of 21; a replay of 100 v1 passes keeps 14–28 under v3, plus 37 cut by
+   the section rule. Foreign Reuters editions are duplicates of the English
+   wire (SpaceX/telecom, EU–China hybrids, consumer sentiment all exist in
+   English); only Latin-American items (Banxico, peso) are lost. **Next:**
+   the market corroboration and cap rules (NEWS_INTAKE.md §5) — the replay
+   showed that wording alone cannot hold the market volume. **Open:** Geely
+   ("a company enters a market") — rejected; the operator's market verdicts
+   (product renames are noise) suggest that is right.
 3. **After the week:** decide where `tools`
    goes; move the game channels, `claims`, VOYAGE, HARBOR and SANCTUARY out
    of the staff category into their places with their roles and panel

@@ -41,9 +41,13 @@ deliveries on 2026-10-08/09) and the operator's verdict on ten delivered posts.
   The strict rule: pass only a new, concrete event or finding that matters
   beyond the people in it; a number or a famous name is not news; when in
   doubt, reject. Without `strict` the generous rule stays — set it back when
-  step 4 lands. Replayed against the snapshot with the operator's profile v2:
-  19 of 100 former passes still pass (about 10 after the section rule), 9 of
-  10 of the operator's verdicts match.
+  step 4 lands. Replayed against the snapshot with the operator's profile v3
+  (markets rewritten from a second round of verdicts on market posts): 14–28
+  of 100 former passes still pass, 37 more are cut by the section rule, and
+  19 of 21 of the operator's verdicts match. The spread between two runs of
+  nearly the same profile shows the limit of a prompt: the market middle is
+  wide, and its volume needs the corroboration and cap rules
+  (NEWS_INTAKE.md §5), not more wording.
 - **No original in a topic channel.** A post not in Ukrainian whose
   translation is shed or fails now waits (`delivery.waiting`, retried every
   `FLOW_TRANSLATE_RETRY_MIN`, 10, out of the queue until then) and after
