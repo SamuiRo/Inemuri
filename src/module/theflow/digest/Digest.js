@@ -52,6 +52,8 @@ export function selectDigest(rows, { perTopic = 5, excludeSignals = [], topicOrd
     p.topic && p.topic !== "other" &&
     !exclude.has(p.signal_type) &&
     p.analysis?.is_ad !== true &&
+    // Прибране правилом "drop" (відомий шум) — не повертається через дайджест.
+    p.delivery?.skipped !== "dropped" &&
     Number(p.confidence ?? 0) >= Number(p.min_confidence ?? 0));
 
   const sections = new Map();
@@ -142,7 +144,7 @@ export async function collectDigestRows({ since, until }) {
       ],
     },
     attributes: ["id", "source_id", "platform", "channel_id", "external_id", "external_url", "title", "raw_text",
-      "text_en", "topic", "signal_type", "confidence", "analysis", "status", "link_role", "cluster_id", "posted_at"],
+      "text_en", "topic", "signal_type", "confidence", "analysis", "status", "link_role", "cluster_id", "posted_at", "delivery"],
   });
   const sourceIds = [...new Set(posts.map((p) => p.source_id).filter(Boolean))];
   const clusterIds = [...new Set(posts.map((p) => p.cluster_id).filter(Boolean))];

@@ -25,6 +25,29 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.66.0] - 2026-10-10
+
+From the operator's review of `#unsorted` (61 posts on the VPS snapshot).
+
+### Added
+- **`"drop": true` routing rules** — known noise goes nowhere, not even
+  `#unsorted` (outcome `dropped`, reason `dropped_by_rule`, the rule in
+  `delivery`; the digest skips it). A drop rule takes the main rule's place,
+  so source rules above it and `also` rules still apply. `validateRouting`
+  rejects drop together with destinations or `also`. Before, a rule without
+  destinations was silently skipped, so "deliver nowhere" was impossible.
+
+### Changed
+- **A source-only rule routes regardless of the model's confidence or
+  `topic: other`.** 7 of the 11 `low_confidence` posts were a ZZZ channel's
+  image-with-one-word posts, which belong to the ZZZ channel whatever the
+  topic. Ads still go to `#unsorted`.
+
+Replayed on the 61 `#unsorted` posts with the deployment's new rules: 23 to the
+games channel, 5 to steam, 7 to the ZZZ channel, 11 dropped (sales figures,
+executives' remarks, opinions, memes, streams), 15 left in `#unsorted` for a
+reason (`other`, real doubt, ads, failures).
+
 ## [4.65.1] - 2026-10-10
 
 ### Changed

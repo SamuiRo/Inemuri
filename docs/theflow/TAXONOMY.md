@@ -102,6 +102,12 @@ applies is the recorded reason**:
 
 1. `model_failed` — the post is `failed` → `#unsorted`.
 2. `ad` — `analysis.is_ad` → `#unsorted`, whatever the rules say.
+
+   Steps 3–5 are skipped when a **source-only rule** (`when` has only
+   `source`) matches: such a channel is one game or one topic, so the
+   model's doubt about the topic does not change where it goes (an image with
+   one word in the ZZZ channel is ZZZ — 7 of 11 `low_confidence` posts on
+   2026-10-10).
 3. `low_confidence` — below the source's `flow.min_confidence` → `#unsorted`.
 4. `topic_other` → `#unsorted`.
 5. `topic_not_in_source` — outside the source's `flow.topics` → `#unsorted`.
@@ -111,6 +117,11 @@ applies is the recorded reason**:
    rules, the first by descending `priority` supplies the main ones
    (`matched_rule`). A matching rule with no destinations is skipped. A post
    matched only by `also` rules goes there, not to `#unsorted`.
+   A rule with `"drop": true` (no destinations) takes the main rule's place:
+   the post goes nowhere — not even `#unsorted` — with outcome `dropped`,
+   reason `dropped_by_rule`, and the digest skips it. For known noise, e.g.
+   `{ "when": { "topic": "games", "signal_type": ["report", "opinion"] },
+   "drop": true, "priority": 20 }`; source rules above it still win.
 7. `no_rule` → `#unsorted`.
 
 `validateRouting()` runs at startup (`[ROUTING]` warnings) and in

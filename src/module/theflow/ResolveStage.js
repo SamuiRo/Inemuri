@@ -60,6 +60,8 @@ export const RESOLVE_REASONS = Object.freeze({
   NO_RULE: "no_rule",
   // Не resolve(), а доставка: переклад так і не вдався за FLOW_TRANSLATE_WAIT_HOURS.
   UNTRANSLATED: "untranslated",
+  // Правило з "drop": true — відомий шум: нікуди, навіть не в #unsorted.
+  DROPPED_BY_RULE: "dropped_by_rule",
 });
 
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
@@ -91,6 +93,13 @@ export function orderRules(rules) {
  * `verdict.source` — список ідентифікаторів джерела (channel_id, назва);
  * `when.source` збігається, якщо будь-який з них є в списку.
  */
+/** Умова правила — лише `source`, без теми й сигналу. */
+function isSourceOnly(when) {
+  if (!when || typeof when !== "object") return false;
+  const keys = Object.keys(when).filter((k) => !k.startsWith("_"));
+  return keys.length === 1 && keys[0] === "source";
+}
+
 export function matchesWhen(when, verdict) {
   if (!when || typeof when !== "object") return false;
   for (const key of WHEN_KEYS) {
@@ -158,31 +167,46 @@ export function resolve({ post, flow = {}, routing = {}, source = null }) {
   // правило маршрутизувало б її в тематичний канал.
   if (post.analysis?.is_ad === true) return unsorted(RESOLVE_REASONS.AD);
 
-  // Крок 4 специфікації — перевіряється першим, бо діє «незалежно від того,
-  // що збіглося». Невизначена впевненість трактується як нульова: краще в
-  // unsorted, ніж маршрутизувати вердикт, у якому модель не впевнена.
-  const minConfidence = Number(flow.min_confidence ?? 0);
-  const confidence = Number(post.confidence);
-  if (!Number.isFinite(confidence) || confidence < minConfidence) {
-    return unsorted(RESOLVE_REASONS.LOW_CONFIDENCE);
-  }
-
-  if (post.topic === "other") return unsorted(RESOLVE_REASONS.TOPIC_OTHER);
-
-  const sourceTopics = flow.topics;
-  if (Array.isArray(sourceTopics) && sourceTopics.length > 0 && !sourceTopics.includes(post.topic)) {
-    return unsorted(RESOLVE_REASONS.TOPIC_NOT_IN_SOURCE);
-  }
-
   const verdict = { topic: post.topic, signal_type: post.signal_type, source: sourceIds(post, source) };
+
+  // Правило лише за джерелом («цей канал — ця гра») не залежить від теми:
+  // невпевненість у темі чи «other» не причина для #unsorted. Пост-картинка
+  // з одним словом у каналі ZZZ — це ZZZ (2026-10-10: 7 із 11 low_confidence).
+  const pinned = orderRules(routing.routing).some(({ rule }) =>
+    isSourceOnly(rule.when) && matchesWhen(rule.when, verdict) && Object.keys(copyDestinations(rule.destinations)).length > 0);
+
+  if (!pinned) {
+    // Крок 4 специфікації — перевіряється першим, бо діє «незалежно від того,
+    // що збіглося». Невизначена впевненість трактується як нульова: краще в
+    // unsorted, ніж маршрутизувати вердикт, у якому модель не впевнена.
+    const minConfidence = Number(flow.min_confidence ?? 0);
+    const confidence = Number(post.confidence);
+    if (!Number.isFinite(confidence) || confidence < minConfidence) {
+      return unsorted(RESOLVE_REASONS.LOW_CONFIDENCE);
+    }
+
+    if (post.topic === "other") return unsorted(RESOLVE_REASONS.TOPIC_OTHER);
+
+    const sourceTopics = flow.topics;
+    if (Array.isArray(sourceTopics) && sourceTopics.length > 0 && !sourceTopics.includes(post.topic)) {
+      return unsorted(RESOLVE_REASONS.TOPIC_NOT_IN_SOURCE);
+    }
+  }
   const destinations = {};
   const matched = [];
   let main = null;
+  let drop = null;
   for (const { rule, index, priority } of orderRules(routing.routing)) {
     const also = rule.also === true;
     // Після першого звичайного правила шукаємо лише `also`.
-    if (main && !also) continue;
+    if ((main || drop) && !also) continue;
     if (!matchesWhen(rule.when, verdict)) continue;
+    // "drop": true — відомий шум (games: продажі, заяви, меми — 2026-10-10).
+    // Займає місце основного правила; `also`, що вже збіглися, лишаються.
+    if (rule.drop === true) {
+      drop = { index, priority };
+      continue;
+    }
     const own = copyDestinations(rule.destinations);
     // Правило, що збіглося, але нікуди не веде, — не підстава загубити пост.
     if (Object.keys(own).length === 0) continue;
@@ -191,6 +215,9 @@ export function resolve({ post, flow = {}, routing = {}, source = null }) {
     if (!also) main = { index, priority };
   }
 
+  if (matched.length === 0 && drop) {
+    return { outcome: "dropped", reason: RESOLVE_REASONS.DROPPED_BY_RULE, destinations: {}, rule: drop, rules: [] };
+  }
   if (matched.length === 0) return unsorted(RESOLVE_REASONS.NO_RULE);
   return {
     outcome: "routed",
@@ -262,8 +289,14 @@ export function validateRouting(routing, taxonomy) {
     if (rule.also != null && typeof rule.also !== "boolean") {
       problems.push(`${at}.also ${JSON.stringify(rule.also)} must be true or false`);
     }
-    if (Object.keys(copyDestinations(rule.destinations)).length === 0) {
-      problems.push(`${at}.destinations is empty — the rule can match but deliver nowhere`);
+    if (rule.drop != null && typeof rule.drop !== "boolean") {
+      problems.push(`${at}.drop ${JSON.stringify(rule.drop)} must be true or false`);
+    }
+    if (rule.drop === true) {
+      if (rule.also === true) problems.push(`${at} is both "drop" and "also" — a drop rule ends the search, it cannot add`);
+      if (Object.keys(copyDestinations(rule.destinations)).length > 0) problems.push(`${at} has "drop" and destinations — remove one of them`);
+    } else if (Object.keys(copyDestinations(rule.destinations)).length === 0) {
+      problems.push(`${at}.destinations is empty — the rule can match but deliver nowhere (use "drop": true for known noise)`);
     }
     problems.push(...destinationIdProblems(rule.destinations, `${at}.destinations`));
     if (rule.priority != null && !Number.isFinite(Number(rule.priority))) {

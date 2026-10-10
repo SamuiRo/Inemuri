@@ -317,3 +317,48 @@ test("validateRouting — source, also and destination ids", () => {
   assert.ok(problems.some((p) => p.includes('routing[1].destinations.discord "TODO:claims"')));
   assert.ok(!problems.some((p) => p.includes("status_destinations")), "@username is a valid telegram id");
 });
+
+test("a source-only rule routes even a low-confidence or `other` post; ads still go to #unsorted", () => {
+  // Банґбу (ZZZ): картинка з одним словом — модель не певна теми, але канал
+  // визначає гра, а не тема (2026-10-10: 7 із 11 low_confidence).
+  const rules = routing([{ when: { source: "-1001819930859" }, destinations: { discord: ["zzz"] }, priority: 50 }]);
+  const src = { channel_id: "-1001819930859", channel_name: "ZZZ UA" };
+  for (const p of [post({ confidence: 0.4, topic: "games", signal_type: "opinion" }), post({ topic: "other", confidence: 0.4 })]) {
+    const r = resolve({ post: p, flow: FLOW, routing: rules, source: src });
+    assert.equal(r.outcome, "routed", JSON.stringify(p));
+    assert.deepEqual(r.destinations, { discord: ["zzz"] });
+  }
+  const ad = resolve({ post: post({ confidence: 0.9, analysis: { is_ad: true } }), flow: FLOW, routing: rules, source: src });
+  assert.equal(ad.reason, R.AD);
+  // Правило з темою поряд із джерелом — не «лише джерело»: впевненість діє.
+  const mixed = routing([{ when: { source: "-1001819930859", topic: "games" }, destinations: { discord: ["zzz"] } }]);
+  assert.equal(resolve({ post: post({ confidence: 0.4, topic: "games" }), flow: FLOW, routing: mixed, source: src }).reason, R.LOW_CONFIDENCE);
+  // Інше джерело — як і було.
+  assert.equal(resolve({ post: post({ confidence: 0.4 }), flow: FLOW, routing: rules, source: { channel_id: "-1002", channel_name: "x" } }).reason, R.LOW_CONFIDENCE);
+});
+
+test("a drop rule: known noise goes nowhere, not even #unsorted; source rules and `also` still win", () => {
+  const rules = routing([
+    { when: { source: "-100zzz" }, destinations: { discord: ["zzz"] }, priority: 50 },
+    { when: { topic: "games", signal_type: ["promo_code"] }, destinations: { discord: ["claims"] }, also: true, priority: 100 },
+    { when: { topic: "games", signal_type: ["report", "opinion"] }, drop: true, priority: 20 },
+    { when: { topic: "games" }, destinations: { discord: ["games"] }, priority: 10 },
+  ]);
+  const other = { channel_id: "-100xgtv", channel_name: "XGTV" };
+  const report = resolve({ post: post({ topic: "games", signal_type: "report" }), flow: FLOW, routing: rules, source: other });
+  assert.equal(report.outcome, "dropped");
+  assert.equal(report.reason, R.DROPPED_BY_RULE);
+  assert.deepEqual(report.destinations, {});
+  assert.equal(resolve({ post: post({ topic: "games", signal_type: "launch" }), flow: FLOW, routing: rules, source: other }).destinations.discord[0], "games");
+  const pinned = resolve({ post: post({ topic: "games", signal_type: "report" }), flow: FLOW, routing: rules, source: { channel_id: "-100zzz" } });
+  assert.deepEqual(pinned.destinations, { discord: ["zzz"] }, "правило джерела вище за drop");
+});
+
+test("validateRouting: drop rules need no destinations, but not drop with destinations or drop with also", () => {
+  const ok = validateRouting(routing([{ when: { topic: "games" }, drop: true }]), CATEGORIES);
+  assert.deepEqual(ok, []);
+  const both = validateRouting(routing([{ when: { topic: "games" }, drop: true, destinations: { discord: ["123456789012345678"] } }]), CATEGORIES);
+  assert.ok(both.some((p) => /"drop" and destinations/.test(p)));
+  const also = validateRouting(routing([{ when: { topic: "games" }, drop: true, also: true }]), CATEGORIES);
+  assert.ok(also.some((p) => /both "drop" and "also"/.test(p)));
+});

@@ -3,7 +3,8 @@
   "_rule_examples": [
     { "when": { "signal_type": ["promo_code", "freebie"] }, "destinations": { "discord": ["123456789012345678"] }, "also": true, "priority": 100 },
     { "when": { "source": "-1001234567890" }, "destinations": { "discord": ["123456789012345678"] }, "priority": 50 },
-    { "when": { "topic": "tools" }, "destinations": { "telegram": ["-1001234567890"] }, "priority": 10 }
+    { "when": { "topic": "tools" }, "destinations": { "telegram": ["-1001234567890"] }, "priority": 10 },
+    { "when": { "topic": "games", "signal_type": ["report", "opinion", "meme"] }, "drop": true, "priority": 20 }
   ],
   "unsorted_destinations": {
     "telegram": [

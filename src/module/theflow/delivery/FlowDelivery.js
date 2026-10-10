@@ -404,6 +404,8 @@ export class FlowDelivery {
     }
 
     let resolved = await this._resolve(post);
+    // Відомий шум за правилом — нікуди; запис у delivery каже, яке правило.
+    if (resolved.outcome === "dropped") return { skip: "dropped", resolved, cluster, messages: [] };
     // Ринки — до перекладу: квота не витрачається на те, що не піде.
     let market = null;
     if (resolved.outcome === "routed") {

@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.65.1`; committed up to `v4.65.0`. 18 migrations; `npm test` is 709 green
+`v4.66.0`; committed up to `v4.65.1`. 18 migrations; `npm test` is 712 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -83,25 +83,32 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    counts, and whether a ranking cap (batching) is worth building. **Open:** Geely
    ("a company enters a market") — rejected; the operator's market verdicts
    (product renames are noise) suggest that is right.
-3. **After the week:** decide where `tools`
+3. **Games and Steam** (`v4.66.0`, from the operator's `#unsorted` review):
+   `game・news` and `steam・news` added to the COUNCIL test list of the
+   server config — **apply on the VPS**, then add two rules to `routing.json`
+   (`{ "when": { "topic": "games" }, … "priority": 10 }`, the same for
+   `steam`) with their ids. The drop rule for games noise (`report`,
+   `opinion`, `meme`, `stream`, `analysis`) is already in `routing.json`;
+   game channels by source (ZZZ, HSR…) stay above it. A known miss: a
+   launcher or UI update is `launch` and still passes.
+4. **After the week:** decide where `tools`
    goes; move the game channels, `claims`, VOYAGE, HARBOR and SANCTUARY out
    of the staff category into their places with their roles and panel
-   buttons (the plan is in the operator's server skill); route the `games`
-   and `steam` topics, which still fall to `#unsorted`.
-4. **Deduplication thresholds — calibrated** (`v4.65.1`, 2026-10-10): HIGH
+   buttons (the plan is in the operator's server skill).
+5. **Deduplication thresholds — calibrated** (`v4.65.1`, 2026-10-10): HIGH
    0.86, LOW 0.80 from 72 labelled pairs (DEDUPLICATION.md, tier 2). Check
    the VPS `.env`: a `DEDUP_HIGH`/`DEDUP_LOW` line there overrides the new
    defaults. New thresholds apply to new posts only (`flow dedup --reset` is
    refused once a cluster is delivered). Watch the daily collapse rate in
    `node src/cli.js flow dedup` — a jump means HIGH is now too low.
-5. **Phase 6 step 4** — article text for what passed triage (JSON-LD
+6. **Phase 6 step 4** — article text for what passed triage (JSON-LD
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4). When it
    lands, set `strict: false` in `triage.json` — the full-text verdict is
    then the strict stage.
-6. **Sources for Nikke and Genshin** — their test channels now get the
-   official Discord servers (step 7, classic, English); Ukrainian Telegram
+7. **Sources for Nikke and Genshin** — their test channels now get the
+   official Discord servers (step 8, classic, English); Ukrainian Telegram
    sources with a `when.source` rule each are still missing.
-7. **Discord source live.** Described on the dev copy (2026-10-10): 13
+8. **Discord source live.** Described on the dev copy (2026-10-10): 13
    channels of the official NIKKE, Honkai: Star Rail, Genshin Impact, Zenless
    Zone Zero and Wuthering Waves servers, **classic forwarding** (operator's
    choice: English as is, no TheFlow), news into the game's own test channel,

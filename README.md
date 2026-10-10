@@ -303,7 +303,8 @@ content, delivery in Ukrainian. Status, phases and decisions:
 
 Routing lives in `routing.json`. Rules match `topic`, `signal_type` or
 `source` (channel id or name); the first by `priority` wins, and rules with
-`"also": true` add destinations without ending the search
+`"also": true` add destinations without ending the search; `"drop": true`
+sends known noise nowhere
 ([TAXONOMY.md](docs/theflow/TAXONOMY.md#how-resolve-works)). Everything that
 matches nothing, has low confidence, is an ad or failed goes to
 `unsorted_destinations` with the reason.
