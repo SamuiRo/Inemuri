@@ -25,6 +25,20 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.62.2] - 2026-10-10
+
+### Added
+- **`filters.require_media`** for discord sources: a message without an
+  image or video is dropped, whatever its text. For art channels where people
+  also chat. A YouTube link is not media (Discord previews it as a thumbnail,
+  not an image), so a showcase channel passes art and cosplay but not video
+  links. `discord check` marks it too. Telegram and feeds do not read it yet.
+
+### Changed
+- DISCORD_SOURCE.md: the field, and that a foreign server's role mentions
+  and custom emoji are worth removing with `text_replacements` (they render
+  as raw `<@&…>` / `<:name:id>` in a forwarded embed).
+
 ## [4.62.1] - 2026-10-09
 
 ### Changed

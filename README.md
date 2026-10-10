@@ -123,7 +123,7 @@ A source is one entry in `src/config/sources.json`:
 | `poll_interval_min` | How often to poll this source; default `POLLING_INTERVAL_MIN` (Telegram) or `FEED_POLL_INTERVAL_MIN` (feeds) |
 | `extra_media_types` | Media types downloaded in addition to the global list, e.g. `["audio"]` ([media.md](docs/media.md)) |
 | `text_replacements` | Applied before filters ([text_replacements.md](docs/text_replacements.md)) |
-| `filters` | `keywords` (whitelist), `blacklist`, `case_sensitive`, and the optional `reject_shouty` and `min_length` rules below |
+| `filters` | `keywords` (whitelist), `blacklist`, `case_sensitive`, and the optional `reject_shouty` and `min_length` rules below; discord sources also take `require_media` ([DISCORD_SOURCE.md](docs/DISCORD_SOURCE.md#4-srcconfigsourcesjson)) |
 | `destinations` | Classic delivery targets. Ignored while the source is flow-enabled, but kept — the source returns to them when `flow.enabled` goes back to `false` |
 | `flow` | Puts the source through TheFlow — see [below](#enabling-a-source-into-theflow) |
 | `feed` | Feeds only: `discovery` and `triage` — see below |

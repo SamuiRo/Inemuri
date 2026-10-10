@@ -75,11 +75,18 @@ sources:
 | `filters.enabled` | **Must be `true` for `keywords` and `blacklist` to apply.** `false` (or no `filters`) forwards everything |
 | `filters.keywords` | Any one of them in the text passes the post; case-insensitive unless `case_sensitive`. Empty list = everything, including posts that are only an image |
 | `filters.blacklist` | Any one of them drops the post, even with a keyword |
+| `filters.require_media` | `true` drops every message without an image or video, whatever its text — for art channels where people also chat. A YouTube link is not media (its preview is a thumbnail) |
 | `destinations` | Bot-reachable channel ids from step 2 |
 | `text_replacements`, `filters.reject_shouty`, `filters.min_length` | Optional, as for Telegram ([README](../README.md#sources)) |
 | `flow` | `{ "enabled": true }` sends the channel to TheFlow (enrichment, routing by topic) instead of `destinations`; costs model quota per message |
 
 `mode` and `poll_interval_min` do not apply: the source only listens.
+
+Role mentions and custom emoji of the source server mean nothing on yours:
+in a forwarded embed they stay as raw `<@&…>` and `<:name:id>`. Remove them
+with two regex `text_replacements`, pattern `<@&[0-9]+>[ ]*` and
+`<a?:[A-Za-z0-9_]+:[0-9]+>[ ]*`, flags `g`. Mentions never ping: delivery
+puts the text in an embed.
 
 What the keywords are matched against: the message text **and the text of
 its embeds** (title, description, fields) — bots and announcement feeds often

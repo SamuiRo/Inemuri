@@ -85,7 +85,10 @@ class MessageFilter {
       rejectShouty: compileShouty(filters.reject_shouty),
       // Мінімальна довжина (без посилань). null = вимкнено. Промокоди
       // виключені в isTooShort().
-      minLength: compileMinLength(filters.min_length)
+      minLength: compileMinLength(filters.min_length),
+      // Лише пости з картинкою чи відео (канали артів). Поки читає тільки
+      // джерело discord (passesClassic): у Telegram медіа відоме пізніше.
+      requireMedia: filters.require_media === true
     };
 
     // Кешуємо

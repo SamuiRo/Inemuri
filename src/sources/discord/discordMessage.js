@@ -138,9 +138,14 @@ export function toDiscordMessageData(message) {
  * порожній фільтр означає «усе» (так було в CloakCord, ISSUES F9), а картинка
  * без тексту ключового слова не містить ніколи.
  *
+ * `filter.requireMedia` (filters.require_media) — без медіа не проходить
+ * нічого: канал артів, де люди ще й пишуть. Прев'ю YouTube у Discord —
+ * мініатюра, не картинка, тож посилання на відео медіа не має.
+ *
  * @param {{ text: string, hasMedia: boolean, filter: object|null, check: (text: string) => boolean }} input
  */
 export function passesClassic({ text, hasMedia, filter, check }) {
+  if (filter?.requireMedia && !hasMedia) return false;
   if (nonEmpty(text)) return check(text);
   return hasMedia && !filter?.keywords;
 }

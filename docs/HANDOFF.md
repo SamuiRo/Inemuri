@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.62.1`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 686 green
+`v4.62.2`; pushed up to `v4.59.1`. 18 migrations; `npm test` is 688 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -18,7 +18,7 @@ runs lint, bootstrap, migrate and tests on every push.
 | Taxonomy | `categories.json` v3: 11 topics, 14 signals ([theflow/TAXONOMY.md](theflow/TAXONOMY.md)) |
 | Delivery | Template in Ukrainian, Discord embeds with codes/event fields (DELIVERY.md "The template"); routing by source and `also` rules; ads (`is_ad`) → `#unsorted`; posts not in Ukrainian translated; `filters.min_length` |
 | Status board | On (`v4.58.0`): silent sources and channels, one message edited in place in the staff `status` channel |
-| Discord source | Built (`v4.61.0`, [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): CloakCord moved in — user account in a supervised child process, classic keywords or TheFlow. Two transports (`v4.62.0`): the archived library (default) and the own client `src/lib/discord-user-client`, comparable side by side (`DISCORD_SOURCE_SHADOW`). **Not run with a real account yet**; CloakCord is off, no discord sources configured anywhere |
+| Discord source | Built (`v4.61.0`, [DISCORD_SOURCE.md](DISCORD_SOURCE.md)): CloakCord moved in — user account in a supervised child process, classic keywords or TheFlow. Two transports (`v4.62.0`): the archived library (default) and the own client `src/lib/discord-user-client`, comparable side by side (`DISCORD_SOURCE_SHADOW`). 13 game channels described on the dev copy (2026-10-10), all readable by the account (`discord check`); not yet started as a service, not on the VPS. CloakCord is off |
 | discordapp | In production with the production bot ([DISCORDAPP.md](DISCORDAPP.md), [PROVISIONING.md](PROVISIONING.md)); the operator's server redesign applied 2026-10-06; one piece not run live: `/export-chats` to Telegram |
 
 **The VPS** runs `v4.59.1` under pm2 since 2026-10-06. Its database is new
@@ -73,16 +73,24 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    apply to new posts only.
 4. **Phase 6 step 4** — article text for what passed triage (JSON-LD
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
-5. **Sources for Nikke and Genshin** — their test channels exist and wait for
-   Telegram sources and a `when.source` rule each.
-6. **Discord source live** — the operator is filling it in (2026-10-09),
-   following [DISCORD_SOURCE.md "Setup"](DISCORD_SOURCE.md#setup). Describe the channels in `sources.json` (channel
-   ids, keywords, bot-reachable destination channels — CloakCord's webhook
-   config is not reused; `node src/cli.js discord check <id>` shows what a
-   channel posts and what the keywords catch), `DISCORD_USER_TOKEN` in
-   `.env`, `npm ci`, `npm run seed`, restart. First on the dev copy with one
-   channel, then the VPS, with `DISCORD_SOURCE_SHADOW=true` from the start.
-   Watch `[DISCORD] stats` (RSS flat, `watched` = total, `matched` > 0) and
+5. **Sources for Nikke and Genshin** — their test channels now get the
+   official Discord servers (step 6, classic, English); Ukrainian Telegram
+   sources with a `when.source` rule each are still missing.
+6. **Discord source live.** Described on the dev copy (2026-10-10): 13
+   channels of the official NIKKE, Honkai: Star Rail, Genshin Impact, Zenless
+   Zone Zero and Wuthering Waves servers, **classic forwarding** (operator's
+   choice: English as is, no TheFlow), news into the game's own test channel,
+   NIKKE codes also into `claims`, art/showcase with `require_media`. Five
+   (NIKKE events, art, showcase; Genshin and WuWa YouTube) are
+   `is_active: false` until their channels exist: `nikke・events`,
+   `nikke・media`, `genshin・media`, `wuwa・media` are in the COUNCIL test
+   list of the server config, **apply on the VPS**, then put the ids in
+   `sources.json` and activate. **Not started on the dev copy on purpose:**
+   it would run TheFlow, cron and the status board against the same server
+   as the VPS. Goes live on the VPS directly: pull, `npm ci`, copy
+   `sources.json` and the server config, `DISCORD_USER_TOKEN` and
+   `DISCORD_SOURCE_SHADOW=true` in `.env`, `npm run seed`, restart. Watch
+   `[DISCORD] stats` (RSS flat, `watched` = total, `matched` > 0) and
    `[DISCORD] shadow` (`only-library=0`) for about a week, then switch to
    `DISCORD_SOURCE_TRANSPORT=own` and remove the library
    (DISCORD_SOURCE.md "Next").

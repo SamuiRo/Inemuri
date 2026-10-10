@@ -86,6 +86,32 @@ test("passesClassic: text goes to the filter; media without text passes only wit
   assert.equal(passesClassic({ text: "  ", hasMedia: false, filter: null, check: yes }), false);
 });
 
+test("passesClassic: require_media drops posts without media, text or not", () => {
+  const yes = () => true;
+  const no = () => false;
+  const filter = { keywords: null, requireMedia: true };
+  assert.equal(passesClassic({ text: "nice art!", hasMedia: false, filter, check: yes }), false);
+  assert.equal(passesClassic({ text: "", hasMedia: false, filter, check: yes }), false);
+  assert.equal(passesClassic({ text: "Pixiv: artist", hasMedia: true, filter, check: yes }), true);
+  assert.equal(passesClassic({ text: "", hasMedia: true, filter, check: no }), true);
+  // Медіа не обходить blacklist: текст іде у фільтр, як і без require_media.
+  assert.equal(passesClassic({ text: "spam", hasMedia: true, filter, check: no }), false);
+
+  const id = "require-media-test";
+  messageFilter.clearCache(id);
+  assert.equal(messageFilter.compileFilter(id, { enabled: true, keywords: [], require_media: true }).requireMedia, true);
+  assert.equal(messageFilter.compileFilter(id, { enabled: true, keywords: [] }).requireMedia, false);
+  messageFilter.clearCache(id);
+});
+
+test("mediaUrlsOf: a YouTube link preview is not media (thumbnail, not image)", () => {
+  const youtube = fromRawMessage({
+    id: "1", channel_id: "2", content: "https://www.youtube.com/watch?v=x",
+    embeds: [{ type: "video", title: "Video", thumbnail: { url: "https://i.ytimg.com/vi/x/hq.jpg" }, video: { url: "https://www.youtube.com/embed/x" } }],
+  });
+  assert.deepEqual(mediaUrlsOf(youtube), []);
+});
+
 // ── Нагляд ───────────────────────────────────────────────────────────
 
 test("supervisor: fatal close codes, growing restart delay with a cap, RSS verdict", () => {
