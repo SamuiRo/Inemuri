@@ -192,13 +192,13 @@ export class LLMGateway {
     const run = await this._runComplete(buildTranslatePrompt({ text: input.text, title: input.title }), priority, {});
     if (run.shed) return run;
 
-    const checked = validateTranslateResponse(run.parsed);
+    const checked = validateTranslateResponse(run.parsed, { title: input.title ?? null });
     if (!checked.ok) {
       const err = new Error(`translate: invalid response — ${checked.errors.join("; ")}`);
       err.kind = "bad_response";
       throw err;
     }
-    const result = { text_uk: checked.value, model_used: run.model };
+    const result = { text_uk: checked.value, title_uk: checked.title ?? null, model_used: run.model };
     this.cache.set(key, result);
     return result;
   }

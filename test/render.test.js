@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  render, composeBody, truncateWithEntities, collectUpdates, unverifiedCodes, TEMPLATE, LIMITS, MAX_ADDITIONS,
+  render, leadOf, headlineOf, composeBody, truncateWithEntities, collectUpdates, unverifiedCodes, TEMPLATE, LIMITS, MAX_ADDITIONS,
 } from "../src/module/theflow/delivery/render.js";
 
 const post = (over = {}) => ({
@@ -259,4 +259,19 @@ test("DiscordDestination shows the rendered title (linked), fields and time of a
   assert.deepEqual(embed.fields, [{ name: "🎟 Промокод", value: "`SAVE20`", inline: false }]);
   assert.equal(embed.timestamp, "2026-10-04T10:00:00.000Z");
   assert.equal(embed.footer.text, "🎮 Steam · 🎟 Промокод");
+});
+
+test("headline: translated news title first, a lead that describes the article is dropped", () => {
+  const meta = "Стаття про те, як генеральний директор Lime вивів компанію на біржу.";
+  assert.equal(leadOf(meta), null);
+  assert.equal(leadOf("У статті розповідається про жінок"), null);
+  assert.equal(leadOf("Lime вийшла на біржу в липні 2026 року."), "Lime вийшла на біржу в липні 2026 року.");
+  assert.equal(leadOf("Постачальник чипів підняв прогноз"), "Постачальник чипів підняв прогноз", "«Пост» лише як окреме слово");
+
+  assert.equal(headlineOf({ title: "Fed holds", analysis: { title_uk: "ФРС зберегла ставки", summary_uk: "Лід" } }), "ФРС зберегла ставки");
+  assert.equal(headlineOf({ title: "Lime CEO", analysis: { summary_uk: meta } }), "Lime CEO");
+  assert.equal(headlineOf({ title: null, analysis: { summary_uk: "Новий код SAVE20" } }), "Новий код SAVE20");
+
+  const d = render({ post: post({ title: "Fed holds", analysis: { ...post().analysis, title_uk: "ФРС зберегла ставки" } }), resolved: { outcome: "routed", reason: "matched_rule" }, platform: "discord" });
+  assert.equal(d.title, "ФРС зберегла ставки");
 });

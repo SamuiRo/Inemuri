@@ -7,6 +7,7 @@ import {
   validateVerbatim,
   validateEnrichResponse,
   isoOrNull,
+  isPreciseDateText,
 } from "../src/services/ai/schemas.js";
 
 const taxonomy = {
@@ -267,3 +268,15 @@ test("provenance — the caller's object is not mutated", () => {
   assert.deepEqual(verdict.extracted.promo_codes, [{ code: "SAVE20" }]);
 });
 
+
+test("event dates given only as a year, quarter or fiscal year are not dates (no invented YYYY-01-01)", () => {
+  // Живий випадок: «Beginning in FY27» → подія «2027-01-01» у каналі.
+  const text = "Beginning in FY27, bonuses will be based on individual performance. Geely plans first sales in 2027.";
+  for (const date_text of ["Beginning in FY27", "in 2027"]) {
+    const r = validateVerbatim({ extracted: { event: { name: "Change", starts_at: "2027-01-01", date_text } } }, text);
+    assert.equal(r.value.extracted.event.starts_at, null, date_text);
+    assert.equal(r.discarded[0].path, "extracted.event.dates");
+  }
+  for (const t of ["in 2027", "FY27", "Q1 2027", "next year", "у середині 2027"]) assert.equal(isPreciseDateText(t), false, t);
+  for (const t of ["October 12", "on Oct. 8", "12.10", "2026-10", "tomorrow", "з 15 жовтня", "до 3 марта", "у середу"]) assert.equal(isPreciseDateText(t), true, t);
+});

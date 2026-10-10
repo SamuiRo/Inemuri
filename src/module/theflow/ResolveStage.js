@@ -58,9 +58,22 @@ export const RESOLVE_REASONS = Object.freeze({
   TOPIC_OTHER: "topic_other",
   TOPIC_NOT_IN_SOURCE: "topic_not_in_source",
   NO_RULE: "no_rule",
+  // Не resolve(), а доставка: переклад так і не вдався за FLOW_TRANSLATE_WAIT_HOURS.
+  UNTRANSLATED: "untranslated",
 });
 
 const asArray = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+
+/** Результат «у #unsorted з причиною» — той самий, що повертає resolve(). */
+export function unsortedOutcome(routing, reason) {
+  return {
+    outcome: "unsorted",
+    reason,
+    destinations: copyDestinations(routing?.unsorted_destinations),
+    rule: null,
+    rules: [],
+  };
+}
 
 /**
  * Правила, упорядковані за спаданням priority. Сортування стабільне: при
@@ -137,13 +150,7 @@ export function resolve({ post, flow = {}, routing = {}, source = null }) {
     );
   }
 
-  const unsorted = (reason) => ({
-    outcome: "unsorted",
-    reason,
-    destinations: copyDestinations(routing.unsorted_destinations),
-    rule: null,
-    rules: [],
-  });
+  const unsorted = (reason) => unsortedOutcome(routing, reason);
 
   if (post.status === "failed") return unsorted(RESOLVE_REASONS.MODEL_FAILED);
 

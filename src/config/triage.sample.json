@@ -1,6 +1,7 @@
 {
   "version": 1,
-  "description": "EXAMPLE headline triage profile (docs/theflow/NEWS_INTAKE.md §5). Copy to triage.json (git-ignored) and describe your own reader: what they want (areas), what makes an item worth it (values), what is noise, and which site sections to drop without asking the model. Bump the version when you change it.",
+  "description": "EXAMPLE headline triage profile (docs/theflow/NEWS_INTAKE.md §5). Copy to triage.json (git-ignored) and describe your own reader: what they want (areas), what makes an item worth it (values), what is noise, and which site sections to drop without asking the model. Bump the version when you change it. `strict`: true while there is no full-text verdict after triage (NEWS_INTAKE.md §2) — every pass is published.",
+  "strict": true,
   "areas": {
     "science": "Science and research: a new study, trial or dataset and what it found — medicine, physics, climate, space. A concrete finding, ideally with numbers.",
     "technology": "Technology: notable launches, how products and platforms change, security incidents that affect many users.",

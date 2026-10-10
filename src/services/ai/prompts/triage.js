@@ -8,9 +8,14 @@ import crypto from "crypto";
  * which area, and a short reason. Cheap by design: headline, teaser,
  * keywords and section only, never the article.
  *
- * Generous on purpose: a wrongly rejected article is gone for good, a wrong
+ * Generous by design: a wrongly rejected article is gone for good, a wrong
  * pass costs one enrich call that judges the full text strictly. Markets are
  * the exception — the profile itself makes them strict.
+ *
+ * Але суворого вердикту за повним текстом (крок 4) ще немає: enrich лише
+ * класифікує, і все, що пройшло triage, іде в канал. Тестовий тиждень дав
+ * 43–80% пропусків. Тому `strict: true` у профілі вмикає вибагливе правило;
+ * коли крок 4 з'явиться, щедрість повертається тим самим полем.
  *
  * Headlines and examples are third-party text: both go into nonced blocks as
  * DATA, never into the system prompt.
@@ -49,7 +54,17 @@ export function triageResponseSchema(areas) {
   };
 }
 
-/** @param {{ areas: Record<string,string>, values?: string[], noise?: string[] }} profile triage.json */
+const GENEROUS_RULE = "- Be generous within the reader's areas: when an item plausibly fits, mark it relevant. A missed article is lost for good; a wrong pass only costs a closer look later.";
+
+// Кожен пропуск іде прямо в канал (немає кроку 4) — тож пропуск має бути
+// подією, а не темою. Цифри в заголовку — ще не новина.
+const STRICT_RULES = [
+  "- Be selective: every item you pass is published to the reader as is. Pass an item only when the headline itself announces a new, concrete event or finding that matters beyond the people in it, and it fits an area.",
+  "- A number in a headline does not make it news. A famous name does not make it news.",
+  "- When in doubt, reject.",
+];
+
+/** @param {{ areas: Record<string,string>, values?: string[], noise?: string[], strict?: boolean }} profile triage.json */
 export function buildTriageSystemPrompt(profile) {
   const areas = Object.entries(profile?.areas ?? {});
   return [
@@ -66,7 +81,7 @@ export function buildTriageSystemPrompt(profile) {
     "",
     "RULES:",
     "- Judge from what is given: headline, teaser, keywords, site section. You do not see the article.",
-    "- Be generous within the reader's areas: when an item plausibly fits, mark it relevant. A missed article is lost for good; a wrong pass only costs a closer look later.",
+    ...(profile?.strict === true ? STRICT_RULES : [GENEROUS_RULE]),
     "- Be strict about markets: only material events as described above.",
     "- Reject clear noise and anything outside the areas.",
     `- area: the best-fitting area for a relevant item; "${TRIAGE_NONE}" when not relevant.`,

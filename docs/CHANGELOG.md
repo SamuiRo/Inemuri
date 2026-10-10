@@ -25,6 +25,51 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.64.0] - 2026-10-10
+
+TheFlow calibration, round 1 — from a snapshot of the VPS database (640
+deliveries on 2026-10-08/09) and the operator's verdict on ten delivered posts.
+
+### Changed
+- **Strict headline triage** (`"strict": true` in `triage.json`). The
+  triage prompt was generous on purpose — "a wrong pass only costs a closer
+  look later" — because a strict verdict on the full text (phase 6 step 4) was
+  to follow. It does not exist: enrich only classifies, so every pass was
+  published. Measured: 43–80% of headlines passed per outlet (the design's
+  first run: ~7%), and what reached the channels were CEO profiles,
+  billionaires' opinions, rankings and records, passed "with concrete data".
+  The strict rule: pass only a new, concrete event or finding that matters
+  beyond the people in it; a number or a famous name is not news; when in
+  doubt, reject. Without `strict` the generous rule stays — set it back when
+  step 4 lands. Replayed against the snapshot with the operator's profile v2:
+  19 of 100 former passes still pass (about 10 after the section rule), 9 of
+  10 of the operator's verdicts match.
+- **No original in a topic channel.** A post not in Ukrainian whose
+  translation is shed or fails now waits (`delivery.waiting`, retried every
+  `FLOW_TRANSLATE_RETRY_MIN`, 10, out of the queue until then) and after
+  `FLOW_TRANSLATE_WAIT_HOURS` (6) goes to `#unsorted` with reason
+  `untranslated`. Before, the original went out: 69 of 620 non-Ukrainian
+  deliveries were translated, 0 of 353 on the first day — enrichment took the
+  daily quota (426–440 of 500) and every translation was shed. Pure part
+  `delivery/translationGate.js`, tested. Without a translator wired
+  (`flow preview` without `--translate`) nothing waits.
+- **The translated news title is the headline.** `translate()` returns
+  `title_uk` and `text_uk` separately, from separate nonced blocks: the old
+  `--- title --- / --- body ---` markers came back translated inside 26
+  bodies. The Discord title and the Telegram lead are `headlineOf()`:
+  `title_uk`, else `summary_uk`, else the original title.
+- **A lead that describes the article is not used** ("Стаття про те, як…",
+  "У статті…", "Автор ділиться…" — 12 of 640): `leadOf()` drops it, and the
+  enrich prompt (version 4) asks for the news as a headline.
+- **`isUkrainianTranslation` also needs Cyrillic** (30% of letters): it only
+  looked for Russian letters, so a reply left in English passed — 2 stored
+  "translations" were English.
+
+### Fixed
+- **Invented event dates.** "Beginning in FY27" / "in 2027" became an event
+  on 2027-01-01 in the channel. An event date now needs a day or a month in
+  its `date_text` (`isPreciseDateText`); a year or a quarter is dropped.
+
 ## [4.63.0] - 2026-10-10
 
 ### Added

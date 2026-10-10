@@ -268,7 +268,14 @@ repository either. Areas of the profile line up with the taxonomy topics
   ~10k characters), and its WordPress API is open.
 - **Two stages, different strictness.** Headline triage is generous — a
   missed article is gone for good, a false pass costs one fetch. The verdict
-  after the full text (enrich) is strict.
+  after the full text (enrich) is strict. **Until step 4 exists there is no
+  second stage:** enrich only classifies, so every pass is published. The
+  test week measured 43–80% passes per outlet, and the posts that reached
+  the channels were profiles, opinions of the rich, rankings and records.
+  `"strict": true` in `triage.json` (v4.64.0) replaces the generous rule
+  with a selective one ("pass only a new, concrete event or finding that
+  matters beyond the people in it; a number or a famous name is not news;
+  when in doubt, reject"); set it back to `false` when step 4 lands.
 - **The taxonomy needed a v2**: topics `health`, `mind`, `money`, `markets`,
   signals `research` and `report` (TAXONOMY.md, Versioning).
 

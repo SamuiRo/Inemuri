@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.63.0`; pushed up to `v4.62.3`. 18 migrations; `npm test` is 693 green
+`v4.64.0`; pushed up to `v4.63.0`. 18 migrations; `npm test` is 702 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -60,23 +60,40 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    `flow triage stats` and `flow triage review`. The per-channel filters were
    checked offline against the operator's good/bad examples, not against
    live traffic — watch for good posts cut and noise let through.
-2. **After the week:** tune `triage.json` (bump its version), set the market
-   cap and corroboration rules (NEWS_INTAKE.md §5); decide where `tools`
+2. **Calibration, round 1 (2026-10-10, `v4.64.0`)** — from a VPS snapshot
+   (`database/backups/snapshot-2026-10-10.sqlite`, 640 deliveries) and the
+   operator's verdict on ten posts. To put on the VPS: the code, then copy
+   `triage.json` (v2, `strict`, wider `deny_sections`), `sources.json`
+   (junk removal for Business Insider and Fox), and import the labels —
+   `node src/cli.js flow knowledge import database/knowledge-2026-10-10.jsonl`
+   (the VPS knowledge base was empty). Measured before the change: triage
+   passed 43–80% per outlet; Reuters was 453 of 640 deliveries, 181 of them
+   foreign editions; 69 of 620 non-Ukrainian posts translated (the daily
+   quota, 426–440 of 500, went to enrichment); a replay of 100 v1 passes
+   under v2 kept 19 (about 10 once the section rule applies), 9 of the
+   operator's 10 verdicts matched. **Open:** Geely ("a company enters a
+   market") — v2 rejects it, the operator found it better than the rest;
+   decide whether such items are wanted. Then, after a few days on v2: the
+   numbers again (`flow triage stats`), `flow triage review` labels, and
+   the market cap and corroboration rules (NEWS_INTAKE.md §5).
+3. **After the week:** decide where `tools`
    goes; move the game channels, `claims`, VOYAGE, HARBOR and SANCTUARY out
    of the staff category into their places with their roles and panel
    buttons (the plan is in the operator's server skill); route the `games`
    and `steam` topics, which still fall to `#unsorted`.
-3. **Deduplication thresholds** once several sources produce:
+4. **Deduplication thresholds** once several sources produce:
    `node src/cli.js flow dedup --pairs 30`, then `DEDUP_HIGH`/`DEDUP_LOW`.
    **Delivery is on, so `flow dedup --reset` (and `flow requeue
    --reset-dedup`) are refused once a cluster is delivered** — new thresholds
    apply to new posts only.
-4. **Phase 6 step 4** — article text for what passed triage (JSON-LD
-   `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4).
-5. **Sources for Nikke and Genshin** — their test channels now get the
-   official Discord servers (step 6, classic, English); Ukrainian Telegram
+5. **Phase 6 step 4** — article text for what passed triage (JSON-LD
+   `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4). When it
+   lands, set `strict: false` in `triage.json` — the full-text verdict is
+   then the strict stage.
+6. **Sources for Nikke and Genshin** — their test channels now get the
+   official Discord servers (step 7, classic, English); Ukrainian Telegram
    sources with a `when.source` rule each are still missing.
-6. **Discord source live.** Described on the dev copy (2026-10-10): 13
+7. **Discord source live.** Described on the dev copy (2026-10-10): 13
    channels of the official NIKKE, Honkai: Star Rail, Genshin Impact, Zenless
    Zone Zero and Wuthering Waves servers, **classic forwarding** (operator's
    choice: English as is, no TheFlow), news into the game's own test channel,
@@ -128,6 +145,21 @@ done work is a line per task there, details in CHANGELOG.
 ## Session log
 
 The latest entries; older ones are in [SESSION_LOG.md](SESSION_LOG.md).
+
+### 2026-10-10 — Discord sources, Telegram login, TheFlow calibration round 1 (`v4.62.2`–`v4.64.0`)
+
+Discord: 13 official game channels described and deployed (classic, into the
+COUNCIL test channels; `require_media` for art). Telegram: the login code
+never arrived — gramjs drops where Telegram sent it (or that it sent none);
+`telegram login` (QR) got the session. TheFlow: the first delivered days
+showed the root cause of most noise — triage was generous by design because a
+strict full-text stage (step 4) was to follow, but it does not exist, so
+every pass was published; and the quota ran out on enrichment, so
+translations were shed and originals went out. Fixed: strict triage profile
+v2, Reuters foreign editions and non-news sections denied, untranslated posts
+wait instead of going out, the translated title is the headline, year-only
+event dates dropped, the article-describing lead dropped. Measured by a
+replay against the snapshot, not yet live.
 
 ### 2026-10-09 — own Discord client (`v4.62.0`)
 

@@ -412,6 +412,11 @@ export const FLOW_DELIVERY = {
   // Скільки доповнень (relation "adds") дописується в надіслане повідомлення
   // кластера; далі лише лічильник. Спростування й уточнення — завжди.
   maxAppends: optionalNumber("FLOW_DELIVERY_MAX_APPENDS", process.env.FLOW_DELIVERY_MAX_APPENDS, 3),
+  // Пост не українською без перекладу (квота, невдалий переклад) не йде в
+  // тематичний канал оригіналом: чекає й пробує знову кожні retryMin, а після
+  // waitHours іде в #unsorted з причиною untranslated.
+  translateWaitHours: optionalNumber("FLOW_TRANSLATE_WAIT_HOURS", process.env.FLOW_TRANSLATE_WAIT_HOURS, 6),
+  translateRetryMin: optionalNumber("FLOW_TRANSLATE_RETRY_MIN", process.env.FLOW_TRANSLATE_RETRY_MIN, 10),
 };
 
 // Пошук по корпусу (ROADMAP §9.1): /search і `flow search`.

@@ -29,7 +29,8 @@ export const ENRICH_CALL_SETTINGS = Object.freeze({
 // як model_used і taxonomy_version, вона відділяє зміну промпту від регресії
 // моделі. 2 — фаза 4: links, amounts, event, якорі дат. 3 — уточнене is_ad
 // (нативна реклама, але не гайд із рефкою), таксономія v3 (games, p2e, meme).
-export const ENRICH_PROMPT_VERSION = 3;
+// 4 — summary_uk як заголовок-факт, не опис статті («Стаття про те, як…»).
+export const ENRICH_PROMPT_VERSION = 4;
 
 export { enrichResponseSchema };
 
@@ -55,7 +56,7 @@ export function buildEnrichSystemPrompt(taxonomy) {
     "- If the post fits no topic, use `topic: \"other\"` with a low `confidence`.",
     "- `text_en`: a faithful English rendering of the post. Produce it FIRST; every other field describes it.",
     "- `lang`: ISO 639-1 code of the source language.",
-    "- `summary_uk`: one-sentence Ukrainian summary, or null.",
+    "- `summary_uk`: the news itself as a one-sentence Ukrainian headline — what happened, who did what, as a reporter would write it. Never describe the post or article (no \"Стаття про…\", \"У статті…\", \"Автор розповідає…\", \"Пост про…\"). null when there is no news to state.",
     "- `confidence`: 0..1, your certainty about `topic` and `signal_type`.",
     "- `entities.tickers` and `extracted.promo_codes[].code`: ONLY values that appear verbatim in the source text. Do not guess or complete a code. If unsure, omit it.",
     "- `entities.project`: the project or product name if clear, else null.",

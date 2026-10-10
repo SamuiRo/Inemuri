@@ -2,11 +2,12 @@ import { Op } from "sequelize";
 
 import database from "../../teapot/sqlite/sqlite_db.js";
 import { Post, Source, Cluster } from "../../teapot/models/index.js";
-import { resolve } from "../ResolveStage.js";
+import { resolve, unsortedOutcome, RESOLVE_REASONS } from "../ResolveStage.js";
+import { translationVerdict, waitingState } from "./translationGate.js";
 import { render, renderNotice } from "./render.js";
 import { telegramLink } from "../search/HistorySearch.js";
 import { TELEGRAM_CAPTION_LIMIT, FLOW_DELIVERY } from "../../../config/app.config.js";
-import { HOUR, SECOND } from "../../../shared/time.js";
+import { MINUTE, HOUR, SECOND } from "../../../shared/time.js";
 
 const timeOf = (p) => new Date(p.posted_at ?? p.createdAt).getTime();
 const plainOf = (row) => (row?.get ? row.get({ plain: true }) : row);
@@ -118,6 +119,8 @@ export class FlowDelivery {
    *   translate?: ((input: { text: string, title: string|null }) => Promise<{ text_uk: string, model_used?: string }|{ shed: true }>)|null,
    *     Переклад поста не українською (LLMGateway.translate). null — без перекладу.
    *   captionLimit?: number,  Ліміт підпису до медіа в Telegram (TELEGRAM_PREMIUM).
+   *   translateWaitHours?: number,  Скільки пост чекає перекладу, потім #unsorted.
+   *   translateRetryMin?: number,   Як часто пост, що чекає, пробує перекласти знову.
    *   dedupEnabled?: boolean,
    *   maxAgeHours?: number,
    *   batchSize?: number,
@@ -132,7 +135,10 @@ export class FlowDelivery {
     resolveMedia = async () => [], routing, flowFor = async () => null, translate = null,
     captionLimit = TELEGRAM_CAPTION_LIMIT, dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
     intervalMs = 15 * SECOND, maxAppends = MAX_APPENDS, now = Date.now, log = () => {},
+    translateWaitHours = FLOW_DELIVERY.translateWaitHours, translateRetryMin = FLOW_DELIVERY.translateRetryMin,
   }) {
+    this.translateWaitMs = translateWaitHours * HOUR;
+    this.translateRetryMs = translateRetryMin * MINUTE;
     this.maxAppends = maxAppends;
     this.route = route;
     this.sendTo = sendTo;
@@ -243,6 +249,11 @@ export class FlowDelivery {
         database.sequelize.literal(
           `(json_extract(\`Post\`.\`delivery\`, '$.failed') = 1 AND json_extract(\`Post\`.\`delivery\`, '$.attempts') < ${Number(this.maxAttempts)})`,
         ),
+        // Чекає перекладу — назад у чергу, коли настав час наступної спроби.
+        database.sequelize.literal(
+          "(json_extract(Post.delivery, '$.waiting') = 'translation' AND " +
+          `json_extract(Post.delivery, '$.retry_at') <= '${new Date(this.now()).toISOString()}')`,
+        ),
       ],
     };
     const enriched = {
@@ -294,9 +305,10 @@ export class FlowDelivery {
 
   /**
    * Пост не українською → переклад у analysis.text_uk (render бере його за
-   * тіло). Один раз на пост: збережений переклад перевикористовують і
-   * повторні спроби, і перерендер кластера. Будь-яка невдача — shed, помилка,
-   * переклад із залишками мови джерела — не зупиняє доставку: піде оригінал.
+   * тіло) і title_uk (за заголовок). Один раз на пост: збережений переклад
+   * перевикористовують і повторні спроби, і перерендер кластера. Невдача —
+   * shed, помилка, переклад із залишками мови джерела — тут лише лог: чекати
+   * чи віддати в #unsorted, вирішує plan() (translationGate.js).
    */
   async _ensureTranslation(post) {
     if (!this.translate) return;
@@ -308,12 +320,14 @@ export class FlowDelivery {
     try {
       const r = await this.translate({ text, title: post.title ?? null });
       if (!r || r.shed || typeof r.text_uk !== "string") {
-        this.log(`[DELIVERY] posts#${post.id} translation deferred (${r?.reason ?? "shed"}) — original goes out`, "debug");
+        this.log(`[DELIVERY] posts#${post.id} translation deferred (${r?.reason ?? "shed"})`, "debug");
         return;
       }
-      await post.update({ analysis: { ...(post.analysis ?? {}), text_uk: r.text_uk, text_uk_model: r.model_used ?? null } });
+      await post.update({
+        analysis: { ...(post.analysis ?? {}), text_uk: r.text_uk, title_uk: r.title_uk ?? null, text_uk_model: r.model_used ?? null },
+      });
     } catch (error) {
-      this.log(`[DELIVERY] posts#${post.id} translation failed (${error.message}) — original goes out`, "warning");
+      this.log(`[DELIVERY] posts#${post.id} translation failed (${error.message})`, "warning");
     }
   }
 
@@ -335,10 +349,22 @@ export class FlowDelivery {
       return { skip: "cluster_already_delivered", cluster, messages: [] };
     }
 
-    const resolved = await this._resolve(post);
+    let resolved = await this._resolve(post);
     // Переклад — лише для того, що йде в тематичний канал: #unsorted читає
-    // оператор, і оригінал там корисніший.
-    if (resolved.outcome === "routed") await this._ensureTranslation(post);
+    // оператор, і оригінал там корисніший. Без перекладу в тематичний канал
+    // не йде нічого: пост чекає, а не вдалося за translateWaitMs — #unsorted.
+    // Без перекладача (flow preview без --translate) чекати нема чого — оригінал.
+    if (resolved.outcome === "routed" && this.translate) {
+      await this._ensureTranslation(post);
+      const verdict = translationVerdict({
+        post: plainOf(post),
+        waitingSince: post.delivery?.waiting === "translation" ? post.delivery.since : null,
+        now: this.now(),
+        waitMs: this.translateWaitMs,
+      });
+      if (verdict === "wait") return { wait: "translation", resolved, cluster, messages: [] };
+      if (verdict === "give_up") resolved = unsortedOutcome(this.routing, RESOLVE_REASONS.UNTRANSLATED);
+    }
     const messages = [];
     for (const platform of PLATFORMS) {
       const ids = resolved.destinations[platform];
@@ -365,6 +391,13 @@ export class FlowDelivery {
         },
       });
       return { rewrote: p.cluster.id };
+    }
+
+    if (p.wait) {
+      const state = waitingState(post.delivery, { now: this.now(), retryMs: this.translateRetryMs });
+      await post.update({ delivery: state });
+      this.log(`[DELIVERY] posts#${post.id} waits for translation (try ${state.tries}, since ${state.since})`, "debug");
+      return { waiting: p.wait };
     }
 
     if (p.skip) {

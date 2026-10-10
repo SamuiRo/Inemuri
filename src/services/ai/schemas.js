@@ -364,7 +364,9 @@ export function validateVerbatim(obj, rawText, textOcr = "") {
         // Назву події не звіряємо дослівно — як і project, її легітимно
         // перекладають. Дати — лише з дослівним якорем у тексті.
         const e = ex.event;
-        const anchor = usable(e.date_text) ? provenance(e.date_text) : null;
+        // «in 2027» / «FY27» модель добудовувала до 2027-01-01 — у каналі це
+        // виглядало як точна дата події. Дата лише з роком чи кварталом — не дата.
+        const anchor = usable(e.date_text) && isPreciseDateText(e.date_text) ? provenance(e.date_text) : null;
         const starts = anchor ? isoOrNull(e.starts_at) : null;
         const ends = anchor ? isoOrNull(e.ends_at) : null;
         if ((e.starts_at != null && !starts) || (e.ends_at != null && !ends)) {
@@ -417,5 +419,30 @@ const NOT_UKRAINIAN = /[ыэъё]/giu;
 export function isUkrainianTranslation(textUk) {
   if (typeof textUk !== "string" || textUk.trim() === "") return true;
   const plain = textUk.replace(/\bhttps?:\/\/\S+/gi, " ");
-  return (plain.match(NOT_UKRAINIAN) ?? []).length < 3;
+  if ((plain.match(NOT_UKRAINIAN) ?? []).length >= 3) return false;
+  // Лише «ыэъё» пропускало відповідь, що лишилась англійською чи іспанською.
+  // Латиниця в назвах, тікерах і кодах легітимна: речення «Apple представила
+  // iPhone 17 Pro, AirPods Pro 3…» — третина кирилиці; неперекладений текст —
+  // нуль. Звідси поріг 0.3; коротше 8 літер — код чи назва, не текст.
+  const cyrillic = (plain.match(/\p{Script=Cyrillic}/gu) ?? []).length;
+  const letters = (plain.match(/\p{L}/gu) ?? []).length;
+  return letters < 8 || cyrillic / letters >= 0.3;
+}
+
+// Місяць словом (en, uk, ru — основи), число з місяцем (12.10, 10/12), ISO
+// до місяця, або «сьогодні/завтра» й дні тижня. Без цього дата — лише рік,
+// квартал чи фінансовий рік, і з неї не можна чесно зробити YYYY-MM-DD.
+const PRECISE_DATE = new RegExp([
+  "\\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\b",
+  "(?:січ|лют|берез|квіт|трав|черв|лип|серп|верес|жовт|листопад|груд)\\p{L}*",
+  "(?:январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)\\p{L}*",
+  "\\b\\d{1,2}[./-]\\d{1,2}\\b",
+  "\\b\\d{4}-\\d{2}\\b",
+  "\\b(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\\b",
+  "(?:сьогодні|завтра|понеділ|вівтор|серед(?:а|у|и)(?!\\p{L})|четвер|п.ятниц|субот|неділ|сегодня)",
+].join("|"), "iu");
+
+/** Чи `date_text` називає день чи місяць, а не лише рік або квартал. */
+export function isPreciseDateText(text) {
+  return typeof text === "string" && PRECISE_DATE.test(text);
 }

@@ -861,6 +861,10 @@ flow
           print(`${head} — skipped: ${p.skip}${p.resolved ? ` (${p.resolved.outcome}, ${p.resolved.reason})` : ""}`, "warning");
           continue;
         }
+        if (p.wait) {
+          print(`${head} → ${p.resolved.outcome}, but the translation failed or was shed (lang ${post.lang}): delivery would wait and retry`, "warning");
+          continue;
+        }
         print(`${head} → ${p.resolved.outcome} (${p.resolved.reason})`, "system");
         for (const m of p.messages) {
           if (options.platform && m.platform !== options.platform) continue;

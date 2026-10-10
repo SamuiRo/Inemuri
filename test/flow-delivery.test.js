@@ -216,17 +216,51 @@ test("no translation for Ukrainian posts, for #unsorted, or without a translator
   assert.ok(plan.messages.length > 0, "без перекладача — оригінал");
 });
 
-test("a failed or shed translation does not stop delivery: the original goes out", async () => {
+test("a failed or shed translation holds the post: nothing in the original, retried later, then #unsorted", async () => {
+  // Перший день доставки на VPS: 0 перекладених із 353 — у тематичні канали
+  // пішли оригінали англійською, іспанською, російською.
   for (const translate of [async () => ({ shed: true }), async () => { throw new Error("bad_response"); }]) {
-    const p = await post({ lang: "ru", raw_text: "Оригинал поста" });
+    let clock = Date.parse("2026-10-10T10:00:00Z");
+    const p = await post({ lang: "ru", raw_text: "Оригинал поста", posted_at: new Date(clock) });
     const { route, sent } = fakeRouter();
-    await stage({ route, translate }).deliver(p);
-    assert.match(sent[0].rawText, /Оригинал поста/);
-    const P = await Post.findByPk(p.id);
-    assert.equal(P.status, "routed");
-    assert.equal(P.analysis?.text_uk ?? null, null);
+    const d = stage({ route, translate, now: () => clock, translateWaitHours: 6, translateRetryMin: 10 });
+
+    await d.runOnce();
+    assert.equal(sent.length, 0, "оригінал у тематичний канал не йде");
+    let P = await Post.findByPk(p.id);
+    assert.equal(P.status, "enriched");
+    assert.equal(P.delivery.waiting, "translation");
+    assert.equal(P.delivery.tries, 1);
+    assert.equal((await d.candidates()).length, 0, "до retry_at пост не займає чергу");
+
+    clock += 11 * 60_000;
+    assert.equal((await d.candidates()).length, 1, "після retry_at — знову в черзі");
+    await d.runOnce();
+    P = await Post.findByPk(p.id);
+    assert.equal(P.delivery.tries, 2);
+    assert.equal(P.delivery.since, "2026-10-10T10:00:00.000Z", "початок очікування не зсувається");
+
+    clock += 6 * 3_600_000;
+    await d.runOnce();
+    P = await Post.findByPk(p.id);
+    assert.equal(P.status, "unsorted");
+    assert.equal(P.delivery.reason, "untranslated");
+    assert.ok(sent.length > 0 && sent.every((m) => /Оригинал поста/.test(m.rawText ?? m.text ?? "")), "оригінал — лише в #unsorted");
     await cleanup();
   }
+});
+
+test("a news title is translated separately and becomes the headline", async () => {
+  const p = await post({ lang: "en", title: "Fed holds rates", raw_text: "The Fed kept rates unchanged.", analysis: { summary_uk: "Стаття про те, як ФРС тримає ставку" } });
+  const { route, sent } = fakeRouter();
+  const calls = [];
+  const translate = async (input) => { calls.push(input); return { text_uk: "ФРС лишила ставки без змін.", title_uk: "ФРС зберегла ставки", model_used: "tm" }; };
+  await stage({ route, translate }).runOnce();
+  assert.equal(calls[0].title, "Fed holds rates");
+  const P = await Post.findByPk(p.id);
+  assert.equal(P.analysis.title_uk, "ФРС зберегла ставки");
+  assert.equal(P.status, "routed");
+  assert.ok(sent.length > 0);
 });
 
 test("sent but the record failed to save — never resent; the write is retried next pass", async () => {

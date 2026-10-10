@@ -7,7 +7,7 @@ import { pickTriageExamples } from "../src/module/theflow/triage/examples.js";
 import { reviewVerdict } from "../src/module/theflow/triage/report.js";
 import { snapshotFromCandidate, contentHash } from "../src/module/theflow/knowledge/snapshot.js";
 import {
-  buildTriagePrompt, validateTriageResponse, triageResponseSchema, TRIAGE_NONE,
+  buildTriagePrompt, buildTriageSystemPrompt, validateTriageResponse, triageResponseSchema, TRIAGE_NONE,
 } from "../src/services/ai/prompts/triage.js";
 import { toGeminiSchema } from "../src/services/ai/providers/GeminiProvider.js";
 import LLMGateway from "../src/services/ai/LLMGateway.js";
@@ -180,4 +180,17 @@ test("TriageStage: a quota error defers the batch — no attempt is recorded", a
   stage._describe = async (batch) => batch.map(() => ({ title: "t" }));
   assert.equal(await stage.runOnce(), 0);
   assert.deepEqual(updates, [], "the candidate keeps its attempts and stays pending");
+});
+
+test("buildTriageSystemPrompt: strict profile replaces the generous rule (no full-text verdict yet)", () => {
+  const profile = { areas: { science: "Science" }, noise: ["sport"] };
+  const generous = buildTriageSystemPrompt(profile);
+  assert.match(generous, /Be generous/);
+  assert.doesNotMatch(generous, /Be selective/);
+
+  const strict = buildTriageSystemPrompt({ ...profile, strict: true });
+  assert.match(strict, /Be selective/);
+  assert.match(strict, /When in doubt, reject/);
+  assert.doesNotMatch(strict, /Be generous/);
+  assert.match(strict, /Be strict about markets/);
 });

@@ -301,6 +301,29 @@ export function renderNotice({ header, relation, text, platform }) {
 
 const clip = (s, max) => (s.length <= max ? s : s.slice(0, Math.max(0, max - 1)) + TEMPLATE.truncated);
 
+// Лід, що описує допис замість новини («Стаття про те, як…»), — гірший за
+// заголовок оригіналу: так модель писала до ENRICH_PROMPT_VERSION 4.
+const META_LEAD = /^(?:стаття|у статті|в статті|матеріал|пост|допис|публікація|автор|інтерв.ю|розповідь)(?=[\s,:])/iu;
+
+/** Лід для заголовка: summary_uk, якщо він каже новину, а не про допис. */
+export function leadOf(summary) {
+  const s = typeof summary === "string" ? summary.trim() : "";
+  return s && !META_LEAD.test(s) ? s : null;
+}
+
+/**
+ * Заголовок поста: перекладений заголовок новини (translate → title_uk),
+ * інакше лід, інакше заголовок оригіналу. У новини є власний заголовок —
+ * він точніший за переказ моделі; у Telegram-поста його немає, там лід.
+ */
+export function headlineOf(post) {
+  const titleUk = post.analysis?.title_uk;
+  if (typeof titleUk === "string" && titleUk.trim()) return titleUk.trim();
+  const lead = leadOf(post.analysis?.summary_uk);
+  if (lead) return lead;
+  return typeof post.title === "string" && post.title.trim() ? post.title.trim() : null;
+}
+
 /**
  * @param {object} args
  * @param {object} args.post        Канонічний пост (рядок posts як plain-об'єкт).
@@ -334,9 +357,9 @@ export function render({
       reason: resolved.reason,
     })
     : null;
-  const summary = typeof post.analysis?.summary_uk === "string" && post.analysis.summary_uk.trim()
-    ? post.analysis.summary_uk.trim()
-    : null;
+  const summary = typeof post.analysis?.title_uk === "string" && post.analysis.title_uk.trim()
+    ? post.analysis.title_uk.trim()
+    : leadOf(post.analysis?.summary_uk);
 
   // Пост не українською — тіло перекладом (analysis.text_uk). Переклад —
   // plain text: entities оригіналу індексують інший рядок і не переносяться;
@@ -386,8 +409,8 @@ export function render({
 
   // ── Discord: embed ──────────────────────────────────────────────────
   const author = source ?? null;
-  // Заголовок — лід українською; без нього — заголовок статті (новини, Reddit).
-  const title = summary ?? (typeof post.title === "string" && post.title.trim() ? post.title.trim() : null);
+  // Заголовок — перекладений заголовок новини, лід або заголовок оригіналу.
+  const title = headlineOf(post);
 
   const fields = [];
   if (codes.length) {

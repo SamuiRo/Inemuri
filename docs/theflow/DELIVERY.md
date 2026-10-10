@@ -97,8 +97,8 @@ Whatever the final wording, these are fixed by other documents:
 | Element | Rule | Source |
 |---|---|---|
 | Body | `text_md` with its original entities, delivered as written. `raw_text` is the plain text those offsets index | this document |
-| Lead | `summary_uk` when the enrichment produced one — one line, above the body | THEFLOW.md open questions |
-| Translation | A routed post not in Ukrainian goes out with `analysis.text_uk` as its body (plain text, no entities); on any failure the original | this document |
+| Headline | The translated news title (`analysis.title_uk`), else the lead `summary_uk` — unless it describes the article ("Стаття про…", `leadOf()`), else the original title | render.js `headlineOf()` |
+| Translation | A routed post not in Ukrainian goes out with `analysis.text_uk` as its body (plain text, no entities). Without one it waits; after `FLOW_TRANSLATE_WAIT_HOURS` it goes to `#unsorted` (`untranslated`), never to a topic channel in the original | this document |
 | Ads | `analysis.is_ad: true` resolves to `#unsorted` with reason `ad`, whatever the rules say | ResolveStage.js |
 | Axes | `topic` and `signal_type` are visible, so a mis-route is obvious at a glance | TAXONOMY.md |
 | Unverified OCR | Any entity carrying `verified: false` is marked as unverified. It is never presented indistinguishably from a verified one | VISION.md |
@@ -149,8 +149,8 @@ addressed to a Ukrainian reader.
 
 - **Axes** read as words: `🕹️ Ігри · 🎟 Промокод` (`TEMPLATE.topicLabel`,
   `signalLabel`, `signalEmoji`); an unknown key is shown as is.
-- **Discord** is a full embed: the source is the author, the Ukrainian lead
-  (`summary_uk`, or the article title for news and Reddit) is the title, both
+- **Discord** is a full embed: the source is the author, the Ukrainian
+  headline (`headlineOf()`: translated title, lead, or original title) is the title, both
   linking to the original; the body is the description; promo codes, the
   event, additions and — in `#unsorted` only — the diagnostics are fields;
   axes and "also reported by N" are the footer; the post's time is the embed
@@ -173,16 +173,27 @@ The readers are Ukrainian; most source channels are not. A post the model
 found not to be in Ukrainian (`lang` ≠ `uk`) and that resolves to a topic
 channel is translated before rendering: `FlowDelivery._ensureTranslation()`
 calls `LLMGateway.translate()` once, stores the result in
-`analysis.text_uk` (and the model in `text_uk_model`), and `render()` uses
-it as the body. Retries, `flow preview` and cluster re-renders reuse it.
+`analysis.text_uk` and, for a post with a title (news, Reddit),
+`analysis.title_uk` (and the model in `text_uk_model`); `render()` uses them
+as the body and the headline. Title and body travel in separate nonced
+blocks and come back as separate fields — one block with `--- title ---`
+markers got the markers translated into 26 posts on the first day.
+Retries, `flow preview` and cluster re-renders reuse the stored result.
 
 - **Only routed posts.** `#unsorted` is read by the operator, for whom the
   original is more useful; and enrichment sees every post while delivery
   sends a fraction — translating at ingest would spend quota on posts
   nobody reads.
-- **Never blocks delivery.** Shed, an error, or a translation left partly in
-  the source language — the original goes out, and the next render tries
-  again only if nothing was stored.
+- **No original in a topic channel.** Shed, an error, or a translation left
+  in the source language (`isUkrainianTranslation`: Russian letters, or under
+  30% Cyrillic) — the post waits (`delivery.waiting: "translation"`, `since`,
+  `retry_at`, `tries`) and leaves the queue until `retry_at`, every
+  `FLOW_TRANSLATE_RETRY_MIN` (10); after `FLOW_TRANSLATE_WAIT_HOURS` (6) it
+  goes to `#unsorted` with reason `untranslated`. Until v4.64.0 the original
+  went out: on the first delivery day 0 of 353 posts were translated —
+  enrichment had taken the daily quota and every translation was shed.
+- Without a translator wired (`flow preview` without `--translate`) nothing
+  waits; the original is shown.
 - **Plain text.** The original's entities index a different string, so the
   translated body carries none; links stay in the text as URLs and the
   original is one link away.
