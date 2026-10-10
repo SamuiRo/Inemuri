@@ -31,10 +31,13 @@ import { cosine } from "../dedup/DedupCore.js";
  * deliveredTwin від sameSourceMin (суворіше — у серії одного видання близькі
  * тексти бувають і про різне: «Five charts…» / «Four signs…» — 0.83).
  *
- * @param {{ minSimilarity: number, windowMs: number, sameSourceMin?: number }} opts
+ * Повтор з іншого видання — від twinMin (типово = minSimilarity): він відкидає
+ * пост цілком, тож може бути суворішим за підтвердження.
+ *
+ * @param {{ minSimilarity: number, windowMs: number, twinMin?: number, sameSourceMin?: number }} opts
  * @returns {{ sources: number, deliveredTwin: number|null, best: number }}
  */
-export function corroboration(post, others, { minSimilarity, windowMs, sameSourceMin = Infinity }) {
+export function corroboration(post, others, { minSimilarity, windowMs, twinMin = minSimilarity, sameSourceMin = Infinity }) {
   const sources = new Set();
   let deliveredTwin = null;
   let best = 0;
@@ -51,7 +54,7 @@ export function corroboration(post, others, { minSimilarity, windowMs, sameSourc
     if (s > best) best = s;
     if (s < minSimilarity) continue;
     sources.add(o.source_id);
-    if (o.delivered && deliveredTwin == null) deliveredTwin = o.id;
+    if (o.delivered && s >= twinMin && deliveredTwin == null) deliveredTwin = o.id;
   }
   return { sources: sources.size, deliveredTwin, best };
 }

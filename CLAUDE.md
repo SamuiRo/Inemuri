@@ -30,7 +30,7 @@ switched on there (`FLOW_DELIVERY_ENABLED` unset, found 2026-10-08). The
 worker starts only with a provider key; delivery is off by default. Phase 6, news intake
 ([docs/theflow/NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md)), has steps 1–3:
 the knowledge base, sitemap/WordPress discovery and headline triage. Still
-open: dedup threshold calibration, phase 6 step 4 and poll intervals (step 5's
+open: phase 6 step 4 and poll intervals (step 5's
 silent-source half is the status board), reactions (deferred).
 Per-phase status is in [docs/THEFLOW.md](docs/THEFLOW.md), per task in
 `docs/theflow/ROADMAP.md`.

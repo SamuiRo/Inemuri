@@ -51,3 +51,12 @@ test("corroboration: the same outlet's delivered repeat is a twin, not a corrobo
   assert.equal(corroboration(me, [series], { ...opts, sameSourceMin: 0.85 }).deliveredTwin, null);
   assert.equal(corroboration(me, [repeat], opts).deliveredTwin, null, "без sameSourceMin те саме видання не рахується");
 });
+
+test("corroboration: another outlet between corroborateMin and twinMin corroborates but is not a twin", () => {
+  // SpaceX і FCC проти SpaceX і спектра — 0.819, різні події: не відкидати.
+  const near = { id: 11, source_id: 20, vector: v(0.82, 0.572, 0), t: HOUR, delivered: true };
+  const c = corroboration(me, [near], { ...opts, twinMin: 0.84 });
+  assert.equal(c.sources, 1);
+  assert.equal(c.deliveredTwin, null);
+  assert.equal(corroboration(me, [near], opts).deliveredTwin, 11, "без twinMin — як і було, від minSimilarity");
+});

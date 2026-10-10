@@ -15,7 +15,6 @@ version changed in detail is in [../CHANGELOG.md](../CHANGELOG.md).
 | # | Task | Waits for |
 |---|---|---|
 | — | Test week on the VPS (from 2026-10-06): read the staff channels, `#unsorted`, the status board, `flow triage review` | The operator |
-| §6.8 | Dedup threshold calibration | Cross-source pairs in the live corpus |
 | §14.4 | Article fetch for what passed triage, plus sampled rejects | — |
 | §14.5 | Poll intervals per source from real volume | A week of data |
 | NEWS_INTAKE §5 | Market rules: materiality, corroboration, daily cap | Test-week labels |
@@ -153,7 +152,7 @@ refactored** — resolve fills `destinations`, classic forwarding is untouched.
 Exit gate: posts arrive in the right channels, `#unsorted` is small enough to
 read daily, and what lands there says which description to fix.
 
-## 6. Phase 3 — deduplication, tiers 1 and 2 · done, thresholds open
+## 6. Phase 3 — deduplication, tiers 1 and 2 · done
 
 Spec: [DEDUPLICATION.md](DEDUPLICATION.md).
 
@@ -166,7 +165,7 @@ Spec: [DEDUPLICATION.md](DEDUPLICATION.md).
 | 6.5 | `richness()` and the cheap gate | v4.45.0 |
 | 6.6 | Delta call; edits, corrections and denials of delivered messages | v4.48.0 |
 | 6.7 | Decision log `posts.dedup` (011), `flow dedup` | v4.45.0 |
-| 6.8 | **Threshold calibration** | **Open** |
+| 6.8 | Threshold calibration | Done (`v4.65.1`): HIGH 0.86, LOW 0.80 |
 
 ### 6.1 — the repost check is per source
 
@@ -192,7 +191,9 @@ cluster. Delivery handles updates before new posts each tick (DELIVERY.md).
 
 ### 6.8 — thresholds are measured
 
-`HIGH = 0.90` and `LOW = 0.75` are starting points. Calibrate on
+Done 2026-10-10 (`v4.65.1`): HIGH 0.90 → 0.86, LOW 0.75 → 0.80, from 72
+labelled pairs (DEDUPLICATION.md, tier 2). The method, for the next time:
+calibrate on
 known-duplicate and known-distinct cross-source pairs
 (`flow dedup --pairs 30`) and see where the distributions separate; the daily
 collapse rate per signal is the health metric — too many collapses means

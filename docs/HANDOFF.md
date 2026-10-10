@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.65.0`; committed up to `v4.64.0`. 18 migrations; `npm test` is 708 green
+`v4.65.1`; committed up to `v4.65.0`. 18 migrations; `npm test` is 709 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -88,11 +88,12 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    of the staff category into their places with their roles and panel
    buttons (the plan is in the operator's server skill); route the `games`
    and `steam` topics, which still fall to `#unsorted`.
-4. **Deduplication thresholds** once several sources produce:
-   `node src/cli.js flow dedup --pairs 30`, then `DEDUP_HIGH`/`DEDUP_LOW`.
-   **Delivery is on, so `flow dedup --reset` (and `flow requeue
-   --reset-dedup`) are refused once a cluster is delivered** — new thresholds
-   apply to new posts only.
+4. **Deduplication thresholds — calibrated** (`v4.65.1`, 2026-10-10): HIGH
+   0.86, LOW 0.80 from 72 labelled pairs (DEDUPLICATION.md, tier 2). Check
+   the VPS `.env`: a `DEDUP_HIGH`/`DEDUP_LOW` line there overrides the new
+   defaults. New thresholds apply to new posts only (`flow dedup --reset` is
+   refused once a cluster is delivered). Watch the daily collapse rate in
+   `node src/cli.js flow dedup` — a jump means HIGH is now too low.
 5. **Phase 6 step 4** — article text for what passed triage (JSON-LD
    `articleBody` → `<p>`), plus the sampled rejects (ROADMAP §14.4). When it
    lands, set `strict: false` in `triage.json` — the full-text verdict is

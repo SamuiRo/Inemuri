@@ -25,6 +25,22 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.65.1] - 2026-10-10
+
+### Changed
+- **Deduplication thresholds calibrated** (ROADMAP §6.8): `DEDUP_HIGH`
+  0.90 → 0.86, `DEDUP_LOW` 0.75 → 0.80. 72 cross-source, same-topic pairs
+  from the VPS snapshot, twelve per band, labelled by hand: every pair from
+  0.87 up was the same event (Forza Horizon 6 on PS5, Vance and Microsoft,
+  the Goldman bonus, PepsiCo prices…), so 0.87–0.90 duplicates were being
+  delivered twice; 0.84–0.87 ~85%, 0.81–0.84 ~60%, below 0.80 rarely.
+  Applies to new posts only. **A deployment whose `.env` sets `DEDUP_HIGH`
+  / `DEDUP_LOW` keeps its old values** — change them there.
+- **A market repeat from another outlet now needs 0.84** (`FLOW_MARKETS_TWIN_MIN`),
+  not the corroboration threshold 0.80: a repeat drops the post entirely,
+  and in 0.80–0.84 about half the pairs are different events (SpaceX's FCC
+  approval vs its spectrum deal, 0.82).
+
 ## [4.65.0] - 2026-10-10
 
 ### Added

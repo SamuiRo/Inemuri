@@ -86,14 +86,25 @@ threshold does not drift between languages**: a Korean and an English post
 about the same event sit close together after canonicalization. This is the
 main payoff of the "translation first" decision.
 
-Thresholds (`DEDUP_HIGH`, `DEDUP_LOW`) are **not calibrated yet** — they
-need cross-source pairs from the corpus (ROADMAP §6.8,
-`flow dedup --pairs 30`):
+Calibrated 2026-10-10 on the VPS snapshot: 72 cross-source, same-topic
+pairs within 48 h, twelve per band, each labelled same event or not.
+
+| Cosine | Same event |
+|---|---|
+| ≥ 0.87 | 24 of 24 |
+| 0.84–0.87 | ~10 of 12 (a Fed-minutes preview vs the minutes; two takes on one CS2 market slump) |
+| 0.81–0.84 | ~7 of 12 (SpaceX's FCC approval vs its spectrum deal; two different PepsiCo stories) |
+| 0.78–0.81 | ~3 of 12 |
+| 0.75–0.78 | ~1 of 12 |
 
 | Threshold | Current | Consequence of getting it wrong |
 |---|---|---|
-| `HIGH` | 0.90 | Too low collapses distinct events and you lose news |
-| `LOW` | 0.75 | Too high lets duplicate spam through |
+| `HIGH` | 0.86 (was 0.90: every pair from 0.87 to 0.90 was a duplicate delivered twice) | Too low collapses distinct events and you lose news |
+| `LOW` | 0.80 (was 0.75) — only a flag until tier 3; it now marks the band where about half the pairs are the same event | Too high lets duplicate spam through |
+
+Recalibrate the same way (`flow dedup --pairs 30`, or pairs drawn by band)
+when the source mix changes. Markets use their own, looser notion of "the
+same story" for corroboration and repeats (DELIVERY.md, "Markets").
 
 Once anything is delivered, `flow dedup --reset` is refused, so new
 thresholds apply to new posts only.

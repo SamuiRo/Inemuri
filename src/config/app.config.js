@@ -373,9 +373,11 @@ export const ENRICH_WORKER_ENABLED = flag("ENRICH_WORKER_ENABLED", process.env.E
 // парах (§6.8, `node src/cli.js flow dedup --pairs`).
 export const DEDUP = {
   // s ≥ high — та сама подія. Занизько — зливаються різні події, губляться новини.
-  high: optionalNumber("DEDUP_HIGH", process.env.DEDUP_HIGH, 0.9),
+  // Калібровано 2026-10-10 (§6.8): на 72 розмічених парах з різних джерел усе
+  // від 0.87 — та сама подія, 0.84–0.87 — ~85%, 0.81–0.84 — ~60%, нижче 0.80 — рідко.
+  high: optionalNumber("DEDUP_HIGH", process.env.DEDUP_HIGH, 0.86),
   // s ≤ low — нова подія; між low і high — сіра зона: нова з позначкою.
-  low: optionalNumber("DEDUP_LOW", process.env.DEDUP_LOW, 0.75),
+  low: optionalNumber("DEDUP_LOW", process.env.DEDUP_LOW, 0.8),
   // Дешевий гейт: richness(B) ≤ richness(A) × gateFactor і жодної нової
   // сутності → дубль, suppressed.
   gateFactor: 1.15,
@@ -430,6 +432,9 @@ export const FLOW_MARKETS = {
   topics: ["markets"],
   holdHours: optionalNumber("FLOW_MARKETS_HOLD_HOURS", process.env.FLOW_MARKETS_HOLD_HOURS, 0),
   corroborateMin: optionalNumber("FLOW_MARKETS_CORROBORATE_MIN", process.env.FLOW_MARKETS_CORROBORATE_MIN, 0.8),
+  // Повтор із іншого видання відкидає пост цілком — тож суворіше, ніж
+  // підтвердження: у смузі 0.80–0.84 близько половини пар — різні події.
+  twinMin: optionalNumber("FLOW_MARKETS_TWIN_MIN", process.env.FLOW_MARKETS_TWIN_MIN, 0.84),
   sameSourceMin: optionalNumber("FLOW_MARKETS_SAME_SOURCE_MIN", process.env.FLOW_MARKETS_SAME_SOURCE_MIN, 0.85),
   windowHours: optionalNumber("FLOW_MARKETS_WINDOW_HOURS", process.env.FLOW_MARKETS_WINDOW_HOURS, 24),
   capWindowHours: optionalNumber("FLOW_MARKETS_CAP_WINDOW_HOURS", process.env.FLOW_MARKETS_CAP_WINDOW_HOURS, 6),

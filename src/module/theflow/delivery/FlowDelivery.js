@@ -364,7 +364,7 @@ export class FlowDelivery {
       id: r.id, source_id: r.source_id, vector: decodeEmbedding(r.embedding, r.embedding_dim), t: timeOf(r),
       delivered: r.status === "routed" && Array.isArray(r.delivery?.delivered) && r.delivery.delivered.length > 0,
     }));
-    const corroborated = corroboration(self, others, { minSimilarity: m.corroborateMin, windowMs, sameSourceMin: m.sameSourceMin });
+    const corroborated = corroboration(self, others, { minSimilarity: m.corroborateMin, windowMs, twinMin: m.twinMin, sameSourceMin: m.sameSourceMin });
 
     const since = new Date(now - m.capWindowHours * HOUR).toISOString();
     const sentRows = await Post.findAll({
