@@ -39,9 +39,23 @@ npm start
 `NODE_ENV="production"`: under `development` the database sync uses
 `force: true` and recreates tables, destroying configured sources.
 
-On the first Telegram login the app asks for the phone number, the 2FA
-password and the code, then prints a `TELEGRAM_SESSION` string — save it in
-`.env` so later starts are non-interactive.
+Log in to Telegram once, before the first start, and save the printed
+`TELEGRAM_SESSION=…` line in `.env`:
+
+```bash
+node src/cli.js telegram login           # QR: phone → Settings → Devices → Link Desktop Device
+node src/cli.js telegram login --phone   # or by phone number and code
+```
+
+The QR way needs no code. With `--phone` it says where Telegram sent the
+code — usually the Telegram app on another device, not SMS — and `resend`
+asks for it another way. Telegram sometimes sends no code at all to a
+third-party app (it wants a login email set up first, or uses Firebase SMS,
+which only official apps receive); then `qr` switches to the QR way. A code
+forwarded or pasted into any Telegram chat is cancelled by Telegram.
+
+Without a session `npm start` still asks interactively, but only in a
+terminal: under pm2 it stops with a hint to run `telegram login`.
 
 `npm run setup` is `npm run db:bootstrap` (tables that predate migrations),
 `npm run migrate`, `npm run seed`; `-- --knowledge <file>` also imports a
@@ -398,6 +412,8 @@ parses but never arrives.
 | Symptom | Check |
 |---|---|
 | Telegram asks to log in every start | `TELEGRAM_SESSION` in `.env` holds the printed session string |
+| The Telegram login code never arrives | `node src/cli.js telegram login` (QR), or `--phone` to see where the code went |
+| Telegram sessions drop with `AUTH_KEY_DUPLICATED` | The same session runs in two places (dev copy and VPS) — one session string per running instance |
 | A source delivers nothing | It is in `sources.json` and seeded (`node src/cli.js list`), `is_active`, the destination ids are right; a flow source does not use `destinations` |
 | A polling source picks up nothing | `mode` is `polling` or `both`; the status board or `node src/cli.js list` shows whether it was seen recently |
 | `[CONFIG] … falling back to …sample.json` | The git-ignored config is missing on this machine — copy it ([DEPLOYMENT.md](docs/DEPLOYMENT.md#what-git-pull-does-not-bring)) |

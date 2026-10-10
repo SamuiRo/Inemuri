@@ -190,6 +190,7 @@ node src/cli.js flow knowledge export|import|stats  # portable labels (NEWS_INTA
 node src/cli.js flow triage stats|review           # headline triage of news sources
 node src/cli.js flow preflight # deployment ready? exit 1 on a blocker
 node src/cli.js discord check <channel_id>  # read a Discord channel, show what its filter passes
+node src/cli.js telegram login [--phone]    # Telegram session string (QR by default)
 ```
 
 `src/lib/discord-user-client/` is a self-contained module (the own Discord

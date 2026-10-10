@@ -13,19 +13,26 @@ import {
 } from "../../config/app.config.js";
 import { print, printStack } from "../../shared/utils.js";
 
+/**
+ * Клієнт MTProto з параметрами пристрою Inemuri. Спільний для сервісу й
+ * `cli telegram login`, щоб сесія входу була тим самим «пристроєм».
+ * @param {string} [session] рядок сесії; порожній — новий вхід
+ */
+export function createMTProtoClient(session = "") {
+  return new MTProtoClient(new StringSession(session ?? ""), TELEGRAM_API_ID, TELEGRAM_API_HASH, {
+    deviceModel: `${PKG.name}@${os.hostname()}`,
+    systemVersion: os.version() || "Inemuri Unknown Node",
+    appVersion: PKG.version,
+    useWSS: true, // not sure if it works in node at all
+    testServers: false, // this one should be the default for node env, but who knows for sure :)
+    connectionRetries: TELEGRAM_CONNECTION_RETRIES,
+  });
+}
+
 class TelegramClient {
   constructor() {
-    this.string_session = new StringSession(TELEGRAM_SESSION);
     this.client = null;
     this.isConnected = false;
-    this.client_options = {
-      deviceModel: `${PKG.name}@${os.hostname()}`,
-      systemVersion: os.version() || "Inemuri Unknown Node",
-      appVersion: PKG.version,
-      useWSS: true, // not sure if it works in node at all
-      testServers: false, // this one should be the default for node env, but who knows for sure :)
-      connectionRetries: TELEGRAM_CONNECTION_RETRIES,
-    };
   }
 
   async connect() {
@@ -35,14 +42,15 @@ class TelegramClient {
     }
 
     try {
+      // Без сесії вхід інтерактивний; під pm2 stdin немає, і сервіс чекав би
+      // код вічно. Вхід — окремою командою, вона ж каже, куди пішов код.
+      if (!TELEGRAM_SESSION && !process.stdin.isTTY) {
+        throw new Error("TELEGRAM_SESSION is empty and there is no terminal to log in: run `node src/cli.js telegram login` and put the session in .env");
+      }
+
       print("Connecting to Telegram...");
 
-      this.client = new MTProtoClient(
-        this.string_session,
-        TELEGRAM_API_ID,
-        TELEGRAM_API_HASH,
-        this.client_options,
-      );
+      this.client = createMTProtoClient(TELEGRAM_SESSION);
 
       await this.client.start({
         phoneNumber: async () => askText("Phone number: "),

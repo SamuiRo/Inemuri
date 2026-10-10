@@ -27,6 +27,7 @@ import { serialize as serializeKnowledge, parse as parseKnowledge } from "./modu
 import messageFilter from "./module/filters/MessageFilter.js";
 import { RestClient, resolveClientIdentity } from "./lib/discord-user-client/index.js";
 import { fromRawMessage, toDiscordMessageData, passesClassic } from "./sources/discord/discordMessage.js";
+import { telegramLogin } from "./module/telegram/login.js";
 import {
   FLOW_HEALTH, LLM_PROVIDERS, LLM_PRIMARY, ENRICH_WORKER_ENABLED, CATEGORIES, DEDUP,
   FLOW_DELIVERY, ROUTING, FLOW_DIGEST, DISCORD_USER_TOKEN,
@@ -992,6 +993,28 @@ discord
       await database.disconnect();
     } catch (error) {
       print(`Error: ${error.message}`, "error");
+      process.exit(1);
+    }
+  });
+
+// ── Вхід у Telegram (рядок сесії для TELEGRAM_SESSION) ──────────────────
+const telegram = program.command("telegram").description("Telegram account tools");
+
+telegram
+  .command("login")
+  .description("Log in to Telegram and print a session string for TELEGRAM_SESSION (QR by default)")
+  .option("--phone", "log in with a phone number and code instead of a QR code")
+  .action(async (options) => {
+    try {
+      const { session, user } = await telegramLogin({ phone: Boolean(options.phone) });
+      const who = [user?.firstName, user?.username ? `@${user.username}` : null].filter(Boolean).join(" ") || "?";
+      print(`Logged in as ${who}. Put this line in .env (it is a password — keep it out of chats and git):`, "success");
+      // Інтерактивний вхід: рядок треба показати оператору. Це не лог.
+      console.log(`TELEGRAM_SESSION=${session}`);
+      print("One session per running instance: the same string on the dev copy and the VPS at once gets both cut off (AUTH_KEY_DUPLICATED).", "warning");
+      process.exit(0);
+    } catch (error) {
+      print(`Error: ${error.errorMessage ?? error.message}`, "error");
       process.exit(1);
     }
   });

@@ -25,6 +25,29 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.63.0] - 2026-10-10
+
+### Added
+- **`node src/cli.js telegram login`** — logs in to Telegram without
+  starting the service and prints the `TELEGRAM_SESSION=…` line. QR by
+  default (phone → Settings → Devices → Link Desktop Device): no code is
+  needed, so it works however Telegram delivers codes. `--phone` logs in by
+  number and **says where the code went**: gramjs's `client.start()` keeps
+  only "app or not" from `auth.sentCode` and asks for a code even when
+  Telegram sent none (`SetUpEmailRequired` — a login email must be set up
+  first; `FirebaseSms` — only official apps receive it). That is what "the
+  code never arrives" looked like. `resend` asks for the next way
+  (`nextType`), `qr` switches to QR, an expired code (also cancelled when
+  forwarded into any chat) says so. Pure part `loginCode.js`, tested.
+- `qrcode` (1.5.4, MIT) as a direct dependency, to draw the QR in the
+  terminal; it was already in the tree through the Discord library.
+
+### Changed
+- Without `TELEGRAM_SESSION` and without a terminal (pm2) the service stops
+  with a hint to run `telegram login` instead of waiting for a code forever.
+- The MTProto client is built by `createMTProtoClient()`, shared by the
+  service and the login command, so both are the same device to Telegram.
+
 ## [4.62.3] - 2026-10-10
 
 ### Changed
