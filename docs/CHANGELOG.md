@@ -25,6 +25,13 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.62.3] - 2026-10-10
+
+### Changed
+- HANDOFF: the Discord source is on the VPS with 13 game channels (classic
+  forwarding into the COUNCIL test channels, four new ones applied for NIKKE
+  events and per-game media); the VPS runs `v4.62.2`.
+
 ## [4.62.2] - 2026-10-10
 
 ### Added
