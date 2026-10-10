@@ -861,6 +861,10 @@ flow
           print(`${head} — skipped: ${p.skip}${p.resolved ? ` (${p.resolved.outcome}, ${p.resolved.reason})` : ""}`, "warning");
           continue;
         }
+        if (p.wait === "market") {
+          print(`${head} → ${p.resolved.outcome}, held: a market post waits for another outlet (best similarity ${p.market.corroborated.best.toFixed(2)}, ${p.market.sentInWindow} market post(s) sent in the cap window)`, "warning");
+          continue;
+        }
         if (p.wait) {
           print(`${head} → ${p.resolved.outcome}, but the translation failed or was shed (lang ${post.lang}): delivery would wait and retry`, "warning");
           continue;

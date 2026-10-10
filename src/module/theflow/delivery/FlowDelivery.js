@@ -4,9 +4,11 @@ import database from "../../teapot/sqlite/sqlite_db.js";
 import { Post, Source, Cluster } from "../../teapot/models/index.js";
 import { resolve, unsortedOutcome, RESOLVE_REASONS } from "../ResolveStage.js";
 import { translationVerdict, waitingState } from "./translationGate.js";
+import { corroboration, marketVerdict } from "./marketGate.js";
+import { decodeEmbedding } from "../dedup/DedupCore.js";
 import { render, renderNotice } from "./render.js";
 import { telegramLink } from "../search/HistorySearch.js";
-import { TELEGRAM_CAPTION_LIMIT, FLOW_DELIVERY } from "../../../config/app.config.js";
+import { TELEGRAM_CAPTION_LIMIT, FLOW_DELIVERY, FLOW_MARKETS } from "../../../config/app.config.js";
 import { MINUTE, HOUR, SECOND } from "../../../shared/time.js";
 
 const timeOf = (p) => new Date(p.posted_at ?? p.createdAt).getTime();
@@ -121,6 +123,7 @@ export class FlowDelivery {
    *   captionLimit?: number,  Ліміт підпису до медіа в Telegram (TELEGRAM_PREMIUM).
    *   translateWaitHours?: number,  Скільки пост чекає перекладу, потім #unsorted.
    *   translateRetryMin?: number,   Як часто пост, що чекає, пробує перекласти знову.
+   *   markets?: object,  FLOW_MARKETS: підтвердження й ліміт ринкових тем (marketGate.js).
    *   dedupEnabled?: boolean,
    *   maxAgeHours?: number,
    *   batchSize?: number,
@@ -136,7 +139,9 @@ export class FlowDelivery {
     captionLimit = TELEGRAM_CAPTION_LIMIT, dedupEnabled = true, maxAgeHours = 24, batchSize = 5, maxAttempts = 3,
     intervalMs = 15 * SECOND, maxAppends = MAX_APPENDS, now = Date.now, log = () => {},
     translateWaitHours = FLOW_DELIVERY.translateWaitHours, translateRetryMin = FLOW_DELIVERY.translateRetryMin,
+    markets = FLOW_MARKETS,
   }) {
+    this.markets = markets;
     this.translateWaitMs = translateWaitHours * HOUR;
     this.translateRetryMs = translateRetryMin * MINUTE;
     this.maxAppends = maxAppends;
@@ -249,9 +254,9 @@ export class FlowDelivery {
         database.sequelize.literal(
           `(json_extract(\`Post\`.\`delivery\`, '$.failed') = 1 AND json_extract(\`Post\`.\`delivery\`, '$.attempts') < ${Number(this.maxAttempts)})`,
         ),
-        // Чекає перекладу — назад у чергу, коли настав час наступної спроби.
+        // Чекає (переклад, ринкова витримка) — назад у чергу, коли настав час наступної спроби.
         database.sequelize.literal(
-          "(json_extract(Post.delivery, '$.waiting') = 'translation' AND " +
+          "(json_extract(Post.delivery, '$.waiting') IS NOT NULL AND " +
           `json_extract(Post.delivery, '$.retry_at') <= '${new Date(this.now()).toISOString()}')`,
         ),
       ],
@@ -332,6 +337,55 @@ export class FlowDelivery {
   }
 
   /**
+   * Ринкова тема → рішення marketGate: підтвердження іншим виданням (косинус
+   * векторів у вікні), скільки ринкових постів уже пішло за добу. I/O тут,
+   * рішення — marketVerdict (чисте).
+   */
+  async _marketGate(post) {
+    const m = this.markets;
+    const isMarket = Boolean(m?.topics?.includes(post.topic));
+    if (!isMarket) return { verdict: "go", kind: null };
+
+    const now = this.now();
+    const t = timeOf(post);
+    const windowMs = m.windowHours * HOUR;
+    // Підтверджувач — будь-якої теми: ту саму новину інше видання могло
+    // віднести до money чи crypto.
+    const rows = await Post.findAll({
+      where: {
+        id: { [Op.ne]: post.id },
+        embedding: { [Op.ne]: null },
+        posted_at: { [Op.between]: [new Date(t - windowMs), new Date(t + windowMs)] },
+      },
+      attributes: ["id", "source_id", "embedding", "embedding_dim", "posted_at", "createdAt", "status", "delivery"],
+    });
+    const self = { id: post.id, source_id: post.source_id, vector: decodeEmbedding(post.embedding, post.embedding_dim), t };
+    const others = rows.map((r) => ({
+      id: r.id, source_id: r.source_id, vector: decodeEmbedding(r.embedding, r.embedding_dim), t: timeOf(r),
+      delivered: r.status === "routed" && Array.isArray(r.delivery?.delivered) && r.delivery.delivered.length > 0,
+    }));
+    const corroborated = corroboration(self, others, { minSimilarity: m.corroborateMin, windowMs, sameSourceMin: m.sameSourceMin });
+
+    const since = new Date(now - m.capWindowHours * HOUR).toISOString();
+    const sentRows = await Post.findAll({
+      where: {
+        topic: m.topics,
+        status: "routed",
+        [Op.and]: [database.sequelize.literal(`json_extract(Post.delivery, '$.at') >= '${since}'`)],
+      },
+      attributes: ["id", "delivery"],
+    });
+    const sentInWindow = sentRows.length;
+    const singlesInWindow = sentRows.filter((r) => r.delivery?.market === "single").length;
+
+    const v = marketVerdict({
+      isMarket, ageMs: now - t, corroborated, sentInWindow, singlesInWindow,
+      holdMs: m.holdHours * HOUR, cap: m.cap, singleCap: m.singleCap,
+    });
+    return { ...v, corroborated, sentInWindow, singlesInWindow };
+  }
+
+  /**
    * Що і куди пішло б — без медіа й без відправки. Використовують deliver()
    * і `flow preview`.
    */
@@ -350,6 +404,14 @@ export class FlowDelivery {
     }
 
     let resolved = await this._resolve(post);
+    // Ринки — до перекладу: квота не витрачається на те, що не піде.
+    let market = null;
+    if (resolved.outcome === "routed") {
+      market = await this._marketGate(post);
+      if (market.verdict === "hold") return { wait: "market", resolved, cluster, market, messages: [] };
+      if (market.verdict === "cap") return { skip: "market_cap", resolved, cluster, market, messages: [] };
+      if (market.verdict === "twin") return { skip: "market_twin", resolved, cluster, market, messages: [] };
+    }
     // Переклад — лише для того, що йде в тематичний канал: #unsorted читає
     // оператор, і оригінал там корисніший. Без перекладу в тематичний канал
     // не йде нічого: пост чекає, а не вдалося за translateWaitMs — #unsorted.
@@ -362,7 +424,7 @@ export class FlowDelivery {
         now: this.now(),
         waitMs: this.translateWaitMs,
       });
-      if (verdict === "wait") return { wait: "translation", resolved, cluster, messages: [] };
+      if (verdict === "wait") return { wait: "translation", resolved, cluster, market, messages: [] };
       if (verdict === "give_up") resolved = unsortedOutcome(this.routing, RESOLVE_REASONS.UNTRANSLATED);
     }
     const messages = [];
@@ -371,8 +433,8 @@ export class FlowDelivery {
       if (!ids?.length) continue;
       messages.push({ platform, ids, rendered: await this._render(post, cluster, resolved, platform) });
     }
-    if (messages.length === 0) return { skip: "no_destinations", resolved, cluster, messages };
-    return { resolved, cluster, messages };
+    if (messages.length === 0) return { skip: "no_destinations", resolved, cluster, market, messages };
+    return { resolved, cluster, market, messages };
   }
 
   /** Надіслати один пост і записати результат. */
@@ -394,9 +456,11 @@ export class FlowDelivery {
     }
 
     if (p.wait) {
-      const state = waitingState(post.delivery, { now: this.now(), retryMs: this.translateRetryMs });
+      // Ринкова витримка — частіші перевірки: підтвердження може прийти будь-коли.
+      const retryMs = p.wait === "market" ? Math.min(this.translateRetryMs, 15 * MINUTE) : this.translateRetryMs;
+      const state = waitingState(post.delivery, { now: this.now(), retryMs, kind: p.wait });
       await post.update({ delivery: state });
-      this.log(`[DELIVERY] posts#${post.id} waits for translation (try ${state.tries}, since ${state.since})`, "debug");
+      this.log(`[DELIVERY] posts#${post.id} waits for ${p.wait} (try ${state.tries}, since ${state.since})`, "debug");
       return { waiting: p.wait };
     }
 
@@ -406,6 +470,8 @@ export class FlowDelivery {
           skipped: p.skip,
           outcome: p.resolved?.outcome ?? null,
           reason: p.resolved?.reason ?? null,
+          ...(p.market?.kind ? { market: p.market.kind, corroborating_sources: p.market.corroborated?.sources ?? 0 } : {}),
+          ...(p.market?.corroborated?.deliveredTwin ? { twin_of: p.market.corroborated.deliveredTwin } : {}),
           at: at(),
         },
       });
@@ -451,6 +517,7 @@ export class FlowDelivery {
           rules: p.resolved.rules ?? [],
           delivered: record,
           partial: delivered.length < wanted,
+          ...(p.market?.kind ? { market: p.market.kind, corroborating_sources: p.market.corroborated?.sources ?? 0 } : {}),
           ...(mediaError ? { media_error: mediaError } : {}),
           at: at(),
         },

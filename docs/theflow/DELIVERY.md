@@ -167,6 +167,22 @@ addressed to a Ukrainian reader.
 - `DiscordDestination` reads `title`, `fields` and `timestamp` from
   `messageData.embed`, besides colour, footer and the link.
 
+## Markets: repeats and the cap
+
+Topics in `FLOW_MARKETS.topics` (`markets`) pass `delivery/marketGate.js`
+before translation (no quota spent on what will not go): another outlet's
+post at cosine ≥ `FLOW_MARKETS_CORROBORATE_MIN` within
+`FLOW_MARKETS_WINDOW_HOURS` corroborates; a twin already delivered — from
+another outlet at that threshold, or from the same outlet at
+`FLOW_MARKETS_SAME_SOURCE_MIN` — stops the post (`skipped: market_twin`,
+`twin_of`); an uncorroborated one waits up to `FLOW_MARKETS_HOLD_HOURS`
+(`waiting: "market"`, rechecked every 15 min at most); past
+`FLOW_MARKETS_CAP` per `FLOW_MARKETS_CAP_WINDOW_HOURS` (of them
+`FLOW_MARKETS_SINGLE_CAP` uncorroborated) it is `skipped: market_cap` and
+stays `enriched`, so the digest can still take it. A sent market post records
+`market: corroborated|single` and `corroborating_sources`. Why these
+defaults: NEWS_INTAKE.md, "Markets".
+
 ## Translation
 
 The readers are Ukrainian; most source channels are not. A post the model

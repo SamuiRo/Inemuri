@@ -310,3 +310,61 @@ test("stop() waits for the running pass", async () => {
   release();
   assert.equal(await stopping, true);
 });
+
+// ── ринки: підтвердження й ліміт ───────────────────────────────────────
+
+test("markets: a single outlet waits, another outlet's report releases one post, its twin is not sent", async () => {
+  const [other] = await Source.findOrCreate({
+    where: { channel_id: `${XID}src2` },
+    defaults: { platform: "rss", channel_id: `${XID}src2`, channel_name: "Deliv Src 2", flow: { enabled: true, min_confidence: 0.6 } },
+  });
+  const emb = (...xs) => { const n = Math.hypot(...xs); return Buffer.from(Float32Array.from(xs.map((x) => x / n)).buffer); };
+  let clock = Date.now();
+  const markets = { topics: ["steam"], holdHours: 3, corroborateMin: 0.8, windowHours: 24, capWindowHours: 6, cap: 4, singleCap: 2 };
+  const { route, sent } = fakeRouter();
+  const d = stage({ route, markets, now: () => clock });
+  try {
+    const a = await post({ embedding: emb(1, 0, 0), embedding_dim: 3, posted_at: new Date(clock) });
+    await d.runOnce();
+    assert.equal(sent.length, 0, "одне видання — чекає");
+    assert.equal((await Post.findByPk(a.id)).delivery.waiting, "market");
+
+    const [b] = await Post.ingest({
+      source_id: other.id, platform: "rss", external_id: `${XID}m2`, channel_id: "x", raw_text: "Same story", text_md: "Same story",
+      text_hash: `${XID}m2`, status: "enriched", topic: "steam", signal_type: "event", confidence: 0.9, model_used: "m",
+      taxonomy_version: 1, attempts: 1, posted_at: new Date(clock + 60_000), link_role: "canonical", dedup: { decision: "new" },
+      embedding: emb(0.95, 0.2, 0), embedding_dim: 3,
+    });
+    clock += 16 * 60_000;
+    await d.runOnce();
+    await d.runOnce();
+    const A = await Post.findByPk(a.id);
+    const B = await Post.findByPk(b.id);
+    const [first, second] = A.status === "routed" ? [A, B] : [B, A];
+    assert.equal(first.status, "routed");
+    assert.equal(first.delivery.market, "corroborated");
+    assert.equal(first.delivery.corroborating_sources, 1);
+    assert.equal(second.delivery.skipped, "market_twin", "та сама новина вдруге не йде");
+    assert.equal(sent.length, 2, "один пост, дві платформи");
+  } finally {
+    await Post.destroy({ where: { source_id: other.id } });
+    await Source.destroy({ where: { id: other.id } });
+  }
+});
+
+test("markets: after the hold a single outlet goes within the single cap, then is capped", async () => {
+  const emb = (...xs) => { const n = Math.hypot(...xs); return Buffer.from(Float32Array.from(xs.map((x) => x / n)).buffer); };
+  let clock = Date.now();
+  const markets = { topics: ["steam"], holdHours: 3, corroborateMin: 0.8, windowHours: 24, capWindowHours: 6, cap: 4, singleCap: 1 };
+  const { route } = fakeRouter();
+  const d = stage({ route, markets, now: () => clock });
+  const a = await post({ embedding: emb(1, 0, 0), embedding_dim: 3, posted_at: new Date(clock - 4 * 3_600_000) });
+  const b = await post({ embedding: emb(0, 1, 0), embedding_dim: 3, posted_at: new Date(clock - 4 * 3_600_000 + 1000) });
+  await d.runOnce();
+  const A = await Post.findByPk(a.id);
+  const B = await Post.findByPk(b.id);
+  assert.equal(A.status, "routed");
+  assert.equal(A.delivery.market, "single");
+  assert.equal(B.delivery.skipped, "market_cap");
+  assert.equal(B.status, "enriched", "лишається для дайджесту");
+});

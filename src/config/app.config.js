@@ -419,6 +419,24 @@ export const FLOW_DELIVERY = {
   translateRetryMin: optionalNumber("FLOW_TRANSLATE_RETRY_MIN", process.env.FLOW_TRANSLATE_RETRY_MIN, 10),
 };
 
+// Ринки: підтвердження й ліміт (NEWS_INTAKE.md §5, delivery/marketGate.js).
+// Ринкова новина чекає holdHours, чи напише про те саме інше видання
+// (косинус ≥ corroborateMin за windowHours); та сама новина вдруге не йде
+// (інше видання — corroborateMin, те саме — sameSourceMin); за кожні
+// capWindowHours — не більше cap ринкових постів, із них singleCap без
+// підтвердження. Типові значення — із симуляції 2026-10-09: ринкові новини
+// пише майже лише Reuters, тож витримка нічого не дає, а ліміт — запобіжник.
+export const FLOW_MARKETS = {
+  topics: ["markets"],
+  holdHours: optionalNumber("FLOW_MARKETS_HOLD_HOURS", process.env.FLOW_MARKETS_HOLD_HOURS, 0),
+  corroborateMin: optionalNumber("FLOW_MARKETS_CORROBORATE_MIN", process.env.FLOW_MARKETS_CORROBORATE_MIN, 0.8),
+  sameSourceMin: optionalNumber("FLOW_MARKETS_SAME_SOURCE_MIN", process.env.FLOW_MARKETS_SAME_SOURCE_MIN, 0.85),
+  windowHours: optionalNumber("FLOW_MARKETS_WINDOW_HOURS", process.env.FLOW_MARKETS_WINDOW_HOURS, 24),
+  capWindowHours: optionalNumber("FLOW_MARKETS_CAP_WINDOW_HOURS", process.env.FLOW_MARKETS_CAP_WINDOW_HOURS, 6),
+  cap: optionalNumber("FLOW_MARKETS_CAP", process.env.FLOW_MARKETS_CAP, 10),
+  singleCap: optionalNumber("FLOW_MARKETS_SINGLE_CAP", process.env.FLOW_MARKETS_SINGLE_CAP, 10),
+};
+
 // Пошук по корпусу (ROADMAP §9.1): /search і `flow search`.
 export const FLOW_SEARCH = {
   // Semantic порівнює запит зі стількома найновішими векторами (без days/topic).

@@ -25,6 +25,22 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.65.0] - 2026-10-10
+
+### Added
+- **Markets: no repeats, a flood cap, corroboration** (`delivery/marketGate.js`,
+  `FLOW_MARKETS_*`; NEWS_INTAKE.md "Markets"). A market story already in the
+  channel from another outlet (cosine 0.80 — the measured range of the same
+  story across outlets, below the dedup cluster's 0.90) or from the same one
+  (0.85) is not sent again; above 10 market posts per rolling 6 h the rest
+  stays for the digest; an uncorroborated post can be held for another
+  outlet (`FLOW_MARKETS_HOLD_HOURS`, 0 by default). Simulated on 2026-10-09:
+  the hold and a strict cap only cost — corroboration fires for 2–3 stories a
+  day because market news is almost only Reuters, and a cap counts
+  arrivals, not importance — so both default to off/guard. Runs before
+  translation, so held or capped posts spend no quota.
+- `flow preview` says when a market post would be held.
+
 ## [4.64.0] - 2026-10-10
 
 TheFlow calibration, round 1 — from a snapshot of the VPS database (640

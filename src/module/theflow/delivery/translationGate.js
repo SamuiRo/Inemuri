@@ -38,13 +38,15 @@ export function translationVerdict({ post, waitingSince = null, now, waitMs }) {
  * черги до наступної спроби: інакше п'ять найстаріших постів, що чекають,
  * займали б увесь пакет доставки, і українські пости за ними стояли б теж.
  *
+ * Той самий стан і для ринкової витримки (`kind: "market"`, marketGate.js).
+ *
  * @param {object|null} prev попередній posts.delivery
- * @param {{ now: number, retryMs: number }} opts
+ * @param {{ now: number, retryMs: number, kind?: "translation"|"market" }} opts
  */
-export function waitingState(prev, { now, retryMs }) {
-  const was = prev?.waiting === "translation" ? prev : null;
+export function waitingState(prev, { now, retryMs, kind = "translation" }) {
+  const was = prev?.waiting === kind ? prev : null;
   return {
-    waiting: "translation",
+    waiting: kind,
     since: was?.since ?? new Date(now).toISOString(),
     retry_at: new Date(now + retryMs).toISOString(),
     tries: (was?.tries ?? 0) + 1,

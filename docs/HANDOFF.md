@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.64.0`; pushed up to `v4.63.0`. 18 migrations; `npm test` is 702 green
+`v4.65.0`; committed up to `v4.64.0`. 18 migrations; `npm test` is 708 green
 `node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -74,9 +74,13 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    of 21; a replay of 100 v1 passes keeps 14–28 under v3, plus 37 cut by
    the section rule. Foreign Reuters editions are duplicates of the English
    wire (SpaceX/telecom, EU–China hybrids, consumer sentiment all exist in
-   English); only Latin-American items (Banxico, peso) are lost. **Next:**
-   the market corroboration and cap rules (NEWS_INTAKE.md §5) — the replay
-   showed that wording alone cannot hold the market volume. **Open:** Geely
+   English); only Latin-American items (Banxico, peso) are lost. Market
+   repeats, cap and corroboration built (`FLOW_MARKETS_*`): simulated on
+   2026-10-09, v3 left 19–25 market posts, the gate sent 17 and held back the
+   2 repeats; corroboration barely fires with Reuters as the only market
+   wire, so the hold is 0 and the cap is a flood guard (NEWS_INTAKE.md
+   "Markets"). **After a few days live:** `market_twin` / `market_cap`
+   counts, and whether a ranking cap (batching) is worth building. **Open:** Geely
    ("a company enters a market") — rejected; the operator's market verdicts
    (product renames are noise) suggest that is right.
 3. **After the week:** decide where `tools`

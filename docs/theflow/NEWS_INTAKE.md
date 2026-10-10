@@ -279,10 +279,11 @@ repository either. Areas of the profile line up with the taxonomy topics
 - **The taxonomy needed a v2**: topics `health`, `mind`, `money`, `markets`,
   signals `research` and `report` (TAXONOMY.md, Versioning).
 
-### Markets: calibrating so it does not spam (open)
+### Markets: calibrating so it does not spam
 
-The operator's own caveat — market news must not flood the stream. None of
-this is built yet; the plan:
+The operator's own caveat — market news must not flood the stream. Built in
+`v4.64.0` (materiality in the triage profile, corroboration and cap in
+`delivery/marketGate.js`, settings `FLOW_MARKETS_*`); the plan it came from:
 
 1. **Materiality rules, not a score.** Pass only defined event kinds, in
    **both directions** (operator, 2026-10-03: a surge matters as much as a
@@ -298,6 +299,24 @@ this is built yet; the plan:
 4. **Measure first.** The test week (from 2026-10-06, delivery to staff-only
    channels) produces the labels — `flow triage review`, `flow review` — that
    the rules and the cap are set from.
+
+**What the measurement changed (2026-10-09, simulated on the VPS snapshot).**
+Materiality in profile v3 alone cut the day's market posts from 176 to
+19–25. Corroboration is not a dedup cluster: the same story from two outlets
+has a cosine of 0.80–0.89, the cluster joins from 0.90, so only 8 of 753
+market clusters had two sources — corroboration counts another outlet's post
+at `FLOW_MARKETS_CORROBORATE_MIN` (0.80) instead. Even so it fires for 2–3
+stories a day: market news here is almost only Reuters. A hold for it only
+added latency, and a strict cap counted arrivals, not importance — it cut
+SpaceX/telecoms, consumer sentiment and Delta while letting the morning's
+small items through. So the defaults are: no hold
+(`FLOW_MARKETS_HOLD_HOURS=0`, set 2 once several outlets cover markets), the
+cap as a flood guard (10 per 6 h, rolling — a daily cap ran out before the
+US afternoon), and **no repeats**: a market story whose twin from another
+outlet (0.80) or from the same outlet (`FLOW_MARKETS_SAME_SOURCE_MIN`, 0.85)
+is already in the channel is not sent (`market_twin`). That day: 17 sent,
+2 repeats held back (Reuters's second SpaceX piece, the Guardian's EU–China).
+A cap that ranks by importance would need batching; not built.
 
 ## 6. Step 3 as built
 
