@@ -1,23 +1,33 @@
 *.sqlite
 
+# Deployment folder (docs/DEPLOYMENT.md): config, provision, knowledge,
+# database, exports — everything that belongs to one deployment. Only the
+# samples are tracked, next to the files they show how to fill.
+/instance/*
+!/instance/README.md
+!/instance/config/
+/instance/config/*
+!/instance/config/*.sample.json
+!/instance/provision/
+/instance/provision/*
+!/instance/provision/*.sample/
+
+# Old places, before v4.67.0 — kept ignored until `npm run instance:init`
+# has moved everything on every machine.
 /database/*
 !/database/migrations/
 /src/config/sources.json
 /src/config/cronjob.config.json
 /src/config/routing.json
-# The headline-triage profile is one reader's interests; the sample stays tracked.
 /src/config/triage.json
 # Superseded documentation kept on disk for reference only — see
 # docs/.archive/README.md for why each file was retired.
 /docs/.archive/
 /devtest
-# discordapp /export-chats output: other people's messages.
+# Old places of /export-chats output and discordapp server configs (now instance/).
 /exports/
-# discordapp server configs are deployment data; the sample stays tracked.
 /src/config/discordapp/servers/*.json
-!/src/config/discordapp/servers/*.sample.json
 /src/config/discordapp/messages/*
-!/src/config/discordapp/messages/*.sample.md
 
 # Logs
 logs

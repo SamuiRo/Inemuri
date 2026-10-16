@@ -43,7 +43,7 @@ const COLOR_RE = /^#[0-9a-f]{6}$/i;
 const TARGET_RE = /^(@everyone|role:[a-z0-9][a-z0-9-]*)$/;
 // Звичайний emoji (не текст і не кастомний <:name:id>).
 const EMOJI_RE = /^(?=.*[\p{Extended_Pictographic}\p{Regional_Indicator}])[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Component}\u200d\ufe0f\u20e3]+$/u;
-// Шлях відносно src/config/discordapp/messages/, без виходу за теку.
+// Шлях відносно теки сервера (instance/provision/<name>/), без виходу за неї.
 const FILE_RE = /^(?!.*\.\.)[a-z0-9][a-z0-9_./-]*\.md$/i;
 // Аватар персони: картинка в тій самій теці повідомлень.
 const AVATAR_RE = /^(?!.*[.][.])[a-z0-9][a-z0-9_./-]*[.](png|jpe?g|webp|gif)$/i;
@@ -287,7 +287,7 @@ function parseMessage(message, channelKey, roleKeys, personas, path, v) {
 
   if (message.file !== undefined) {
     if (typeof message.file !== "string" || !FILE_RE.test(message.file)) {
-      v.error(`${path}.file`, "must be a .md path inside src/config/discordapp/messages/");
+      v.error(`${path}.file`, "must be a .md path in the server's provision folder (next to server.json)");
     }
     const parsed = { key, channelKey, kind: "text", file: message.file, embed: parseEmbed(message.embed, `${path}.embed`, v), as: null };
     if (message.as !== undefined) {
@@ -340,7 +340,7 @@ function parsePersonas(raw, v) {
     let avatar = null;
     if (persona.avatar !== undefined) {
       if (typeof persona.avatar === "string" && AVATAR_RE.test(persona.avatar)) avatar = persona.avatar;
-      else v.error(`${path}.avatar`, "must be a .png, .jpg, .webp or .gif path inside src/config/discordapp/messages/");
+      else v.error(`${path}.avatar`, "must be a .png, .jpg, .webp or .gif path in the server's provision folder (next to server.json)");
     }
     personas.set(key, { key, name, avatar });
   }

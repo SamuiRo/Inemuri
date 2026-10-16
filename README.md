@@ -30,7 +30,7 @@ key (TheFlow).
 ```bash
 npm ci
 cp .env.example .env                                    # fill in real values
-cp src/config/sources.sample.json src/config/sources.json  # then describe your sources
+cp instance/config/sources.sample.json instance/config/sources.json  # then describe your sources
 npm run setup                                           # database: bootstrap + migrate + seed
 npm start
 ```
@@ -59,7 +59,7 @@ terminal: under pm2 it stops with a hint to run `telegram login`.
 
 `npm run setup` is `npm run db:bootstrap` (tables that predate migrations),
 `npm run migrate`, `npm run seed`; `-- --knowledge <file>` also imports a
-knowledge base, `-- --new` moves an existing database to `database/backups/`
+knowledge base, `-- --new` moves an existing database to `instance/database/backups/`
 and starts empty. The order matters: migrations cannot create the schema from
 nothing, so `npm run migrate` on an empty file stops with an explanation.
 Production install and deploys: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -73,11 +73,11 @@ sample with a `[CONFIG]` warning, a malformed one stops the start.
 | File | Holds |
 |---|---|
 | `.env` | Secrets and switches — see `.env.example` |
-| `src/config/sources.json` | Sources (below); imported into SQLite by `npm run seed` |
-| `src/config/routing.json` | TheFlow destinations: `routing` rules, `unsorted_destinations`, `health_destinations`, `digest_destinations`, `status_destinations` |
-| `src/config/triage.json` | Reader profile for headline triage ([NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md) §5) |
-| `src/config/cronjob.config.json` | Destinations of cron jobs |
-| `src/config/discordapp/servers/*.json`, `messages/**` | discordapp server configs and texts |
+| `instance/config/sources.json` | Sources (below); imported into SQLite by `npm run seed` |
+| `instance/config/routing.json` | TheFlow destinations: `routing` rules, `unsorted_destinations`, `health_destinations`, `digest_destinations`, `status_destinations` |
+| `instance/config/triage.json` | Reader profile for headline triage ([NEWS_INTAKE.md](docs/theflow/NEWS_INTAKE.md) §5) |
+| `instance/config/cron.json` | Destinations of cron jobs |
+| `instance/provision/*/server.json`, `messages/**` | discordapp server configs and texts |
 
 `src/config/categories.json` (the TheFlow taxonomy) is tracked.
 
@@ -102,7 +102,7 @@ sample with a `[CONFIG]` warning, a malformed one stops the start.
 
 ## Sources
 
-A source is one entry in `src/config/sources.json`:
+A source is one entry in `instance/config/sources.json`:
 
 ```json
 {
@@ -176,7 +176,7 @@ replacements and filters, and feed TheFlow or classic forwarding.
   only) is for large outlets (200–400 articles a day): new articles wait in
   `discovered_items`, sections in the profile's `deny_sections` are dropped at
   once, the rest is judged by the model in batches of ~50 headlines against
-  `src/config/triage.json`, and only what passes becomes a post. It runs in the
+  `instance/config/triage.json`, and only what passes becomes a post. It runs in the
   enrich worker, so without a provider key the articles wait.
   `flow triage stats` and `flow triage review` show and label its decisions.
 - **Reddit needs OAuth** in practice: create a "script" app at
@@ -334,7 +334,7 @@ Every reply is visible only to the caller; admin commands require
 |---|---|
 | `/daily` | Runs the daily crypto report now |
 | `/search query [mode] [topic] [signal] [days] [limit]` | Searches the TheFlow corpus — keyword (FTS5, no provider call) or semantic |
-| `/export-chats limit [format] [scope]` | Latest messages of every readable channel and thread into `exports/`, and to Telegram when `DISCORD_EXPORT_TELEGRAM_CHAT` is set. Needs the Message Content intent |
+| `/export-chats limit [format] [scope]` | Latest messages of every readable channel and thread into `instance/exports/`, and to Telegram when `DISCORD_EXPORT_TELEGRAM_CHAT` is set. Needs the Message Content intent |
 | `/provision plan [server]` | What applying the server's config would change. Changes nothing |
 | `/provision apply [server]` | The same plan with an **Apply** button. Nothing is ever deleted; needs the bot to hold Administrator for the duration |
 | `/provision export` | The server as a config file, to start one from |
@@ -348,7 +348,7 @@ server day to day: [docs/PROVISIONING.md](docs/PROVISIONING.md).
 
 The job is `src/module/cron/dailyReport.js` (schedule `DAILY_REPORT_CRON`,
 default `5 0 * * *` server time; `DAILY_REPORT_ENABLED=false` turns it off),
-its destinations are in `src/config/cronjob.config.json`:
+its destinations are in `instance/config/cron.json`:
 
 ```json
 { "dailyinfo": { "destinations": { "telegram": ["-1001234567890"], "discord": ["123456789012345678"] } } }
@@ -419,7 +419,7 @@ parses but never arrives.
 | A polling source picks up nothing | `mode` is `polling` or `both`; the status board or `node src/cli.js list` shows whether it was seen recently |
 | `[CONFIG] … falling back to …sample.json` | The git-ignored config is missing on this machine — copy it ([DEPLOYMENT.md](docs/DEPLOYMENT.md#what-git-pull-does-not-bring)) |
 | TheFlow posts stay `pending` | No primary provider key, `ENRICH_WORKER_ENABLED=false`, or the daily quota is spent — `node src/cli.js flow health` |
-| The daily report fails | `CMC_API_KEY`, `cronjob.config.json`, the `dailyinfo` destinations |
+| The daily report fails | `CMC_API_KEY`, `cron.json`, the `dailyinfo` destinations |
 | `npm run migrate` says "No sources table" | An empty database — [DEPLOYMENT.md](docs/DEPLOYMENT.md#when-migrate-says-no-sources-table) |
 
 ## License

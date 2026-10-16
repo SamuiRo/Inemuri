@@ -102,8 +102,8 @@ test("delivery off with routing rules warns: posts are enriched and reach no cha
   assert.equal(r.ok, true);
 });
 
-test("a deployment running on the routing or cronjob sample is blocked: those ids do not exist", () => {
-  for (const name of ["routing", "cronjob.config"]) {
+test("a deployment running on the routing or cron sample is blocked: those ids do not exist", () => {
+  for (const name of ["routing", "cron"]) {
     const r = assessPreflight(ready({ configFallbacks: [name] }));
     assert.equal(levelOf(r, `config_${name}`), "fail");
     assert.equal(r.ok, false);

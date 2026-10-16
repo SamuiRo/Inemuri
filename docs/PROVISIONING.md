@@ -34,12 +34,12 @@ and never belong in this repository — see [Where things live](#where-things-li
 
 | What | Path | In git? |
 |---|---|---|
-| Server config | `src/config/discordapp/servers/<name>.json` | **No** — ignored |
-| Texts of messages | `src/config/discordapp/messages/**/*.md` | **No** — ignored |
-| Persona avatars | `src/config/discordapp/messages/**/*.png` | **No** — ignored |
-| Examples to start from | `servers/example.sample.json`, `messages/*.sample.md` | Yes |
-| What is managed (key → id) | `discord_resources` in `database/pot.sqlite` | No |
-| Plans and exports you save | `exports/` | No |
+| Server config | `instance/provision/<name>/server.json` | **No** — ignored |
+| Texts of messages | `instance/provision/<name>/*.md`, next to `server.json` | **No** — ignored |
+| Persona avatars | `instance/provision/<name>/*.png` | **No** — ignored |
+| Example to start from | `instance/provision/example.sample/` — copy the folder | Yes |
+| What is managed (key → id) | `discord_resources` in `instance/database/pot.sqlite` | No |
+| Plans and exports you save | `instance/exports/` | No |
 
 Server configs hold real ids, names and texts, so they stay out of git by
 design. The flip side: **they exist only on this disk.** Keep a copy — a
@@ -203,7 +203,7 @@ A text message points at a Markdown file:
   insert. To put a new one in the middle, delete the later ones by hand and
   apply: provisioning reposts what is missing, in config order.
 
-See `messages/welcome.sample.md` for a complete example.
+See `instance/provision/example.sample/welcome.md` for a complete example.
 
 ### AutoMod
 

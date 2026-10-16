@@ -18,11 +18,16 @@ Inemuri/
 ├── .github/workflows/ci.yml         # lint, bootstrap, migrate, tests on push and PR
 ├── .claude/skills/                  # Claude Code skills (discord-provisioning tracked; server-* ignored)
 ├── database/
-│   ├── pot.sqlite                   # runtime database (git-ignored)
-│   ├── backups/                     # taken by migrate and setup (git-ignored)
 │   └── migrations/                  # NNN-name.js, forward-only (tracked)
+├── instance/                        # the deployment (git-ignored except samples; instance/README.md)
+│   ├── config/                      # sources, routing, triage, cron (+ *.sample.json, tracked)
+│   ├── provision/<server>/          # server.json + its texts (example.sample/ tracked)
+│   ├── knowledge/                   # labelled examples (JSONL)
+│   ├── database/                    # pot.sqlite, backups/
+│   └── exports/                     # /export-chats output
 ├── scripts/
 │   ├── setup.js                     # npm run setup: bootstrap + migrate + seed (+ knowledge import)
+│   ├── instance-init.js             # npm run instance:init: old layout → instance/ (v4.67.0)
 │   ├── bootstrap-schema.js          # npm run db:bootstrap: tables that predate migrations
 │   ├── migrate.js                   # npm run migrate / migrate:status
 │   ├── run-tests.js                 # npm test: throwaway database, node --test
@@ -36,7 +41,8 @@ Inemuri/
     ├── cli.js                       # sources and `flow …` commands (README "CLI commands")
     ├── config/
     │   ├── app.config.js            # every env var and constant — nothing else reads process.env
-    │   ├── localConfig.js           # loads git-ignored JSON configs, falls back to *.sample.json
+    │   ├── instance.js              # the layout of instance/ and the pre-v4.67.0 places
+    │   ├── localConfig.js           # loads instance/config/*.json, falls back to *.sample.json next to them
     │   ├── categories.json          # TheFlow taxonomy (tracked)
     │   ├── {sources,routing,triage,cronjob.config}.sample.json   # tracked examples of ignored configs
     │   └── discordapp/{servers,messages}/   # server configs and texts (*.sample.* tracked)
@@ -165,7 +171,7 @@ remembers which message).
 
 ## Persistence
 
-SQLite at `database/pot.sqlite`. `sources` and `source_states` are created
+SQLite at `instance/database/pot.sqlite`. `sources` and `source_states` are created
 by `database.sync()` (they predate migrations); everything else by numbered
 migrations — the full list is in [theflow/DATA_MODEL.md](theflow/DATA_MODEL.md#migrations).
 Deployment configs are JSON files read through `localConfig.js`

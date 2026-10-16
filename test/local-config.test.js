@@ -1,91 +1,115 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
 import { loadLocalConfig } from "../src/config/localConfig.js";
 
-const CONFIG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "config");
+// Семпли лежать поруч зі справжніми конфігами, у instance/config/ (v4.67.0).
+const SAMPLES_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "instance", "config");
 
-/** Тимчасові файли з унікальним префіксом, щоб не зачепити реальні конфіги. */
-function withFiles(files, fn) {
-  const written = [];
+/**
+ * Тимчасові теки instance/config і «старого місця» — тест не чіпає жодного
+ * справжнього конфігу. `fn` отримує `where` для loadLocalConfig.
+ */
+function withDirs({ files = {}, legacy = {} }, fn) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "inemuri-local-config-"));
+  const dir = path.join(root, "config");
+  const legacyDir = path.join(root, "legacy");
+  fs.mkdirSync(dir);
+  fs.mkdirSync(legacyDir);
   try {
-    for (const [name, body] of Object.entries(files)) {
-      const file = path.join(CONFIG_DIR, name);
-      fs.writeFileSync(file, body, "utf8");
-      written.push(file);
-    }
-    return fn();
+    for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(dir, name), body, "utf8");
+    for (const [name, body] of Object.entries(legacy)) fs.writeFileSync(path.join(legacyDir, name), body, "utf8");
+    return fn({ dir, legacyDir });
   } finally {
-    for (const file of written) {
-      try { fs.unlinkSync(file); } catch { /* already gone */ }
-    }
+    fs.rmSync(root, { recursive: true, force: true });
   }
 }
 
-const NAME = "__probe.local-config.test";
+const NAME = "probe";
 
 test("loadLocalConfig — prefers the local file over the sample", () => {
-  withFiles({
+  withDirs({ files: {
     [`${NAME}.json`]: JSON.stringify({ who: "local" }),
     [`${NAME}.sample.json`]: JSON.stringify({ who: "sample" }),
-  }, () => {
+  } }, (where) => {
     const sink = [];
-    assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink), { who: "local" });
+    assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink, where), { who: "local" });
     assert.deepEqual(sink, [], "звичайний шлях не має попереджати");
   });
 });
 
 test("loadLocalConfig — falls back to the sample, loudly", () => {
-  withFiles({ [`${NAME}.sample.json`]: JSON.stringify({ who: "sample" }) }, () => {
+  withDirs({ files: { [`${NAME}.sample.json`]: JSON.stringify({ who: "sample" }) } }, (where) => {
     const sink = [];
-    assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink), { who: "sample" });
+    assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink, where), { who: "sample" });
     assert.equal(sink.length, 1);
     assert.match(sink[0], /not found/);
+  });
+});
+
+test("loadLocalConfig — a file still in the old place is read, with a warning to move it", () => {
+  // Сервер, на який прийшов v4.67.0, але ще не `npm run instance:init`, не
+  // має стартувати на семплах.
+  withDirs({
+    files: { "cron.sample.json": JSON.stringify({ who: "sample" }) },
+    legacy: { "cronjob.config.json": JSON.stringify({ who: "old" }) },
+  }, (where) => {
+    const sink = [];
+    assert.deepEqual(loadLocalConfig("cron", null, sink, { ...where, legacyName: "cronjob.config" }), { who: "old" });
+    assert.match(sink[0], /old place.*instance:init/);
+  });
+  withDirs({
+    files: { [`${NAME}.json`]: JSON.stringify({ who: "new" }) },
+    legacy: { [`${NAME}.json`]: JSON.stringify({ who: "old" }) },
+  }, (where) => {
+    assert.deepEqual(loadLocalConfig(NAME, null, [], where), { who: "new" }, "новий файл важливіший за старий");
   });
 });
 
 test("loadLocalConfig — a fresh clone starts instead of failing to resolve", () => {
   // Регресія: раніше конфіги йшли через `import ... with { type: "json" }`,
   // а самі файли в .gitignore — тож клон падав ще до першого рядка логіки.
-  const sink = [];
-  assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink), { who: "fallback" });
-  assert.equal(sink.length, 1);
-  assert.match(sink[0], /neither/);
+  withDirs({}, (where) => {
+    const sink = [];
+    assert.deepEqual(loadLocalConfig(NAME, { who: "fallback" }, sink, where), { who: "fallback" });
+    assert.equal(sink.length, 1);
+    assert.match(sink[0], /neither/);
+  });
 });
 
 test("loadLocalConfig — a broken local file throws, it does not silently become the sample", () => {
   // Тихо підмінити робочий конфіг семплом означає стартувати з чужими
   // призначеннями. Зламаний конфіг має зупинити старт.
-  withFiles({
+  withDirs({ files: {
     [`${NAME}.json`]: "{ not json",
     [`${NAME}.sample.json`]: JSON.stringify({ who: "sample" }),
-  }, () => {
-    assert.throws(
-      () => loadLocalConfig(NAME, { who: "fallback" }, []),
-      /is not valid JSON/,
-    );
+  } }, (where) => {
+    assert.throws(() => loadLocalConfig(NAME, { who: "fallback" }, [], where), /is not valid JSON/);
   });
 });
 
 test("loadLocalConfig — a broken sample throws too", () => {
-  withFiles({ [`${NAME}.sample.json`]: "{ also not json" }, () => {
-    assert.throws(() => loadLocalConfig(NAME, { who: "fallback" }, []), /is not valid JSON/);
+  withDirs({ files: { [`${NAME}.sample.json`]: "{ also not json" } }, (where) => {
+    assert.throws(() => loadLocalConfig(NAME, { who: "fallback" }, [], where), /is not valid JSON/);
   });
 });
 
+const shipped = (name) => loadLocalConfig(name, null, [], { dir: SAMPLES_DIR, legacyDir: null });
+
 test("the shipped sample configs parse", () => {
   // Вони — фолбек для свіжого клону: якщо семпл битий, клон не стартує.
-  for (const name of ["sources.sample", "routing.sample", "cronjob.config.sample"]) {
-    const parsed = loadLocalConfig(name, null, []);
+  for (const name of ["sources.sample", "routing.sample", "triage.sample", "cron.sample"]) {
+    const parsed = shipped(name);
     assert.ok(parsed && typeof parsed === "object", `${name}.json має парситись`);
   }
 });
 
 test("routing.sample carries no real channel ids", () => {
-  const sample = loadLocalConfig("routing.sample", null, []);
+  const sample = shipped("routing.sample");
   const ids = Object.values(sample.unsorted_destinations ?? {}).flat();
   assert.ok(ids.length > 0, "семпл має показувати форму");
   for (const id of ids) {
@@ -98,8 +122,8 @@ test("shipped samples are named exactly as the loader asks — case included", (
   // тож розбіжність на кшталт `Sources.sample.json` проти `sources.sample.json`
   // тут проходила б непомітно, а на проді фолбек свіжого клону не знайшов би
   // файл і система стартувала б з порожнім списком джерел.
-  const present = new Set(fs.readdirSync(CONFIG_DIR));
-  for (const name of ["sources", "routing", "cronjob.config"]) {
+  const present = new Set(fs.readdirSync(SAMPLES_DIR));
+  for (const name of ["sources", "routing", "triage", "cron"]) {
     assert.ok(
       present.has(`${name}.sample.json`),
       `${name}.sample.json відсутній (є: ${[...present].filter((f) => /sample/i.test(f)).join(", ")})`,

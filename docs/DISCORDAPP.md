@@ -59,15 +59,15 @@ src/module/discordapp/
     provision/                       # server as code: schema, overwrites, messages, automod, planner,
                                      #   exporter, formatPlan (pure); readGuild, applier, configStore, Provisioner
 src/module/teapot/models/DiscordResource.js   # provisioning state (migrations 009, 010)
-src/config/discordapp/               # git-ignored deployment data + *.sample
-  servers/<name>.json
-  messages/*.md
+instance/provision/<name>/          # git-ignored deployment data; example.sample/ is tracked
+  server.json
+  *.md, *.png                        # texts and avatars, "file": "rules.md" relative to the folder
 scripts/discordapp.js                # check | apply | export | ids from a terminal
 ```
 
 `/daily` (`commands/daily.js`, admin) asks the core over the bus
 (`cron.run`, below): `CronScheduler.runJob("dailyinfo")` builds the report and
-emits it exactly as the scheduled run does, to the `cronjob.config.json`
+emits it exactly as the scheduled run does, to the `cron.json`
 destinations.
 
 ### Command module contract
@@ -174,7 +174,7 @@ Defaults: `format: md`, `scope: this`. `scope: all` means every server in
   written whole with their author, title, description, fields and footer.
   **JSON**: the full structure with ids, reply targets, attachments,
   reactions and thread parentage.
-- The file is written to the git-ignored `exports/` directory and, when
+- The file is written to the git-ignored `instance/exports/` directory and, when
   `DISCORD_EXPORT_TELEGRAM_CHAT` is set, also sent to that Telegram chat
   (v4.39.0). **It is not attached in Discord** — a whole server's messages
   should not sit as an attachment there; the Discord reply is a short summary.
@@ -245,7 +245,7 @@ server (someone may have added them by hand), and **on every button press**.
 
 A server's shape — roles, categories, channels, permission overwrites,
 messages, role panels, AutoMod rules — is described in
-`src/config/discordapp/servers/<name>.json` and applied Terraform-style:
+`instance/provision/<name>/server.json` and applied Terraform-style:
 **plan, then apply**.
 
 > **Plan implemented (v4.33.0), apply (v4.34.0).** Code:
@@ -254,7 +254,7 @@ messages, role panels, AutoMod rules — is described in
 > `applier.js` (writes Discord), `configStore.js`, `Provisioner.js`; command
 > `commands/provision.js`. Messages and role panels since v4.35.0, AutoMod
 > since v4.37.0, `archiveUnmanaged` since v4.40.0. A working starting point is
-> `servers/example.sample.json` with `messages/rules.sample.md`, or
+> `instance/provision/example.sample/` (copy the folder), or
 > `/provision export` of the server as it is.
 
 ### Config
@@ -275,7 +275,7 @@ messages, role panels, AutoMod rules — is described in
   "categories": [
     { "key": "info", "name": "📌 INFO", "overwrites": "readonly", "channels": [
       { "key": "rules", "name": "rules", "type": "text",
-        "messages": [{ "key": "rules-main", "file": "messages/rules.md", "embed": true }] },
+        "messages": [{ "key": "rules-main", "file": "rules.md", "embed": true }] },
       { "key": "get-roles", "name": "get-roles", "type": "text",
         "messages": [{ "key": "topics", "rolePanel": { "mode": "toggle", "roles": ["topic-rust"] } }] }
     ]}
@@ -292,7 +292,7 @@ messages, role panels, AutoMod rules — is described in
   as `role:<key>` and to `@everyone` by name.
 - **Messages.** A text or announcement channel may carry `messages`: either
   `{ "key", "file": "rules.md", "embed"?: true | { "title"?, "color"? } }`
-  with the text in `src/config/discordapp/messages/` (git-ignored except
+  with the text in `instance/provision/<name>/` (git-ignored except
   `*.sample.md`), or `{ "key", "rolePanel": { "mode"?, "text"?, "roles" } }`.
   A panel takes `"embed"` too (v4.58.0): the text goes into one embed above
   the buttons (up to 4096 instead of 2000), a first line `# Title` becomes its
@@ -493,7 +493,7 @@ AutoMod rules are another resource kind, in the `automod` list of the config:
 
 The reverse direction: snapshot an existing server into the config format, so
 the first config is edited rather than written from scratch. The file goes to
-`exports/config-<server>.json` and is attached to the reply — never into the
+`instance/exports/config-<server>.json` and is attached to the reply — never into the
 configs folder, where it would start acting as a config.
 
 The acceptance test is a round trip: the export, planned against the same

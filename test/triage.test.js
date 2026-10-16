@@ -11,7 +11,7 @@ import {
 } from "../src/services/ai/prompts/triage.js";
 import { toGeminiSchema } from "../src/services/ai/providers/GeminiProvider.js";
 import LLMGateway from "../src/services/ai/LLMGateway.js";
-import profile from "../src/config/triage.sample.json" with { type: "json" };
+import profile from "../instance/config/triage.sample.json" with { type: "json" };
 
 const AREAS = Object.keys(profile.areas);
 

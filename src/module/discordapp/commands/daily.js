@@ -4,7 +4,7 @@ import { SlashCommandBuilder } from "discord.js";
  * /daily — ручний запуск щоденного звіту.
  *
  * Звіт будує і відправляє ядро (CronScheduler.runJob) тим самим шляхом, що й
- * за розкладом: EventBus → MessageRouter → призначення з cronjob.config.json.
+ * за розкладом: EventBus → MessageRouter → призначення з instance/config/cron.json.
  * Команда лише питає шину й каже, чи вдалося (DISCORDAPP.md D1).
  */
 export default {

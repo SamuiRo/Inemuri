@@ -16,9 +16,9 @@ import {
 import { finalOverwrites, managedTargetIds, resolveOverwrites } from "../src/module/discordapp/features/provision/overwrites.js";
 import { formatPlan } from "../src/module/discordapp/features/provision/formatPlan.js";
 import { bodyProblem, resolveLinks, splitEmbeds } from "../src/module/discordapp/features/provision/messages.js";
-import { resolveServerConfig } from "../src/module/discordapp/features/provision/configStore.js";
+import { resolveServerConfig, loadMessageBody } from "../src/module/discordapp/features/provision/configStore.js";
 import { textReply } from "../src/module/discordapp/reply.js";
-import { DISCORD_SERVERS_DIR } from "../src/config/app.config.js";
+import { DISCORD_PROVISION_DIR } from "../src/config/app.config.js";
 
 const GUILD = "111111111111111111";
 const BOT_ROLE = "900";
@@ -76,7 +76,7 @@ const opsOf = (plan) => plan.ops.map((op) => `${op.op} ${op.kind} ${op.key}`);
 // ── schema ─────────────────────────────────────────────────────────────────
 
 test("schema — the sample config validates", () => {
-  const sample = JSON.parse(fs.readFileSync(path.join(DISCORD_SERVERS_DIR, "example.sample.json"), "utf8"));
+  const sample = JSON.parse(fs.readFileSync(path.join(DISCORD_PROVISION_DIR, "example.sample", "server.json"), "utf8"));
   sample.guildId = GUILD;
   assert.deepEqual(validateServerConfig(sample).errors, []);
 });
@@ -465,17 +465,33 @@ test("textReply — long text goes into a file", () => {
 // ── configStore ────────────────────────────────────────────────────────────
 
 test("resolveServerConfig — by name, by guild id, and loud failures", async () => {
-  const file = path.join(DISCORD_SERVERS_DIR, "zz-probe-provision-test.json");
-  fs.writeFileSync(file, JSON.stringify({ guildId: "333333333333333333" }));
+  // Один сервер — одна тека: instance/provision/<name>/server.json (v4.67.0).
+  const folder = path.join(DISCORD_PROVISION_DIR, "zz-probe-provision-test");
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, "server.json"), JSON.stringify({ guildId: "333333333333333333" }));
+  fs.writeFileSync(path.join(folder, "welcome.md"), "Hello\r\n");
   try {
+    const config = await resolveServerConfig("333333333333333333");
+    assert.equal(config.baseDir, folder, "тексти читаються з теки сервера");
+    assert.equal(await loadMessageBody("welcome.md", config.baseDir), "Hello");
+    await assert.rejects(loadMessageBody("../example.sample/welcome.md", config.baseDir), /outside the server's folder/);
     assert.equal((await resolveServerConfig("333333333333333333")).name, "zz-probe-provision-test");
     assert.equal((await resolveServerConfig("333333333333333333", "zz-probe-provision-test")).name, "zz-probe-provision-test");
     await assert.rejects(resolveServerConfig("444444444444444444", "zz-probe-provision-test"), /not this one/);
     await assert.rejects(resolveServerConfig("444444444444444444"), /No config for this server/);
     await assert.rejects(resolveServerConfig("333333333333333333", "../app.config"), /not a valid config name/);
   } finally {
-    fs.unlinkSync(file);
+    fs.rmSync(folder, { recursive: true, force: true });
   }
+});
+
+test("schema — the sample server's texts sit next to it", async () => {
+  // example.sample/ — шаблон для нового сервера: посилання відносно теки.
+  const folder = path.join(DISCORD_PROVISION_DIR, "example.sample");
+  const sample = JSON.parse(fs.readFileSync(path.join(folder, "server.json"), "utf8"));
+  const files = JSON.stringify(sample).match(/"file":"[^"]+"/g).map((m) => m.slice(8, -1));
+  assert.ok(files.length > 0);
+  for (const file of files) assert.ok((await loadMessageBody(file, folder)).length > 0, file);
 });
 
 test("/provision apply says why there is no Apply button, first — the plan's tail may be cut off", async () => {

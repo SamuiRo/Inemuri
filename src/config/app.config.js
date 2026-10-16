@@ -2,9 +2,10 @@ import "dotenv/config";
 
 import pkg from "../../package.json" with { type: "json" };
 import CategoriesConfig from "./categories.json" with { type: "json" };
-import { fileURLToPath } from "url";
+import fs from "fs";
 import path from "path";
 import { loadLocalConfig } from "./localConfig.js";
+import { instanceLayout, DEFAULT_INSTANCE_DIR, LEGACY, LEGACY_CONFIG_NAMES } from "./instance.js";
 import { TELEGRAM } from "../shared/platformLimits.js";
 import { SECOND, MINUTE, HOUR } from "../shared/time.js";
 
@@ -47,12 +48,31 @@ export function flag(name, raw, fallback, sink = CONFIG_WARNINGS) {
   return fallback;
 }
 
+// ── Тека розгортання ───────────────────────────────────────────────────────
+// instance/ (src/config/instance.js): конфіги, provision, мітки, база, експорти.
+// INEMURI_INSTANCE_DIR — інший шлях (кілька розгортань на одній машині).
+export const INSTANCE_DIR = process.env.INEMURI_INSTANCE_DIR?.trim()
+  ? path.resolve(process.env.INEMURI_INSTANCE_DIR.trim())
+  : DEFAULT_INSTANCE_DIR;
+export const INSTANCE = instanceLayout(INSTANCE_DIR);
+
 // ── Database ───────────────────────────────────────────────────────────────
-// Робоча база — database/pot.sqlite. SQLITE_STORAGE перевизначає шлях; його
+// Робоча база — instance/database/pot.sqlite. SQLITE_STORAGE перевизначає шлях; його
 // ставить scripts/run-tests.js, щоб `npm test` ганявся на одноразовій базі,
 // а не на корпусі пілота (до v4.43.1 тест EnrichWorker забирав справжні
 // pending-пости і писав у них фейкові вердикти).
-export const SQLITE_DEFAULT_STORAGE = path.resolve(process.cwd(), "database", "pot.sqlite");
+// До v4.67.0 база лежала в database/; поки її не перенесено
+// (`npm run instance:init`), читається звідти — інакше сервер, на який прийшов
+// новий код, стартував би з порожньою базою.
+const SQLITE_NEW_STORAGE = path.join(INSTANCE.database, "pot.sqlite");
+const SQLITE_LEGACY_STORAGE = path.join(LEGACY.database, "pot.sqlite");
+const useLegacyDatabase = !fs.existsSync(SQLITE_NEW_STORAGE) && fs.existsSync(SQLITE_LEGACY_STORAGE);
+if (useLegacyDatabase && !process.env.SQLITE_STORAGE) {
+  CONFIG_WARNINGS.push(`database is in the old place (${SQLITE_LEGACY_STORAGE}) — run "npm run instance:init" to move it to instance/database/.`);
+}
+export const SQLITE_DEFAULT_STORAGE = useLegacyDatabase ? SQLITE_LEGACY_STORAGE : SQLITE_NEW_STORAGE;
+// Робочі бази, у які тести писати не можуть (test/support/testDatabase.js).
+export const SQLITE_PROTECTED_STORAGES = Object.freeze([SQLITE_NEW_STORAGE, SQLITE_LEGACY_STORAGE]);
 export const SQLITE_STORAGE = process.env.SQLITE_STORAGE
   ? path.resolve(process.env.SQLITE_STORAGE)
   : SQLITE_DEFAULT_STORAGE;
@@ -204,15 +224,16 @@ export function quotaTimeZone(name, raw, fallback, sink = CONFIG_WARNINGS) {
 }
 
 // ── Конфіги конкретного розгортання ───────────────────────────────────────
-// У .gitignore: у кожного розгортання свої канали й призначення. Читаються
-// через loadLocalConfig, який падає на *.sample.json, — інакше свіжий клон
-// не стартує взагалі (module resolution падає на відсутньому файлі).
-export const SOURCE_CONFIG = loadLocalConfig("sources", { sources: [] }, CONFIG_WARNINGS);
+// instance/config/, у .gitignore: у кожного розгортання свої канали й
+// призначення. Читаються через loadLocalConfig, який падає на *.sample.json
+// поруч, — інакше свіжий клон не стартує взагалі.
+const localConfig = (name, fallback) => loadLocalConfig(name, fallback, CONFIG_WARNINGS, {
+  dir: INSTANCE.config, legacyDir: LEGACY.config, legacyName: LEGACY_CONFIG_NAMES[name],
+});
+export const SOURCE_CONFIG = localConfig("sources", { sources: [] });
 // Маршрутизація TheFlow: unsorted_destinations + routing. Навмисно НЕ в
 // categories.json — таксономія спільна, а id каналів належать розгортанню.
-export const ROUTING = loadLocalConfig(
-  "routing", { unsorted_destinations: {}, routing: [] }, CONFIG_WARNINGS,
-);
+export const ROUTING = localConfig("routing", { unsorted_destinations: {}, routing: [] });
 
 // ── Discord: вкладення ────────────────────────────────────────────────────
 // Найбільший файл, що йде вкладенням — і для доставки, і для експорту
@@ -223,7 +244,7 @@ export const DISCORD_UPLOAD_LIMIT_MB = optionalNumber(
 
 // ── discordapp: /export-chats ─────────────────────────────────────────────
 // Куди пишуться експорти. У .gitignore: там чужі повідомлення.
-export const DISCORD_EXPORT_DIR = fileURLToPath(new URL("../../exports/", import.meta.url));
+export const DISCORD_EXPORT_DIR = INSTANCE.exports;
 // Скільки каналів читаємо паралельно. Черга rate limit у @discordjs/rest
 // все одно вирівнює запити; більше — лише довші паузи на 429.
 export const DISCORD_EXPORT_CONCURRENCY = 3;
@@ -236,11 +257,14 @@ export const DISCORD_EXPORT_TELEGRAM_CHAT = process.env.DISCORD_EXPORT_TELEGRAM_
 export const DISCORD_EXPORT_ARCHIVED_THREADS = 100;
 
 // ── discordapp: провіжн ───────────────────────────────────────────────────
-// Конфіги серверів (docs/DISCORDAPP.md): servers/<name>.json, у .gitignore.
+// Сервери (docs/PROVISIONING.md): instance/provision/<name>/server.json і
+// поруч тексти й картинки, на які він посилається ("file": "rules.md").
 // Читаються на кожну команду, а не на старті — правка конфігу діє без рестарту.
-export const DISCORD_SERVERS_DIR = fileURLToPath(new URL("./discordapp/servers/", import.meta.url));
-// Тексти повідомлень, на які посилаються конфіги ("file": "rules.md").
-export const DISCORD_MESSAGES_DIR = fileURLToPath(new URL("./discordapp/messages/", import.meta.url));
+export const DISCORD_PROVISION_DIR = INSTANCE.provision;
+// До v4.67.0: servers/<name>.json і messages/ окремо. Читаються, поки сервер
+// не перенесено (npm run instance:init).
+export const DISCORD_LEGACY_SERVERS_DIR = LEGACY.servers;
+export const DISCORD_LEGACY_MESSAGES_DIR = LEGACY.messages;
 
 // ── Telegram: з'єднання ───────────────────────────────────────────────────
 // Скільки разів GramJS перепідключається, перш ніж здатись.
@@ -280,8 +304,8 @@ export const POLLING_MAX_DRAIN_PAGES = optionalNumber(
 );
 
 // ── Cron: щоденний крипто-звіт ─────────────────────────────────────────────
-// Призначення задач — у git-ignored cronjob.config.json (id каналів).
-export const CRON_CONFIG = loadLocalConfig("cronjob.config", { dailyinfo: { destinations: {} } }, CONFIG_WARNINGS);
+// Призначення задач — у git-ignored instance/config/cron.json (id каналів).
+export const CRON_CONFIG = localConfig("cron", { dailyinfo: { destinations: {} } });
 export const DAILY_REPORT = {
   schedule: process.env.DAILY_REPORT_CRON || "5 0 * * *", // час сервера
   enabled: flag("DAILY_REPORT_ENABLED", process.env.DAILY_REPORT_ENABLED, true),
@@ -455,7 +479,7 @@ export const FLOW_SEARCH = {
 // git-ignored, як sources.json; у репозиторії лише triage.sample.json. Тут —
 // лише робочі ручки. Працює для джерел із `feed.triage: true`.
 export const FLOW_TRIAGE = {
-  profile: loadLocalConfig("triage", { version: 0, areas: {}, values: [], noise: [], deny_sections: [] }, CONFIG_WARNINGS),
+  profile: localConfig("triage", { version: 0, areas: {}, values: [], noise: [], deny_sections: [] }),
   // Заголовків в одному LLM-виклику: ~50 — сотня викликів на добу на 20 медіа.
   batchSize: optionalNumber("FLOW_TRIAGE_BATCH", process.env.FLOW_TRIAGE_BATCH, 50),
   // Неповний пакет чекає, поки найстаріший кандидат не пролежить стільки

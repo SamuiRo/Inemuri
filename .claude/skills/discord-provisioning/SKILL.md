@@ -1,6 +1,6 @@
 ---
 name: discord-provisioning
-description: How to describe, change and apply a Discord server as code with Inemuri's discordapp provisioning — server configs (roles, categories, channels, permission presets, role panels, opt-in sections, AutoMod), message texts with several embeds, {{#key}} links and personas, taking over an existing server with adopt, and running plan/apply from the terminal. Use whenever the task touches src/config/discordapp/servers/*.json or messages/*.md, /provision plan|apply|export, scripts/discordapp.js, a server rebrand or cleanup, or the provisioning code under src/module/discordapp/features/provision/ — even if the user just says "add a channel", "rename the category", "change who can post", "update the welcome text" or "set up a new server".
+description: How to describe, change and apply a Discord server as code with Inemuri's discordapp provisioning — server configs (roles, categories, channels, permission presets, role panels, opt-in sections, AutoMod), message texts with several embeds, {{#key}} links and personas, taking over an existing server with adopt, and running plan/apply from the terminal. Use whenever the task touches instance/provision/<server>/ (server.json and the .md texts next to it), /provision plan|apply|export, scripts/discordapp.js, a server rebrand or cleanup, or the provisioning code under src/module/discordapp/features/provision/ — even if the user just says "add a channel", "rename the category", "change who can post", "update the welcome text" or "set up a new server".
 ---
 
 # Discord provisioning (discordapp)
@@ -15,16 +15,16 @@ is the map:
   troubleshooting. **Start here.**
 - `docs/DISCORDAPP.md` § *Feature: provisioning* — the contract: every field,
   every rule, and *Status and known limitations*.
-- `src/config/discordapp/servers/example.sample.json` +
-  `src/config/discordapp/messages/*.sample.md` — a complete working example.
+- `instance/provision/example.sample/` +
+  `instance/provision/<name>/*.sample.md` — a complete working example.
 
 If a per-server skill exists (`.claude/skills/server-*/`), load it too: it
 holds that server's naming conventions and decisions.
 
 ## Ground rules
 
-- **Real configs and texts never go into git.** `servers/*.json` and
-  `messages/**` are git-ignored; only `*.sample.*` is tracked. Docs use made-up
+- **Real configs and texts never go into git.** `instance/provision/<server>/`
+  (`server.json` and its texts) is git-ignored; only `instance/provision/example.sample/` is tracked. Docs use made-up
   examples, never real ids or channel names.
 - **Plan freely, apply only when the user asks.** Apply changes a live server
   that other people use. It also needs the bot to hold Administrator for the
@@ -41,9 +41,9 @@ holds that server's naming conventions and decisions.
 |---|---|
 | Plan (read-only) | `node scripts/discordapp.js check <guildId> [config]` — also checks bot role position, permissions, intents, commands |
 | Apply | `node scripts/discordapp.js apply <guildId> [config] --yes` (without `--yes` it only plans) |
-| Server → config | `node scripts/discordapp.js export <guildId>` → `exports/config-<slug>.json`, with `adopt` ids |
+| Server → config | `node scripts/discordapp.js export <guildId>` → `instance/exports/config-<slug>.json`, with `adopt` ids |
 | In Discord | `/provision plan`, `/provision apply` (button), `/provision export` |
-| History backup | `/export-chats` → `exports/` |
+| History backup | `/export-chats` → `instance/exports/` |
 
 Config and text changes need no restart. Code changes to Inemuri need a
 restart before the running bot uses them.
@@ -70,7 +70,7 @@ category), `categories`, `automod`. Any field starting with `_` is a comment.
 - **AutoMod:** `{ key, name, type: keyword|preset|spam|mention-spam, ..., actions: [block|alert{channel}|timeout{seconds}], exempt: { roles, channels } }`.
   Rules are enforced by Discord, not Inemuri.
 
-## Texts (`messages/**.md`)
+## Texts (`instance/provision/<server>/*.md`)
 
 - `---` on its own line starts the next embed (max 10, 6000 chars total, 4096
   each); a first line `# Title` becomes the embed title.

@@ -51,7 +51,7 @@ a channel → **Copy Channel ID** — both for the channels to read (as the
 reading account) and for the destination channels. A **channel** id, not the
 server id: the seeder refuses anything that is not 17–20 digits.
 
-### 4. `src/config/sources.json`
+### 4. `instance/config/sources.json`
 
 One entry per channel to read, in the same `sources` array as the other
 sources:

@@ -47,14 +47,14 @@ async function attachBodies(desired) {
   for (const persona of desired.personas.values()) {
     if (!persona.avatar) continue;
     try {
-      persona.avatarData = await loadMessageAsset(persona.avatar);
+      persona.avatarData = await loadMessageAsset(persona.avatar, config.baseDir);
     } catch (error) {
       errors.push(`persona "${persona.key}": ${error.message}`);
     }
   }
   for (const message of desired.messages.filter((m) => m.kind === "text")) {
     try {
-      message.body = await loadMessageBody(message.file);
+      message.body = await loadMessageBody(message.file, config.baseDir);
     } catch (error) {
       errors.push(`message "${message.key}": ${error.message}`);
       continue;
@@ -68,7 +68,7 @@ async function attachBodies(desired) {
 /** Помилки валідації конфігу → текст. */
 export function formatConfigErrors(config, errors) {
   return [
-    `**\`servers/${config.file}\` has ${errors.length} problem(s)** — nothing was read from the server:`,
+    `**\`${config.file}\` has ${errors.length} problem(s)** — nothing was read from the server:`,
     ...errors.map((error) => `✖ ${error}`),
   ].join("\n");
 }
@@ -96,7 +96,7 @@ export async function withGuildLock(guildId, fn) {
 const SKIPPED_SHOWN = 10;
 
 /**
- * Сервер → конфіг (exporter.js), записаний у exports/. У теку конфігів
+ * Сервер → конфіг (exporter.js), записаний у instance/exports/. У теку конфігів
  * нічого не пишеться: експорт — чернетка, яку людина переглядає й копіює сама,
  * а не новий конфіг, що одразу почав би діяти.
  *
@@ -120,8 +120,8 @@ export function describeExport(config, skipped, fileName) {
   const channels = config.channels.length + config.categories.reduce((n, c) => n + c.channels.length, 0);
   const lines = [
     `📤 Exported ${config.roles.length} roles, ${config.categories.length} categories, ${channels} channels` +
-      `${config.automod ? `, ${config.automod.length} AutoMod rules` : ""} → \`exports/${fileName}\`.`,
-    "Review it, copy it to `src/config/discordapp/servers/<name>.json`, then `/provision plan` — " +
+      `${config.automod ? `, ${config.automod.length} AutoMod rules` : ""} → \`instance/exports/${fileName}\`.`,
+    "Review it, copy it to `instance/provision/<name>/server.json`, then `/provision plan` — " +
       "it should only adopt, plus the bot's own access to private channels. Messages are not exported.",
   ];
   if (skipped.length) {

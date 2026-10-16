@@ -25,7 +25,8 @@ import fs from "fs";
 import path from "path";
 import { spawnSync } from "child_process";
 
-import { NODE_ENV, SQLITE_STORAGE } from "../src/config/app.config.js";
+import { NODE_ENV, SQLITE_STORAGE, INSTANCE } from "../src/config/app.config.js";
+import { LEGACY } from "../src/config/instance.js";
 import { print } from "../src/shared/utils.js";
 
 const args = process.argv.slice(2);
@@ -43,9 +44,9 @@ if (NODE_ENV === "development") {
   process.exit(1);
 }
 
-const sourcesFile = path.resolve(process.cwd(), "src", "config", "sources.json");
-if (!fs.existsSync(sourcesFile)) {
-  print("src/config/sources.json is missing — seed would fill the database with the sample sources. " +
+const sourcesFile = path.join(INSTANCE.config, "sources.json");
+if (!fs.existsSync(sourcesFile) && !fs.existsSync(path.join(LEGACY.config, "sources.json"))) {
+  print("instance/config/sources.json is missing — seed would fill the database with the sample sources. " +
     "Copy your sources.json first (docs/DEPLOYMENT.md lists every file git does not carry).", "error");
   process.exit(1);
 }

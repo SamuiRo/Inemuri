@@ -240,7 +240,8 @@ test("validateRouting — a rule that matches but delivers nowhere is flagged", 
 
 test("validateRouting — the shipped routing.sample.json is valid", async () => {
   const { loadLocalConfig } = await import("../src/config/localConfig.js");
-  const sample = loadLocalConfig("routing.sample", null, []);
+  const { fileURLToPath } = await import("url");
+  const sample = loadLocalConfig("routing.sample", null, [], { dir: fileURLToPath(new URL("../instance/config/", import.meta.url)), legacyDir: null });
   assert.deepEqual(validateRouting(sample, CATEGORIES), []);
 });
 

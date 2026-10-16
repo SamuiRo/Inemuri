@@ -287,7 +287,7 @@ belong to the operator and are still open:
 ## 12. Migration discipline
 
 - **Forward-only.** Recovery is a restore from the backup the runner takes.
-- **Back up before every batch**, into `database/backups/`.
+- **Back up before every batch**, into `instance/database/backups/`.
 - **Never `sync({ alter: true })` against a real database.** SQLite has no
   real `ALTER`, so Sequelize rebuilds the table — copy, drop, rename, with the
   corpus at risk in the middle. Explicit `ALTER TABLE … ADD COLUMN` instead.

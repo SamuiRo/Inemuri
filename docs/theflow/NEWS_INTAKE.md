@@ -229,8 +229,8 @@ article; its `filters.blacklist` can match URL sections (`/betting/`).
 ## 5. What is valuable — the interest profile
 
 The profile is one reader's interests, which makes it deployment data, not
-code: it lives in `src/config/triage.json`, **git-ignored** like
-`sources.json`. The repository carries `src/config/triage.sample.json` — the
+code: it lives in `instance/config/triage.json`, **git-ignored** like
+`sources.json`. The repository carries `instance/config/triage.sample.json` — the
 same shape with a neutral example — and a fresh clone falls back to it with a
 `[CONFIG]` warning. The shape:
 
@@ -333,7 +333,7 @@ true }` on a flow-enabled `rss` source (the seeder refuses triage without
 
 | Part | Where | What |
 |---|---|---|
-| Profile | `src/config/triage.json` | Areas, values, noise, `deny_sections` (§5). Git-ignored; `triage.sample.json` is the tracked example. Edit the text and bump `version` |
+| Profile | `instance/config/triage.json` | Areas, values, noise, `deny_sections` (§5). Git-ignored; `triage.sample.json` is the tracked example. Edit the text and bump `version` |
 | Queue (ingest side) | `triage/TriageQueue.js` | A new article → a row; a deny-listed section is rejected at once (`decided_by: rule`). No network |
 | Stage (worker side) | `triage/TriageStage.js` | Runs first in the enrich worker's tick: ~50 pending headlines → `gateway.triage()` → `passed` / `rejected`; a pass becomes a post through the feed poller (`promote`) and is enriched in the same tick |
 | Prompt | `services/ai/prompts/triage.js` | Profile in the system prompt; headlines and examples as nonced data; closed `area` enum; an entry the model skipped stays pending, three misses → `failed` |

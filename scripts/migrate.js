@@ -33,7 +33,7 @@ import database from "../src/module/teapot/sqlite/sqlite_db.js";
 
 const MIGRATIONS_DIR = path.resolve(process.cwd(), "database", "migrations");
 const DB_FILE = SQLITE_STORAGE;
-// Бекапи лежать поруч із базою: для робочої це database/backups/, а прогін
+// Бекапи лежать поруч із базою: для робочої це instance/database/backups/, а прогін
 // тестів на тимчасовій базі не смітить у репозиторій.
 const BACKUP_DIR = path.resolve(path.dirname(DB_FILE), "backups");
 

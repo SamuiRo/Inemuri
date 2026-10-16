@@ -3,7 +3,7 @@
  *
  *   node scripts/discordapp.js check <guildId> [config]         лише читання
  *   node scripts/discordapp.js apply <guildId> [config] [--yes]  провіжн
- *   node scripts/discordapp.js export <guildId>                  сервер → конфіг у exports/
+ *   node scripts/discordapp.js export <guildId>                  сервер → конфіг у instance/exports/
  *   node scripts/discordapp.js ids <guildId>                     id за ключами зі стану (для routing.json)
  *
  * check показує те, що інакше з'ясовується методом спроб:

@@ -43,9 +43,9 @@ discordapp, not "the bot" or "discordbot". It runs in the same process and
 talks to the core only through `EventBus`; Discord *delivery* is not part of it
 and must never depend on it. See [docs/DISCORDAPP.md](docs/DISCORDAPP.md) for the
 contract and [docs/PROVISIONING.md](docs/PROVISIONING.md) for running a server
-with it. Real server configs and texts (`src/config/discordapp/servers/*.json`,
-`src/config/discordapp/messages/**`) are git-ignored; only `*.sample.*` files
-are tracked — never commit a real one. For provisioning work, load the
+with it. Real server configs and texts (`instance/provision/<server>/` — `server.json`
+and the texts next to it) are git-ignored; only `instance/provision/example.sample/`
+is tracked — never commit a real one. For provisioning work, load the
 `discord-provisioning` skill (`.claude/skills/`); per-server skills
 (`.claude/skills/server-*/`) are git-ignored and hold that server's
 conventions — load the matching one when working on a specific server.
@@ -124,16 +124,20 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 
 - **Never run with `NODE_ENV=development`.** The sync path uses `force: true`
   and will recreate tables, destroying configured sources. Use `production`.
-- The runtime database is `database/pot.sqlite`. `npm run migrate` takes its
-  own backup into `database/backups/` before applying anything; still back up
+- **Deployment data lives in `instance/`** (`instance/README.md`): `config/`,
+  `provision/<server>/`, `knowledge/`, `database/`, `exports/`; `.env` stays in the
+  root. `src/` holds only what changes with the code. Paths come from
+  `src/config/instance.js` through `app.config.js` (`INSTANCE`), never hard-coded.
+- The runtime database is `instance/database/pot.sqlite`. `npm run migrate` takes its
+  own backup into `instance/database/backups/` before applying anything; still back up
   before any manual schema change.
 - **Migrations** live in `database/migrations/` (`NNN-name.js`, each exporting
   `up({ sequelize, queryInterface })`, forward-only). `npm run migrate` applies
   pending ones, `npm run migrate:status` lists applied and pending. Both refuse
   `NODE_ENV=development`. Add a schema change as a new numbered migration with
   explicit `ALTER TABLE` — never `sync({ alter: true })` against a real
-  database (SQLite rebuilds the whole table). `database/` is git-ignored except
-  `database/migrations/`.
+  database (SQLite rebuilds the whole table). `database/` holds only the
+  migrations (code); the database itself is in `instance/database/`.
 - **Migrations cannot bootstrap an empty database.** `sources` and
   `source_states` predate the migration system and are created by
   `database.sync()`, not by a migration, so `npm run migrate` on an empty file
@@ -146,7 +150,7 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
   run with `npm test`, which is `scripts/run-tests.js`: it builds a throwaway
   SQLite database in the OS temp dir (bootstrap + migrate), points
   `SQLITE_STORAGE` at it and runs `node --test --test-concurrency=1`. The
-  suites that write to SQLite refuse to run against `database/pot.sqlite`
+  suites that write to SQLite refuse to run against `instance/database/pot.sqlite`
   (`test/support/testDatabase.js`), so run a single file as
   `npm test -- test/x.test.js`, never bare `node --test`. They cover the pure
   layers (regex stage, schemas, prompts, dedup core, resolve, render,
@@ -156,10 +160,10 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 - `.env` holds live secrets and is git-ignored. Never commit it or echo its
   contents.
 - **The repository is public.** Deployment data never goes into git:
-  `src/config/{sources,routing,cronjob.config,triage}.json`, discordapp server
+  `instance/config/{sources,routing,cron,triage}.json`, discordapp server
   configs and texts, channel lists and ids, filters and blacklists, the
   operator's interest profile and example posts (those live in the knowledge
-  base, imported from a git-ignored JSONL under `database/`). Each has a
+  base, imported from a git-ignored JSONL in `instance/knowledge/`). Each has a
   tracked `*.sample.*` with neutral content; tests, docs and
   `categories.json` examples use neutral or public material. Public outlets
   (NYPost, PsyPost, Reuters) are fine as examples.
@@ -168,11 +172,12 @@ a short description, for example `v4.1.7 fix telegramsourcelistener`.
 
 ```bash
 npm start            # start the service
-npm run seed         # seed sources from src/config/sources.json
+npm run seed         # seed sources from instance/config/sources.json
 npm run seed:fresh   # clear all sources and reseed
 npm run migrate      # apply pending schema migrations (backs up first)
 npm run migrate:status  # list applied and pending migrations
 npm run setup        # new or existing DB: bootstrap + migrate + seed; -- --new, -- --knowledge <f>
+npm run instance:init  # move pre-v4.67.0 files into instance/ (-- --apply; dry run without)
 npm run db:bootstrap # create missing tables (empty DB only; run BEFORE migrate)
 npm run lint         # eslint (flat config, eslint.config.js)
 npm test             # node --test suites under test/

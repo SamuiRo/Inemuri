@@ -223,7 +223,7 @@ test("describeResult — counts, saved files, skipped list, intent warning", () 
   const snapshot = { guilds: [{ name: "S", channels: [chan("a", { messages: empty }), chan("b", { skipped: "no access" })] }] };
   const text = describeResult(snapshot, { saved: ["export.md"], telegram: null });
   assert.match(text, /Exported \*\*6\*\* messages from \*\*1\*\* channels\./);
-  assert.match(text, /`exports\/export\.md`/);
+  assert.match(text, /`instance\/exports\/export\.md`/);
   assert.match(text, /Message Content Intent/);
   assert.match(text, /- #b — no access/);
   assert.match(text, /DISCORD_EXPORT_TELEGRAM_CHAT/);

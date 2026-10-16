@@ -25,6 +25,34 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.67.0] - 2026-10-10
+
+### Changed
+- **Everything that belongs to a deployment is in one folder, `instance/`**
+  (instance/README.md): `config/` (sources, routing, triage, cron),
+  `provision/<server>/`, `knowledge/`, `database/`, `exports/`. Before, a
+  deploy meant ten git-ignored paths in six places — `src/config/*.json`,
+  `src/config/discordapp/servers/` and `messages/` apart, `database/`,
+  `exports/` — copied by hand. `src/` now holds only what changes with the
+  code; `.env` stays in the root (operator's choice).
+- **One Discord server, one folder:** `instance/provision/<server>/server.json`
+  with its texts and avatars next to it; references are relative to the
+  folder (`"file": "welcome.md"`, was `"plane-of-euthymia/welcome.md"`).
+  `/provision` reads a config's texts from its own folder.
+- **The samples sit next to what they show**, tracked inside the ignored
+  folder: `instance/config/*.sample.json`, `instance/provision/example.sample/`.
+- `cronjob.config.json` is now `cron.json`.
+- `INEMURI_INSTANCE_DIR` points the service at another folder.
+
+### Added
+- **`npm run instance:init`** moves the old layout into `instance/` — a dry
+  run without `-- --apply`; never overwrites what `instance/` already has;
+  rewrites each server's text references. Until it runs, the old places are
+  still read (configs, server configs, the database), with a warning at
+  start and in `flow preflight` — a server that got the code first does
+  not start on samples or an empty database. The old places are dropped in
+  a later version.
+
 ## [4.66.0] - 2026-10-10
 
 From the operator's review of `#unsorted` (61 posts on the VPS snapshot).

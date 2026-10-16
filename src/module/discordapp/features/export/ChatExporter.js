@@ -11,7 +11,7 @@ const FORMATTERS = { md: formatMarkdown, json: formatJson };
 const SKIPPED_IN_REPLY = 10;
 
 /**
- * Експорт чатів: збирає знімок серверів, форматує і пише файли в exports/.
+ * Експорт чатів: збирає знімок серверів, форматує і пише файли в instance/exports/.
  *
  * @param {object} options
  * @param {import("discord.js").Guild[]} options.guilds
@@ -97,7 +97,7 @@ export function describeResult(snapshot, { saved, telegram }) {
   const lines = [
     `📦 Exported **${stats.messages}** messages from **${stats.channels}** channels` +
       (stats.guilds > 1 ? ` across ${stats.guilds} servers` : "") + ".",
-    `💾 Saved: ${saved.map((name) => `\`exports/${name}\``).join(", ")}`,
+    `💾 Saved: ${saved.map((name) => `\`instance/exports/${name}\``).join(", ")}`,
   ];
 
   lines.push(telegram

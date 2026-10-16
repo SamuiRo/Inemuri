@@ -128,5 +128,5 @@ function asPayload(reply) {
 function serverOption(option) {
   return option
     .setName("server")
-    .setDescription("Config name in src/config/discordapp/servers/ (default: the one for this server)");
+    .setDescription("Server folder in instance/provision/ (default: the one for this server)");
 }

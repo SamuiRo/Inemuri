@@ -37,6 +37,7 @@ export default [
     ignores: [
       "node_modules/**",
       "database/**",
+      "instance/**",
       "docs/**",
       "SourceBuilder.html",
     ],

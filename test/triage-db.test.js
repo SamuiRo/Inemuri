@@ -10,7 +10,7 @@ import TriageQueue from "../src/module/theflow/triage/TriageQueue.js";
 import TriageStage from "../src/module/theflow/triage/TriageStage.js";
 import { reviewQueue, collectTriageStats } from "../src/module/theflow/triage/report.js";
 import { recordHeadlineLabel } from "../src/module/theflow/knowledge/KnowledgeBase.js";
-import profile from "../src/config/triage.sample.json" with { type: "json" };
+import profile from "../instance/config/triage.sample.json" with { type: "json" };
 
 // Пише в SQLite — лише на одноразовій базі з `npm test` (test/support).
 const XID = `__tr_${process.pid}`;

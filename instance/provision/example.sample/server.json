@@ -37,9 +37,9 @@
       "key": "info", "name": "📌 INFO", "overwrites": "readonly",
       "channels": [
         { "key": "welcome", "name": "welcome", "topic": "Start here",
-          "messages": [{ "key": "welcome-main", "file": "welcome.sample.md", "embed": { "color": "#f47c9b" }, "as": "guide" }] },
+          "messages": [{ "key": "welcome-main", "file": "welcome.md", "embed": { "color": "#f47c9b" }, "as": "guide" }] },
         { "key": "rules", "name": "rules", "topic": "Read before posting",
-          "messages": [{ "key": "rules-main", "file": "rules.sample.md", "embed": { "title": "Rules", "color": "#5865f2" } }] },
+          "messages": [{ "key": "rules-main", "file": "rules.md", "embed": { "title": "Rules", "color": "#5865f2" } }] },
         { "key": "get-roles", "name": "get-roles", "topic": "Pick the topics you want to see",
           "messages": [{ "key": "topics", "rolePanel": { "mode": "toggle", "text": "Pick your topics — press again to leave:", "roles": [] } }] },
         { "key": "announcements", "name": "announcements", "type": "announcement", "requires": "community" }

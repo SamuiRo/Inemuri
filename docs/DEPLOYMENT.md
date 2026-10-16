@@ -34,10 +34,10 @@ pm2 logs inemuri --lines 100
 `npm run setup` builds the database from the configs: `db:bootstrap` (the
 tables older than migrations), `migrate`, `seed` from `sources.json`, and
 `flow knowledge import <file>` with `-- --knowledge <file>`; then it prints
-`flow preflight`. It refuses without `src/config/sources.json` (seed would
+`flow preflight`. It refuses without `instance/config/sources.json` (seed would
 take the sample). On an existing database every step is safe to repeat;
 `npm run setup -- --new` starts from an empty database and moves the old one
-to `database/backups/pot.sqlite.<time>.pre-setup` — nothing is deleted.
+to `instance/database/backups/pot.sqlite.<time>.pre-setup` — nothing is deleted.
 
 A new database means: no TheFlow corpus and labels unless imported, no
 provisioning state (the next apply adopts everything and posts the managed
@@ -46,20 +46,44 @@ source. `npm run migrate` alone on an empty database stops and says so.
 
 ## What `git pull` does not bring
 
-The repository is public, so every piece of deployment data is git-ignored
-and has to be on the server by other means — copied over (`scp`), or edited
-there. A missing one falls back to its `*.sample.json` with a `[CONFIG]`
-warning, which is how a server quietly ends up running on example values.
+The repository is public, so every piece of deployment data is git-ignored.
+Since v4.67.0 all of it lives in **one folder, `instance/`**
+([instance/README.md](../instance/README.md)), with the secrets in `.env`
+next to it — two things to carry, not ten paths. A missing config falls back
+to its sample next to it (`instance/config/*.sample.json`) with a
+`[CONFIG]` warning, which is how a server quietly ends up running on example
+values.
 
-| File | Holds | Without it |
+| Path | Holds | Without it |
 |---|---|---|
-| `.env` | Telegram session, API keys (`GEMINI_API_KEY`), `DISCORD_USER_TOKEN` of the Discord reading account, switches | Nothing starts, TheFlow stays dormant, or discord sources are not started |
-| `src/config/sources.json` | Every source: channels, filters, `flow`, news sources with `feed` | Seed has nothing real to import |
-| `src/config/routing.json` | `unsorted_destinations`, `routing` rules, `health_destinations`, `digest_destinations`, `status_destinations` | Verdicts, alerts and the status board go to the sample's ids, which do not exist — `flow preflight` blocks |
-| `src/config/triage.json` | The reader profile for headline triage | Triage judges against the sample profile |
-| `src/config/cronjob.config.json` | Cron job destinations | The daily report goes to the sample's ids — Discord answers `Unknown Channel` — and `flow preflight` blocks |
-| `src/config/discordapp/servers/*.json`, `messages/**` | discordapp server configs and texts | `/provision` has nothing to apply |
-| A knowledge JSONL (`database/knowledge/*.jsonl`) | The operator's labelled examples | Triage and few-shot start without examples |
+| `.env` (repository root) | Telegram session, API keys (`GEMINI_API_KEY`), `DISCORD_USER_TOKEN` of the Discord reading account, switches | Nothing starts, TheFlow stays dormant, or discord sources are not started |
+| `instance/config/` | `sources.json`, `routing.json`, `triage.json`, `cron.json` | Seed has nothing real; verdicts, alerts and the daily report go to the samples' ids — `flow preflight` blocks |
+| `instance/provision/<server>/` | `server.json` and the texts and avatars next to it | `/provision` has nothing to apply |
+| `instance/knowledge/*.jsonl` | The operator's labelled examples | Triage and few-shot start without examples |
+| `instance/database/` | `pot.sqlite` and `backups/` | **Never copy between machines** — it is this machine's corpus, provisioning state and polling positions |
+
+**Copying to the server:** `config/`, `provision/` and `knowledge/` — never
+`database/` (from the repository root on the dev machine):
+
+```bash
+scp -r instance/config instance/provision instance/knowledge user@vps:~/Inemuri/instance/
+```
+
+**Moving from the old layout (before v4.67.0)** — `src/config/*.json`,
+`src/config/discordapp/`, `database/`, `exports/`: until moved, they are still
+read, with a warning at start and in `flow preflight`. Move them once per
+machine, with the service stopped:
+
+```bash
+pm2 stop inemuri
+npm run instance:init              # shows the plan, moves nothing
+npm run instance:init -- --apply   # moves; never overwrites what instance/ already has
+node src/cli.js flow preflight
+pm2 start inemuri
+```
+
+It rewrites each server's text references from `"<server>/welcome.md"` to
+`"welcome.md"` (the texts now sit next to `server.json`).
 
 After copying, `npm run seed` imports `sources.json` (it adds and updates,
 never deletes — a source that exists only in the database keeps running),
@@ -79,8 +103,8 @@ cd $APP_ROOT
 # 1. Stop first. See "Why stop before migrating" below.
 pm2 stop inemuri
 
-# 2. Back up the database off-box as well as in database/backups/.
-cp database/pot.sqlite ~/pot.sqlite.$(date +%F)
+# 2. Back up the database off-box as well as in instance/database/backups/.
+cp instance/database/pot.sqlite ~/pot.sqlite.$(date +%F)
 
 # 3. Deploy code.
 git pull
@@ -126,7 +150,7 @@ Each switch is independent; do them in this order on a new deployment.
 `flow.enabled` on the sources, `npm run seed`, restart. Verdicts are written,
 nothing is sent; read them with `flow stats` and `flow review`.
 
-**News sources with headline triage.** Copy `src/config/triage.json` and the
+**News sources with headline triage.** Copy `instance/config/triage.json` and the
 news entries of `sources.json` (`"platform": "rss"`,
 `"feed": { …, "triage": true }`, `"flow": { "enabled": true }`); import the
 knowledge JSONL (`flow knowledge import <file>`); `npm run seed`; restart. In
@@ -160,7 +184,7 @@ database lives in `<working directory>/database/pot.sqlite`, so:
    `pm2 describe inemuri` (look at `exec cwd`) or
    `find / -name pot.sqlite -not -path "*/backups/*" 2>/dev/null`.
 2. If it is in another directory: stop the service, copy that file to
-   `database/pot.sqlite` here (or run everything from that directory), then
+   `instance/database/pot.sqlite` here (or run everything from that directory), then
    `npm run migrate`. Start the service with `pm2 start ecosystem.config.cjs`
    from that directory, so pm2 and the commands use the same database.
 3. Or start clean: `npm run setup -- --new` builds a new database from the
@@ -169,7 +193,7 @@ database lives in `<working directory>/database/pot.sqlite`, so:
    polling positions, which simply start from now.
 
 The empty file the failed run created can be deleted; its "backup" under
-`database/backups/` is empty too.
+`instance/database/backups/` is empty too.
 
 ## Rollback
 
@@ -177,13 +201,13 @@ Migrations are **forward-only**. To roll back:
 
 ```bash
 pm2 stop inemuri
-cp ~/pot.sqlite.<date> database/pot.sqlite     # restore the pre-deploy backup
+cp ~/pot.sqlite.<date> instance/database/pot.sqlite     # restore the pre-deploy backup
 git checkout <previous-tag>
 npm ci
 pm2 start inemuri
 ```
 
-`database/backups/` also holds a `pot.sqlite.<timestamp>.pre-migrate` copy
+`instance/database/backups/` also holds a `pot.sqlite.<timestamp>.pre-migrate` copy
 taken automatically at the start of each `npm run migrate` run.
 
 ## pm2 notes

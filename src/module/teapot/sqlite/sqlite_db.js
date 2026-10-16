@@ -1,3 +1,5 @@
+import fs from "fs";
+import path from "path";
 import { Sequelize } from "sequelize";
 
 import { print, printStack } from "../../../shared/utils.js";
@@ -8,6 +10,9 @@ export class Database {
   #isConnected = false; // приватне поле
 
   constructor() {
+    // Свіжий клон (і CI) не має instance/database/: SQLite створює файл, але
+    // не теку для нього. До v4.67.0 теку database/ давали міграції в git.
+    fs.mkdirSync(path.dirname(SQLITE_STORAGE), { recursive: true });
     this.sequelize = new Sequelize({
       dialect: "sqlite",
       storage: SQLITE_STORAGE, // абсолютний шлях

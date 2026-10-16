@@ -6,8 +6,8 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.66.0`; committed up to `v4.65.1`. 18 migrations; `npm test` is 712 green
-`node --test` cases on a throwaway database (never `database/pot.sqlite`); CI
+`v4.67.0`; committed up to `v4.66.0`. 18 migrations; `npm test` is 718 green
+`node --test` cases on a throwaway database (never `instance/database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
 | Part | State |
@@ -35,21 +35,26 @@ VPS, so do not apply from here.
 
 ## Configuration layout
 
-Deployment data is git-ignored (the repository is public) and read through
-`src/config/localConfig.js`; a missing file falls back to its tracked
-`*.sample.json` with a `[CONFIG]` warning, a malformed one stops the start.
+Since `v4.67.0` everything that belongs to the deployment is in one folder,
+`instance/` ([instance/README.md](../instance/README.md)); `.env` stays in the
+root. Git ignores it except the samples, which sit next to what they show.
+A missing config falls back to its sample with a `[CONFIG]` warning, a
+malformed one stops the start; a file still in the old place is read with a
+warning until `npm run instance:init` moves it (DEPLOYMENT.md).
 
-| Local (ignored) | Sample (tracked) | Holds |
+| In `instance/` | Sample (tracked) | Holds |
 |---|---|---|
-| `sources.json` | `sources.sample.json` | Sources: channels, filters, replacements, `flow`, `feed`, `poll_interval_min` |
-| `routing.json` | `routing.sample.json` | `unsorted_destinations`, `routing`, `health_destinations`, `digest_destinations`, `status_destinations` |
-| `triage.json` | `triage.sample.json` | Headline-triage reader profile (NEWS_INTAKE.md §5) |
-| `cronjob.config.json` | `cronjob.config.sample.json` | Cron job destinations |
-| `discordapp/servers/*.json`, `messages/**` | `*.sample.*` | discordapp server configs and texts |
+| `config/sources.json` | `config/sources.sample.json` | Sources: channels, filters, replacements, `flow`, `feed`, `poll_interval_min` |
+| `config/routing.json` | `config/routing.sample.json` | `unsorted_destinations`, `routing`, `health_destinations`, `digest_destinations`, `status_destinations` |
+| `config/triage.json` | `config/triage.sample.json` | Headline-triage reader profile (NEWS_INTAKE.md §5) |
+| `config/cron.json` | `config/cron.sample.json` | Cron job destinations |
+| `provision/<server>/` | `provision/example.sample/` | One Discord server: `server.json` and its texts |
+| `knowledge/*.jsonl` | — | Labelled examples |
+| `database/`, `exports/` | — | The working database and backups; `/export-chats` output |
 
-`categories.json` is tracked: taxonomy only, neutral examples. **Never in
-git:** channel lists and ids, filters, routing, the triage profile, server
-configs, the operator's example posts (knowledge JSONL under `database/`).
+`src/config/categories.json` is tracked: taxonomy only, neutral examples.
+**Never in git:** channel lists and ids, filters, routing, the triage
+profile, server configs, the operator's example posts (`instance/knowledge/`).
 Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
 
 ## Next steps
@@ -61,11 +66,11 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    checked offline against the operator's good/bad examples, not against
    live traffic — watch for good posts cut and noise let through.
 2. **Calibration, round 1 (2026-10-10, `v4.64.0`)** — from a VPS snapshot
-   (`database/backups/snapshot-2026-10-10.sqlite`, 640 deliveries) and the
+   (`instance/database/backups/snapshot-2026-10-10.sqlite`, 640 deliveries) and the
    operator's verdict on ten posts. To put on the VPS: the code, then copy
    `triage.json` (v3, `strict`, wider `deny_sections`), `sources.json`
    (junk removal for Business Insider and Fox), and import the labels —
-   `node src/cli.js flow knowledge import database/knowledge-2026-10-10.jsonl`
+   `node src/cli.js flow knowledge import instance/knowledge-2026-10-10.jsonl`
    (the VPS knowledge base was empty). Measured before the change: triage
    passed 43–80% per outlet; Reuters was 453 of 640 deliveries, 181 of them
    foreign editions; 69 of 620 non-Ukrainian posts translated (the daily
@@ -83,6 +88,13 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    counts, and whether a ranking cap (batching) is worth building. **Open:** Geely
    ("a company enters a market") — rejected; the operator's market verdicts
    (product renames are noise) suggest that is right.
+0. **Move the VPS to `instance/` (`v4.67.0`)** — after `git pull`: `pm2 stop
+   inemuri`, `npm run instance:init` (look at the plan), `npm run
+   instance:init -- --apply`, `node src/cli.js flow preflight`, `pm2 start
+   inemuri`. From then on a deploy copies `instance/config`,
+   `instance/provision` and `instance/knowledge` — never `instance/database`
+   (DEPLOYMENT.md). The dev copy is moved already. Next (`v4.68.0`): `npm run
+   deploy`, one command for the steps after a pull.
 3. **Games and Steam** (`v4.66.0`, from the operator's `#unsorted` review):
    `game・news` and `steam・news` added to the COUNCIL test list of the
    server config — **apply on the VPS**, then add two rules to `routing.json`

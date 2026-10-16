@@ -74,6 +74,8 @@ export async function collectPreflight() {
     configFallbacks: CONFIG_WARNINGS
       .map((w) => w.match(/^(\S+)\.json not found/)?.[1] ?? (w.includes("neither") ? w : null))
       .filter(Boolean),
+    // Конфіг чи база ще на старому місці (до v4.67.0): працює, але не там.
+    configLegacy: CONFIG_WARNINGS.filter((w) => w.includes("in the old place")),
     triageProfile: {
       version: FLOW_TRIAGE.profile?.version ?? 0,
       areas: Object.keys(FLOW_TRIAGE.profile?.areas ?? {}).length,
@@ -89,11 +91,11 @@ export async function collectPreflight() {
       problems: validateRouting(ROUTING, CATEGORIES),
     },
     deliveryEnabled: FLOW_DELIVERY.enabled,
-    // Щоденний звіт: куди він піде. Семпл cronjob.config має id-заглушки.
+    // Щоденний звіт: куди він піде. Семпл cron має id-заглушки.
     cron: {
       dailyEnabled: DAILY_REPORT.enabled,
       daily: destinationCount(CRON_CONFIG.dailyinfo?.destinations),
-      problems: destinationIdProblems(CRON_CONFIG.dailyinfo?.destinations, "cronjob.config dailyinfo"),
+      problems: destinationIdProblems(CRON_CONFIG.dailyinfo?.destinations, "cron.json dailyinfo"),
     },
     knowledge,
     triageExamples,
@@ -147,10 +149,10 @@ export function assessPreflight(s) {
   }
 
   // ── Конфіги розгортання ───────────────────────────────────────────
-  // Семпл замість routing.json чи cronjob.config.json — це доставка на
+  // Семпл замість routing.json чи cron.json — це доставка на
   // вигадані id: усе, що туди піде, відкине Discord («Unknown Channel») чи
   // Telegram. Тому блокер, а не попередження.
-  const DELIVERY_CONFIGS = new Set(["routing", "cronjob.config"]);
+  const DELIVERY_CONFIGS = new Set(["routing", "cron"]);
   for (const name of s.configFallbacks) {
     if (name === "triage" && triage.length) {
       fail("config_triage", "triage.json is missing — triage would judge headlines against the sample profile; copy and fill it");
@@ -160,6 +162,7 @@ export function assessPreflight(s) {
       warn(`config_${name}`, `${name}.json is missing — running on ${name}.sample.json`);
     }
   }
+  for (const w of s.configLegacy ?? []) warn("config_legacy", w);
   if (triage.length) {
     if (s.triageProfile.areas === 0) fail("triage_profile", "the triage profile has no areas");
     else ok("triage_profile", `triage profile v${s.triageProfile.version}, ${s.triageProfile.areas} area(s)`);
@@ -207,7 +210,7 @@ export function assessPreflight(s) {
     if (s.cron.problems.length) {
       fail("cron_ids", `daily report destination id(s) no platform accepts: ${s.cron.problems.slice(0, 5).join("; ")}`);
     } else if (!s.cron.daily) {
-      warn("cron", "daily report enabled but cronjob.config.json has no dailyinfo destinations — it goes nowhere (DAILY_REPORT_ENABLED=false to turn it off)");
+      warn("cron", "daily report enabled but cron.json has no dailyinfo destinations — it goes nowhere (DAILY_REPORT_ENABLED=false to turn it off)");
     } else {
       ok("cron", `daily report to ${s.cron.daily} destination(s)`);
     }
