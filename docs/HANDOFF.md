@@ -6,7 +6,7 @@ per-task status in [theflow/ROADMAP.md](theflow/ROADMAP.md).
 
 ## Current state
 
-`v4.67.0`; committed up to `v4.66.0`. 18 migrations; `npm test` is 718 green
+`v4.67.1`; committed up to `v4.67.0`. 18 migrations; `npm test` is 719 green
 `node --test` cases on a throwaway database (never `instance/database/pot.sqlite`); CI
 runs lint, bootstrap, migrate and tests on every push.
 
@@ -88,13 +88,10 @@ Public outlets (NYPost, PsyPost, Reuters) are fine as examples.
    counts, and whether a ranking cap (batching) is worth building. **Open:** Geely
    ("a company enters a market") — rejected; the operator's market verdicts
    (product renames are noise) suggest that is right.
-0. **Move the VPS to `instance/` (`v4.67.0`)** — after `git pull`: `pm2 stop
-   inemuri`, `npm run instance:init` (look at the plan), `npm run
-   instance:init -- --apply`, `node src/cli.js flow preflight`, `pm2 start
-   inemuri`. From then on a deploy copies `instance/config`,
-   `instance/provision` and `instance/knowledge` — never `instance/database`
-   (DEPLOYMENT.md). The dev copy is moved already. Next (`v4.68.0`): `npm run
-   deploy`, one command for the steps after a pull.
+0. **The VPS is on `instance/`** (moved 2026-10-16, `v4.67.0`). A deploy copies
+   `instance/config`, `instance/provision` and `instance/knowledge` — never
+   `instance/database` (DEPLOYMENT.md). Next (`v4.68.0`): `npm run deploy`,
+   one command for the steps after a pull.
 3. **Games and Steam** (`v4.66.0`, from the operator's `#unsorted` review):
    `game・news` and `steam・news` added to the COUNCIL test list of the
    server config — **apply on the VPS**, then add two rules to `routing.json`

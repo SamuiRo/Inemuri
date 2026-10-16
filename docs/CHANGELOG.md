@@ -25,6 +25,15 @@ work closes out) — see `CLAUDE.md` § Versioning.
 - DEPLOYMENT.md said a missing `cronjob.config.json` means "cron jobs post
   nowhere"; they posted to the sample's ids.
 
+## [4.67.1] - 2026-10-16
+
+### Fixed
+- **`/provision plan` failed on every text and avatar** with "config is not
+  defined" after the move to `instance/` (v4.67.0): the server's folder was
+  passed by a name that does not exist where the texts are read. Found on the
+  VPS on the first plan. A test now reads the sample server's texts the way
+  `/provision` does — it fails on the v4.67.0 code.
+
 ## [4.67.0] - 2026-10-10
 
 ### Changed

@@ -505,3 +505,17 @@ test("/provision apply says why there is no Apply button, first — the plan's t
   assert.match(applyHold({ errors: [], ops: [{ phase: "report", op: "unmanaged" }] }, []), /Nothing to apply/);
   assert.equal(applyHold({ errors: [], ops: [op] }, []), null, "a clean plan with changes gets the button");
 });
+
+test("attachBodies — texts and avatars are read from the server's own folder (regression v4.67.0)", async () => {
+  // v4.67.0 передавав у читання тексту config.baseDir там, де config не
+  // було видно: /provision plan падав «config is not defined» на кожному тексті.
+  const { attachBodies } = await import("../src/module/discordapp/features/provision/Provisioner.js");
+  const folder = path.join(DISCORD_PROVISION_DIR, "example.sample");
+  const sample = JSON.parse(fs.readFileSync(path.join(folder, "server.json"), "utf8"));
+  sample.guildId = GUILD;
+  const { errors, desired } = validateServerConfig(sample);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(await attachBodies(desired, folder), []);
+  const texts = desired.messages.filter((m) => m.kind === "text");
+  assert.ok(texts.length > 0 && texts.every((m) => typeof m.body === "string" && m.body.length > 0));
+});

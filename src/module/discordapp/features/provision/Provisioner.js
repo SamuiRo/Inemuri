@@ -23,7 +23,7 @@ export async function preparePlan(guild, configName = null, { loadState = (id) =
   const config = await resolveServerConfig(guild.id, configName);
   const { errors, desired } = validateServerConfig(config.raw);
   if (errors.length) return { config, errors };
-  const bodyErrors = await attachBodies(desired);
+  const bodyErrors = await attachBodies(desired, config.baseDir);
   if (bodyErrors.length) return { config, errors: bodyErrors };
 
   const state = await loadState(guild.id);
@@ -36,9 +36,11 @@ export async function preparePlan(guild, configName = null, { loadState = (id) =
  * Тексти повідомлень з .md-файлів → `message.body`. schema.js чиста й файлів
  * не читає, тож це робиться тут; ліміти Discord перевіряються одразу, щоб не
  * впасти посеред apply.
+ * @param {object} desired
+ * @param {string} baseDir тека сервера (configStore: instance/provision/<name>/)
  * @returns {Promise<string[]>} Помилки.
  */
-async function attachBodies(desired) {
+export async function attachBodies(desired, baseDir) {
   const errors = [];
   const known = {
     channels: new Set(desired.channels.map((channel) => channel.key)),
@@ -47,14 +49,14 @@ async function attachBodies(desired) {
   for (const persona of desired.personas.values()) {
     if (!persona.avatar) continue;
     try {
-      persona.avatarData = await loadMessageAsset(persona.avatar, config.baseDir);
+      persona.avatarData = await loadMessageAsset(persona.avatar, baseDir);
     } catch (error) {
       errors.push(`persona "${persona.key}": ${error.message}`);
     }
   }
   for (const message of desired.messages.filter((m) => m.kind === "text")) {
     try {
-      message.body = await loadMessageBody(message.file, config.baseDir);
+      message.body = await loadMessageBody(message.file, baseDir);
     } catch (error) {
       errors.push(`message "${message.key}": ${error.message}`);
       continue;
